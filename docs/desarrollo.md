@@ -51,3 +51,4 @@
 - 2026-01-11 09:30: feat: ajustes menores
 - 2026-01-11 11:00: fix: correcciones
 - 2026-01-11 13:30: docs: actualización
+- 2026-01-11 16:00: refactor: limpieza
