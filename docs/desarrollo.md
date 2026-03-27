@@ -425,3 +425,4 @@
 - 2026-03-26 18:00: chore: mantenimiento
 - 2026-03-27 09:30: feat: ajustes menores
 - 2026-03-27 11:00: fix: correcciones
+- 2026-03-27 13:30: docs: actualización
