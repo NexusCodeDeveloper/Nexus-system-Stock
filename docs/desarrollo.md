@@ -441,3 +441,4 @@
 - 2026-03-30 09:30: feat: ajustes menores
 - 2026-03-30 11:00: fix: correcciones
 - 2026-03-30 13:30: docs: actualización
+- 2026-03-30 16:00: refactor: limpieza
