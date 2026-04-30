@@ -595,3 +595,4 @@
 - 2026-04-29 18:00: chore: mantenimiento
 - 2026-04-30 09:30: feat: ajustes menores
 - 2026-04-30 11:00: fix: correcciones
+- 2026-04-30 13:30: docs: actualización
