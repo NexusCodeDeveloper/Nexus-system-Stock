@@ -701,3 +701,4 @@
 - 2026-05-21 09:30: feat: ajustes menores
 - 2026-05-21 11:00: fix: correcciones
 - 2026-05-21 13:30: docs: actualización
+- 2026-05-21 16:00: refactor: limpieza
