@@ -24,6 +24,7 @@ import ProductRoutes from './modules/Product/ProductRoutes.js';
 import ReturnRoutes from './modules/Return/ReturnRoutes.js';
 import SaleRoutes from './modules/Sale/SaleRoutes.js';
 import NotificationRoutes from './modules/Notification/NotificationRoutes.js';
+import SalesAuthRoutes from './modules/SalesAuth/SalesAuthRoutes.js';
 import User from './modules/Auth/AuthModel.js';
 import Sale from './modules/Sale/SaleModel.js';
 import { ensureTicketNumbers } from './modules/Sale/SaleController.js';
@@ -60,6 +61,7 @@ app.use('/api/products', ProductRoutes);
 app.use('/api/returns', ReturnRoutes);
 app.use('/api/sales', SaleRoutes);
 app.use('/api/notifications', NotificationRoutes);
+app.use('/api/sales-auth', SalesAuthRoutes);
 
 app.use('/api/*', (req, res) => {
   res.status(404).json({ message: 'Ruta no encontrada' });
