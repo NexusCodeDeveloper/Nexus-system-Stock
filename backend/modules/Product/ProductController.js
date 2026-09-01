@@ -177,7 +177,11 @@ export const exchangeProduct = async (req, res, next) => {
         await session.abortTransaction();
         return res.status(400).json({ message: 'El ticket ya fue devuelto' });
       }
-      const match = saleTicket.items?.find((i) => i.producto?.toString() === data.productoDevolver);
+      const match = saleTicket.items?.find(
+        (i) => i.producto?.toString() === data.productoDevolver
+          && (i.talle || '') === (data.talleDevolver || '')
+          && (i.color || '') === (data.colorDevolver || '')
+      );
       if (!match) {
         await session.abortTransaction();
         return res.status(400).json({ message: 'El producto no forma parte de este ticket' });
@@ -224,7 +228,8 @@ export const exchangeProduct = async (req, res, next) => {
     const precioDevuelto = saleTicket
       ? (saleTicket.items?.find((i) => i.producto?.toString() === data.productoDevolver)?.precio ?? productoDevuelto.precio)
       : productoDevuelto.precio;
-    const devolverValor = Math.round(precioDevuelto * data.cantidadDevolver * 100) / 100;
+    const factorDescuentoTicket = 1 - (saleTicket?.descuento || 0) / 100;
+    const devolverValor = Math.round(precioDevuelto * data.cantidadDevolver * factorDescuentoTicket * 100) / 100;
     const cargarValor = Math.round(productoCargado.precio * data.cantidadCargar * 100) / 100;
     const diferencia = Math.round((cargarValor - devolverValor) * 100) / 100;
 
@@ -238,7 +243,7 @@ export const exchangeProduct = async (req, res, next) => {
       sales = await Sale.find({
         $or: [
           { producto: data.productoDevolver },
-          { 'items.producto': data.productoDevolver },
+          { items: { $elemMatch: { producto: data.productoDevolver, talle: data.talleDevolver || '', color: data.colorDevolver || '' } } },
         ],
         estado: { $ne: 'devuelta' },
       }).sort({ createdAt: -1 }).session(session);
@@ -248,7 +253,11 @@ export const exchangeProduct = async (req, res, next) => {
       if (pendiente <= 0) break;
       saleConsumida = sale._id;
 
-      const match = sale.items?.find((i) => i.producto?.toString() === data.productoDevolver);
+      const match = sale.items?.find(
+        (i) => i.producto?.toString() === data.productoDevolver
+          && (i.talle || '') === (data.talleDevolver || '')
+          && (i.color || '') === (data.colorDevolver || '')
+      );
       const saleCantidad = match?.cantidad ?? sale.cantidad ?? 0;
       const precioUnit = match?.precio ?? sale.precio ?? 0;
       const factorDescuento = 1 - (sale.descuento || 0) / 100;
@@ -269,7 +278,6 @@ export const exchangeProduct = async (req, res, next) => {
         } else {
           sale.total = 0;
           sale.pagos = [];
-          sale.metodoPago = null;
           sale.estado = 'devuelta';
           registrarDevolucionEnVenta(sale, { motivo: data.motivo, cantidad: saleCantidad, monto: montoDevuelto });
         }
@@ -309,7 +317,7 @@ export const exchangeProduct = async (req, res, next) => {
           precio: productoCargado.precio,
           talle: data.talleCargar || '',
           color: data.colorCargar || '',
-          subtotal: cargarValor,
+          subtotal: diferencia,
         }],
         total: diferencia,
         empleado,

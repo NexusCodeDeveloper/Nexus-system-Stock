@@ -47,7 +47,11 @@ export const createReturn = async (req, res, next) => {
         await session.abortTransaction();
         return res.status(400).json({ message: 'El ticket ya fue devuelto' });
       }
-      const match = targetSale.items?.find((i) => i.producto?.toString() === data.producto);
+      const match = targetSale.items?.find(
+        (i) => i.producto?.toString() === data.producto
+          && (i.talle || '') === (data.talle || '')
+          && (i.color || '') === (data.color || '')
+      );
       if (!match) {
         await session.abortTransaction();
         return res.status(400).json({ message: 'El producto no forma parte de este ticket' });
@@ -61,7 +65,7 @@ export const createReturn = async (req, res, next) => {
       sales = await Sale.find({
         $or: [
           { producto: data.producto },
-          { 'items.producto': data.producto },
+          { items: { $elemMatch: { producto: data.producto, talle: data.talle || '', color: data.color || '' } } },
         ],
         estado: { $ne: 'devuelta' },
       }).sort({ createdAt: -1 }).session(session);
@@ -71,7 +75,11 @@ export const createReturn = async (req, res, next) => {
       if (pendiente <= 0) break;
       saleConsumida = sale._id;
 
-      const match = sale.items?.find((i) => i.producto?.toString() === data.producto);
+      const match = sale.items?.find(
+        (i) => i.producto?.toString() === data.producto
+          && (i.talle || '') === (data.talle || '')
+          && (i.color || '') === (data.color || '')
+      );
       const saleCantidad = match?.cantidad ?? sale.cantidad ?? 0;
       const precioUnit = match?.precio ?? sale.precio ?? 0;
       const factorDescuento = 1 - (sale.descuento || 0) / 100;
@@ -92,7 +100,6 @@ export const createReturn = async (req, res, next) => {
         } else {
           sale.total = 0;
           sale.pagos = [];
-          sale.metodoPago = null;
           sale.estado = 'devuelta';
           registrarDevolucionEnVenta(sale, { motivo: data.motivo, cantidad: saleCantidad, monto: montoDevuelto });
         }
@@ -101,6 +108,8 @@ export const createReturn = async (req, res, next) => {
         if (match) {
           match.cantidad -= pendiente;
           match.subtotal = Math.round(match.precio * match.cantidad * 100) / 100;
+        } else if (Number.isFinite(sale.cantidad)) {
+          sale.cantidad = Math.max(1, sale.cantidad - pendiente);
         }
         const sumSubtotales = sale.items
           ? sale.items.reduce((s, i) => s + (i.subtotal ?? i.precio * i.cantidad), 0)
@@ -130,11 +139,15 @@ export const createReturn = async (req, res, next) => {
 
     await session.commitTransaction();
 
-    const populated = await returnRecord[0].populate('producto', 'nombre categoria').populate('sale', 'ticketNumero total empleado');
+    returnRecord[0].$session(null);
+    const populated = await returnRecord[0].populate([
+      { path: 'producto', select: 'nombre categoria' },
+      { path: 'sale', select: 'ticketNumero total empleado' },
+    ]);
 
     res.status(201).json(populated);
   } catch (error) {
-    await session.abortTransaction();
+    await session.abortTransaction().catch(() => {});
     next(error);
   } finally {
     session.endSession();
@@ -183,30 +196,38 @@ export const deleteReturn = async (req, res, next) => {
     if (returnRecord.sale) {
       const sale = await Sale.findById(returnRecord.sale).session(session);
       if (sale) {
-        const match = sale.items?.find((i) => i.producto?.toString() === returnRecord.producto.toString());
-        if (match) {
-          match.cantidad += returnRecord.cantidad;
-          match.subtotal = Math.round(match.precio * match.cantidad * 100) / 100;
-        } else if (product) {
-          sale.items.push({
-            producto: returnRecord.producto,
-            cantidad: returnRecord.cantidad,
-            precio: product.precio,
-            talle: returnRecord.talle || '',
-            color: returnRecord.color || '',
-            subtotal: Math.round(product.precio * returnRecord.cantidad * 100) / 100,
-          });
+        const eraDevuelta = sale.estado === 'devuelta';
+        if (!eraDevuelta) {
+          const match = sale.items?.find((i) => i.producto?.toString() === returnRecord.producto.toString());
+          if (match) {
+            match.cantidad += returnRecord.cantidad;
+            match.subtotal = Math.round(match.precio * match.cantidad * 100) / 100;
+          } else if (product) {
+            sale.items.push({
+              producto: returnRecord.producto,
+              cantidad: returnRecord.cantidad,
+              precio: product.precio,
+              talle: returnRecord.talle || '',
+              color: returnRecord.color || '',
+              subtotal: Math.round(product.precio * returnRecord.cantidad * 100) / 100,
+            });
+          }
         }
         if (sale.items?.length > 0) {
           sale.total = Math.round(sale.items.reduce((s, i) => s + i.subtotal, 0) * (1 - (sale.descuento || 0) / 100) * 100) / 100;
         }
-        if (sale.estado === 'devuelta') {
+        const eraDevueltaFinal = sale.estado === 'devuelta';
+        if (eraDevueltaFinal) {
           sale.estado = 'activa';
-          if (!sale.pagos || sale.pagos.length === 0) {
-            sale.pagos = [{ metodo: sale.metodoPago || 'efectivo', monto: Math.round(sale.total * 100) / 100 }];
+          sale.pagos = [{ metodo: sale.metodoPago || 'efectivo', monto: Math.round(sale.total * 100) / 100 }];
+          sale.cantidadDevuelta = Math.max(0, Math.round(((sale.cantidadDevuelta || 0) - returnRecord.cantidad) * 100) / 100);
+          sale.montoDevuelto = Math.max(0, Math.round(((sale.montoDevuelto || 0) - (returnRecord.montoDevuelto || 0)) * 100) / 100);
+          if (sale.devoluciones?.length > 0) {
+            sale.devoluciones.pop();
           }
+        } else {
+          anularDevolucionEnVenta(sale, { cantidad: returnRecord.cantidad, monto: returnRecord.montoDevuelto || 0 });
         }
-        anularDevolucionEnVenta(sale, { cantidad: returnRecord.cantidad, monto: returnRecord.montoDevuelto || 0 });
         await sale.save({ session });
       }
     }

@@ -9,7 +9,7 @@ export const guardarConTicketUnico = async (sale, session) => {
     try {
       return await sale.save({ session });
     } catch (error) {
-      if ((error.code !== 11000 && error.code !== 112) || i === MAX_INTENTOS - 1) throw error;
+      if (error.code !== 11000 || i === MAX_INTENTOS - 1) throw error;
     }
   }
 };
@@ -28,7 +28,15 @@ export const anularDevolucionEnVenta = (sale, { cantidad, monto }) => {
   sale.cantidadDevuelta = Math.max(0, Math.round(((sale.cantidadDevuelta || 0) - cantidad) * 100) / 100);
   sale.montoDevuelto = Math.max(0, Math.round(((sale.montoDevuelto || 0) - montoRound) * 100) / 100);
   if (sale.devoluciones?.length > 0) {
-    sale.devoluciones.pop();
+    const idx = sale.devoluciones
+      .map((d, i) => ({ d, i }))
+      .filter(({ d }) => Math.round((d.monto || 0) * 100) / 100 === montoRound && (d.cantidad || 0) === cantidad)
+      .pop()?.i;
+    if (idx !== undefined) {
+      sale.devoluciones.splice(idx, 1);
+    } else {
+      sale.devoluciones.pop();
+    }
   }
   sumarAPagos(sale, montoRound);
 };
