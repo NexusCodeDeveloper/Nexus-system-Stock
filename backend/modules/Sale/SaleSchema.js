@@ -1,4 +1,9 @@
 import { z } from 'zod';
+import { Types } from 'mongoose';
+
+const objectId = z.string().refine((val) => Types.ObjectId.isValid(val), {
+  message: 'ID de producto inválido',
+});
 
 const pagoSchema = z.object({
   metodo: z.enum(['efectivo', 'transferencia', 'tarjeta']),
@@ -6,9 +11,9 @@ const pagoSchema = z.object({
 });
 
 const itemSchema = z.object({
-  producto: z.string().min(1, 'Producto requerido'),
+  producto: objectId,
   cantidad: z.number().int().positive('Debe vender al menos 1'),
-  precio: z.number().min(0, 'Precio debe ser mayor o igual a 0'),
+  precio: z.number().min(0, 'Precio debe ser mayor o igual a 0').optional(),
   talle: z.string().optional().default(''),
   color: z.string().optional().default(''),
 });

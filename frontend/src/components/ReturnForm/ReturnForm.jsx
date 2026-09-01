@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { createReturn } from '../../api/returns';
 import { exchangeProduct, getProducts } from '../../api/products';
 import { useIosAlert } from '../alerts';
+import { getApiErrorMessage } from '../../utils/apiError';
 import IosModal from '../ui/IosModal';
 import IosSearch from '../ui/IosSearch';
 import IosToggle from '../ui/IosToggle';
@@ -53,11 +54,9 @@ const ReturnForm = ({ sale, open, onClose, onDone, defaultExchange = false }) =>
       setExchangeCantidad('1');
       setExchangeVariantIdx('');
       setMetodoPago(sale.pagos?.[0]?.metodo || 'efectivo');
-      if (products.length === 0) {
-        getProducts()
-          .then((res) => setProducts(res.data || []))
-          .catch(() => {});
-      }
+      getProducts()
+        .then((res) => setProducts(res.data || []))
+        .catch(() => {});
     }
   }, [open, sale]);
 
@@ -112,6 +111,11 @@ const ReturnForm = ({ sale, open, onClose, onDone, defaultExchange = false }) =>
         return;
       }
       const excVariant = exchangeTarget.variants?.[Number(exchangeVariantIdx)];
+      const stockDisponible = excVariant ? excVariant.cantidad : exchangeTarget.cantidad;
+      if (cantidadCargar > stockDisponible) {
+        alert({ icon: 'warning', title: 'Stock insuficiente', message: `Solo hay ${stockDisponible} unidad(es) de "${exchangeTarget.nombre}"` });
+        return;
+      }
       esCambio = true;
       payload = {
         productoDevolver: getItemId(item),
@@ -157,7 +161,7 @@ const ReturnForm = ({ sale, open, onClose, onDone, defaultExchange = false }) =>
       onDone();
       toast({ message: esCambio ? 'Cambio registrado' : 'Devolución registrada' });
     } catch (err) {
-      alert({ icon: 'error', title: 'Error', message: err.response?.data?.message || 'Error al registrar' });
+      alert({ icon: 'error', title: 'Error', message: getApiErrorMessage(err, 'Error al registrar') });
     } finally {
       setSaving(false);
     }
@@ -218,7 +222,18 @@ const ReturnForm = ({ sale, open, onClose, onDone, defaultExchange = false }) =>
         </IosField>
 
         <label className="flex items-center gap-3 cursor-pointer select-none">
-          <IosToggle checked={exchangeActivo} onChange={setExchangeActivo} />
+          <IosToggle
+            checked={exchangeActivo}
+            onChange={(v) => {
+              setExchangeActivo(v);
+              if (!v) {
+                setExchangeTarget(null);
+                setExchangeCantidad('1');
+                setExchangeVariantIdx('');
+                setExchangeSearch('');
+              }
+            }}
+          />
           <span className="text-sm text-ios-label font-medium">Quiero cambiarlo por otro producto</span>
         </label>
 

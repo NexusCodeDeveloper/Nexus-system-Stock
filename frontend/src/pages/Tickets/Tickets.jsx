@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useLayoutEffect } from 'react';
 import { getTickets } from '../../api/sales';
 import Ticket, { printTicket } from '../../components/Ticket/Ticket';
 import ReturnForm from '../../components/ReturnForm/ReturnForm';
+import { getApiErrorMessage } from '../../utils/apiError';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
 import IosModal from '../../components/ui/IosModal';
 import IosSearch from '../../components/ui/IosSearch';
@@ -11,6 +12,7 @@ const formatDate = (date) =>
   new Date(date).toLocaleDateString('es-AR', {
     day: '2-digit',
     month: '2-digit',
+    year: 'numeric',
     hour: '2-digit',
     minute: '2-digit',
   });
@@ -101,11 +103,12 @@ const Tickets = () => {
     setLoading(true);
     setFetchError('');
     const params = { offset: new Date().getTimezoneOffset() };
-    if (numero.trim()) params.numero = numero.trim();
+    const soloDigitos = numero.trim().replace(/[^0-9]/g, '');
+    if (soloDigitos) params.numero = soloDigitos;
     getTickets(params)
       .then((res) => setData(res.data))
       .catch((err) => {
-        setFetchError(err.response?.data?.message || 'Error al cargar tickets');
+        setFetchError(getApiErrorMessage(err, 'Error al cargar tickets'));
       })
       .finally(() => setLoading(false));
   };

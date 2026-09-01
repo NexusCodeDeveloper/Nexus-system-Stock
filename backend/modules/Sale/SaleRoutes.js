@@ -6,10 +6,10 @@ const router = Router();
 
 router.use(protect);
 
-router.get('/daily-close', getDailyClose);
+router.post('/daily-close', getDailyClose);
 router.get('/daily-closes', getDailyCloses);
 router.delete('/daily-closes/:id', admin, deleteDailyClose);
-router.post('/daily-closes/:id/resend-mail', protect, resendCloseMail);
+router.post('/daily-closes/:id/resend-mail', admin, resendCloseMail);
 router.get('/stats', getSalesStats);
 router.get('/most-sold', getMostSold);
 router.get('/', getSales);

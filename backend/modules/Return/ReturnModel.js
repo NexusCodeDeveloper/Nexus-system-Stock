@@ -50,6 +50,15 @@ const returnSchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
+    montoDevuelto: {
+      type: Number,
+      default: 0,
+    },
+    ventaDiferenciaId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Sale',
+      default: null,
+    },
     motivo: {
       type: String,
       required: true,

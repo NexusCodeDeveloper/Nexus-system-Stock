@@ -6,7 +6,6 @@ import {
   updateProduct,
   deleteProduct,
   getDashboardStats,
-  sellProduct,
   exchangeProduct,
   addStock,
   migrateVariants,
@@ -24,7 +23,6 @@ router.get('/', getProducts);
 router.get('/:id', getProduct);
 router.post('/', admin, createProduct);
 router.put('/:id', admin, updateProduct);
-router.put('/:id/sell', sellProduct);
 router.put('/:id/add-stock', admin, addStock);
 router.post('/exchange', exchangeProduct);
 router.delete('/:id', admin, deleteProduct);

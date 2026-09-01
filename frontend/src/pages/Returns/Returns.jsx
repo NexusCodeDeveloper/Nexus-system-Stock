@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { getReturns, deleteReturn } from '../../api/returns';
+import { getApiErrorMessage } from '../../utils/apiError';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
 import { useAuth } from '../../context/AuthContext';
 import { useIosAlert } from '../../components/alerts';
@@ -22,7 +23,7 @@ const Returns = () => {
       const res = await getReturns();
       setReturns(res.data);
     } catch (err) {
-      setError(err.response?.data?.message || 'Error al cargar devoluciones');
+      setError(getApiErrorMessage(err, 'Error al cargar devoluciones'));
     } finally {
       setLoading(false);
     }
@@ -45,7 +46,7 @@ const Returns = () => {
       alert({
         icon: 'error',
         title: 'Error',
-        message: err.response?.data?.message || 'Error al eliminar devolución',
+        message: getApiErrorMessage(err, 'Error al eliminar devolución'),
       });
     }
   };

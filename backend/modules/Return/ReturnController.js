@@ -2,7 +2,7 @@ import mongoose from 'mongoose';
 import Return from './ReturnModel.js';
 import Product from '../Product/ProductModel.js';
 import Sale from '../Sale/SaleModel.js';
-import { registrarDevolucionEnVenta } from '../Sale/ticketUtils.js';
+import { registrarDevolucionEnVenta, anularDevolucionEnVenta } from '../Sale/ticketUtils.js';
 import { createReturnSchema } from './ReturnSchema.js';
 
 const findVariantIdx = (product, talle, color) => {
@@ -27,17 +27,25 @@ export const createReturn = async (req, res, next) => {
         product.variants.push({ talle: data.talle || '', color: data.color || '', cantidad: 0 });
       }
       product.variants[idx === -1 ? product.variants.length - 1 : idx].cantidad += data.cantidad;
+    } else {
+      product.cantidad += data.cantidad;
     }
 
     await product.save({ session });
 
     let pendiente = data.cantidad;
+    let saleConsumida = null;
+    let montoTotalDevuelto = 0;
     let sales;
     if (data.sale) {
       const targetSale = await Sale.findById(data.sale).session(session);
       if (!targetSale) {
         await session.abortTransaction();
         return res.status(400).json({ message: 'El ticket no existe o ya fue devuelto' });
+      }
+      if (targetSale.estado === 'devuelta') {
+        await session.abortTransaction();
+        return res.status(400).json({ message: 'El ticket ya fue devuelto' });
       }
       const match = targetSale.items?.find((i) => i.producto?.toString() === data.producto);
       if (!match) {
@@ -55,68 +63,74 @@ export const createReturn = async (req, res, next) => {
           { producto: data.producto },
           { 'items.producto': data.producto },
         ],
+        estado: { $ne: 'devuelta' },
       }).sort({ createdAt: -1 }).session(session);
     }
 
     for (const sale of sales) {
       if (pendiente <= 0) break;
+      saleConsumida = sale._id;
 
       const match = sale.items?.find((i) => i.producto?.toString() === data.producto);
       const saleCantidad = match?.cantidad ?? sale.cantidad ?? 0;
       const precioUnit = match?.precio ?? sale.precio ?? 0;
+      const factorDescuento = 1 - (sale.descuento || 0) / 100;
 
       if (saleCantidad <= pendiente) {
         pendiente -= saleCantidad;
-        if (data.sale) {
-          const montoDevuelto = precioUnit * saleCantidad;
-          if (sale.items && sale.items.length > 1) {
-            sale.items = sale.items.filter((i) => i.producto?.toString() !== data.producto);
-            const primerItem = sale.items[0];
-            sale.producto = primerItem.producto;
-            sale.cantidad = primerItem.cantidad;
-            sale.precio = primerItem.precio;
-            sale.talle = primerItem.talle || '';
-            sale.total = sale.items.reduce((s, i) => s + i.subtotal, 0);
-            registrarDevolucionEnVenta(sale, { motivo: data.motivo, cantidad: saleCantidad, monto: montoDevuelto });
-          } else {
-            sale.total = 0;
-            sale.pagos = [];
-            sale.metodoPago = '';
-            sale.estado = 'devuelta';
-            registrarDevolucionEnVenta(sale, { motivo: data.motivo, cantidad: saleCantidad, monto: montoDevuelto });
-          }
-          await sale.save({ session });
-        } else if (sale.items && sale.items.length > 1) {
+        const montoDevuelto = Math.round(precioUnit * saleCantidad * factorDescuento * 100) / 100;
+        montoTotalDevuelto = Math.round((montoTotalDevuelto + montoDevuelto) * 100) / 100;
+        if (sale.items && sale.items.length > 1) {
           sale.items = sale.items.filter((i) => i.producto?.toString() !== data.producto);
           const primerItem = sale.items[0];
           sale.producto = primerItem.producto;
           sale.cantidad = primerItem.cantidad;
           sale.precio = primerItem.precio;
           sale.talle = primerItem.talle || '';
-          sale.total = sale.items.reduce((s, i) => s + i.subtotal, 0);
-          await sale.save({ session });
+          sale.total = Math.round(sale.items.reduce((s, i) => s + i.subtotal, 0) * (1 - (sale.descuento || 0) / 100) * 100) / 100;
+          registrarDevolucionEnVenta(sale, { motivo: data.motivo, cantidad: saleCantidad, monto: montoDevuelto });
         } else {
-          await Sale.findByIdAndDelete(sale._id).session(session);
+          sale.total = 0;
+          sale.pagos = [];
+          sale.metodoPago = null;
+          sale.estado = 'devuelta';
+          registrarDevolucionEnVenta(sale, { motivo: data.motivo, cantidad: saleCantidad, monto: montoDevuelto });
         }
+        await sale.save({ session });
       } else {
         if (match) {
           match.cantidad -= pendiente;
-          match.subtotal = match.precio * match.cantidad;
+          match.subtotal = Math.round(match.precio * match.cantidad * 100) / 100;
         }
-        sale.total = sale.items ? sale.items.reduce((s, i) => s + (i.subtotal ?? i.precio * i.cantidad), 0) : (sale.cantidad - pendiente) * (sale.precio ?? 0);
-        if (data.sale) {
-          registrarDevolucionEnVenta(sale, { motivo: data.motivo, cantidad: pendiente, monto: precioUnit * pendiente });
-        }
+        const sumSubtotales = sale.items
+          ? sale.items.reduce((s, i) => s + (i.subtotal ?? i.precio * i.cantidad), 0)
+          : (sale.cantidad - pendiente) * (sale.precio ?? 0);
+        sale.total = Math.round(sumSubtotales * (1 - (sale.descuento || 0) / 100) * 100) / 100;
+        const montoDevuelto = Math.round(precioUnit * pendiente * factorDescuento * 100) / 100;
+        montoTotalDevuelto = Math.round((montoTotalDevuelto + montoDevuelto) * 100) / 100;
+        registrarDevolucionEnVenta(sale, { motivo: data.motivo, cantidad: pendiente, monto: montoDevuelto });
         await sale.save({ session });
         pendiente = 0;
       }
     }
 
-    const returnRecord = await Return.create([{ ...data, sale: data.sale || null, diferencia: 0 }], { session });
+    if (pendiente > 0) {
+      await session.abortTransaction();
+      return res.status(400).json({
+        message: `Solo se pueden devolver ${data.cantidad - pendiente} unidad(es): no hay más vendidas de este producto`,
+      });
+    }
+
+    const returnRecord = await Return.create([{
+      ...data,
+      sale: data.sale || saleConsumida || null,
+      diferencia: 0,
+      montoDevuelto: montoTotalDevuelto,
+    }], { session });
 
     await session.commitTransaction();
 
-    const populated = await returnRecord[0].populate('producto', 'nombre');
+    const populated = await returnRecord[0].populate('producto', 'nombre categoria').populate('sale', 'ticketNumero total empleado');
 
     res.status(201).json(populated);
   } catch (error) {
@@ -145,8 +159,63 @@ export const deleteReturn = async (req, res, next) => {
           product.variants[idx].cantidad -= returnRecord.cantidad;
           if (product.variants[idx].cantidad < 0) product.variants[idx].cantidad = 0;
         }
+      } else {
+        product.cantidad = Math.max(0, product.cantidad - returnRecord.cantidad);
       }
       await product.save({ session });
+    }
+
+    if (returnRecord.productoCargar) {
+      const productoCargado = await Product.findById(returnRecord.productoCargar).session(session);
+      if (productoCargado) {
+        if (productoCargado.variants?.length > 0) {
+          const idx = findVariantIdx(productoCargado, returnRecord.talleCargar, returnRecord.colorCargar);
+          if (idx !== -1) {
+            productoCargado.variants[idx].cantidad += returnRecord.cantidadCargar;
+          }
+        } else {
+          productoCargado.cantidad += returnRecord.cantidadCargar;
+        }
+        await productoCargado.save({ session });
+      }
+    }
+
+    if (returnRecord.sale) {
+      const sale = await Sale.findById(returnRecord.sale).session(session);
+      if (sale) {
+        const match = sale.items?.find((i) => i.producto?.toString() === returnRecord.producto.toString());
+        if (match) {
+          match.cantidad += returnRecord.cantidad;
+          match.subtotal = Math.round(match.precio * match.cantidad * 100) / 100;
+        } else if (product) {
+          sale.items.push({
+            producto: returnRecord.producto,
+            cantidad: returnRecord.cantidad,
+            precio: product.precio,
+            talle: returnRecord.talle || '',
+            color: returnRecord.color || '',
+            subtotal: Math.round(product.precio * returnRecord.cantidad * 100) / 100,
+          });
+        }
+        if (sale.items?.length > 0) {
+          sale.total = Math.round(sale.items.reduce((s, i) => s + i.subtotal, 0) * (1 - (sale.descuento || 0) / 100) * 100) / 100;
+        }
+        if (sale.estado === 'devuelta') {
+          sale.estado = 'activa';
+          if (!sale.pagos || sale.pagos.length === 0) {
+            sale.pagos = [{ metodo: sale.metodoPago || 'efectivo', monto: Math.round(sale.total * 100) / 100 }];
+          }
+        }
+        anularDevolucionEnVenta(sale, { cantidad: returnRecord.cantidad, monto: returnRecord.montoDevuelto || 0 });
+        await sale.save({ session });
+      }
+    }
+
+    if (returnRecord.ventaDiferenciaId) {
+      const ventaDiferencia = await Sale.findById(returnRecord.ventaDiferenciaId).session(session);
+      if (ventaDiferencia) {
+        await Sale.findByIdAndDelete(returnRecord.ventaDiferenciaId).session(session);
+      }
     }
 
     await Return.findByIdAndDelete(req.params.id).session(session);

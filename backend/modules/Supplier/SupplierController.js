@@ -1,6 +1,14 @@
 import Supplier from './SupplierModel.js';
 import { createSupplierSchema, updateSupplierSchema } from './SupplierSchema.js';
 
+const escapeRegex = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+const findDuplicado = (nombre, excluirId) => {
+  const filter = { nombre: { $regex: `^${escapeRegex(nombre.trim())}$`, $options: 'i' } };
+  if (excluirId) filter._id = { $ne: excluirId };
+  return Supplier.findOne(filter);
+};
+
 export const getSuppliers = async (req, res, next) => {
   try {
     const suppliers = await Supplier.find().sort({ nombre: 1 });
@@ -25,6 +33,10 @@ export const getSupplier = async (req, res, next) => {
 export const createSupplier = async (req, res, next) => {
   try {
     const data = createSupplierSchema.parse(req.body);
+    const duplicado = await findDuplicado(data.nombre);
+    if (duplicado) {
+      return res.status(409).json({ message: `Ya existe un proveedor llamado "${data.nombre}"` });
+    }
     const supplier = await Supplier.create(data);
     res.status(201).json(supplier);
   } catch (error) {
@@ -35,6 +47,12 @@ export const createSupplier = async (req, res, next) => {
 export const updateSupplier = async (req, res, next) => {
   try {
     const data = updateSupplierSchema.parse(req.body);
+    if (data.nombre) {
+      const duplicado = await findDuplicado(data.nombre, req.params.id);
+      if (duplicado) {
+        return res.status(409).json({ message: `Ya existe un proveedor llamado "${data.nombre}"` });
+      }
+    }
     const supplier = await Supplier.findByIdAndUpdate(req.params.id, data, {
       new: true,
       runValidators: true,

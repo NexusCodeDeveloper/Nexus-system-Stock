@@ -1,18 +1,21 @@
 import { NavLink } from 'react-router-dom';
 import { IconBox, IconChart, IconUsers, IconReturn, IconBell, IconTile, IconTicket } from '../ui/icons';
 import { useNotifications } from '../../context/NotificationContext';
+import { useAuth } from '../../context/AuthContext';
 
 const links = [
   { to: '/products', label: 'Productos', icon: IconBox, gradient: 'from-sky-500 to-blue-600' },
   { to: '/sales', label: 'Ventas', icon: IconChart, gradient: 'from-emerald-500 to-teal-600' },
   { to: '/tickets', label: 'Tickets', icon: IconTicket, gradient: 'from-amber-500 to-orange-600' },
-  { to: '/suppliers', label: 'Proveedores', icon: IconUsers, gradient: 'from-indigo-500 to-purple-600' },
+  { to: '/suppliers', label: 'Proveedores', icon: IconUsers, gradient: 'from-indigo-500 to-purple-600', adminOnly: true },
   { to: '/returns', label: 'Devoluciones', icon: IconReturn, gradient: 'from-orange-500 to-rose-600' },
   { to: '/notifications', label: 'Avisos', icon: IconBell, gradient: 'from-cyan-500 to-sky-600' },
 ];
 
 const Sidebar = () => {
   const { pendingCount } = useNotifications();
+  const { user } = useAuth();
+  const visibleLinks = links.filter((link) => !link.adminOnly || user?.rol === 'admin');
   return (
     <aside className="hidden md:flex w-[260px] bg-ios-surface/70 backdrop-blur-2xl border-r border-ios-separator/40 flex-col shrink-0">
       <div className="px-5 pt-7 pb-6">
@@ -28,7 +31,7 @@ const Sidebar = () => {
       </div>
 
       <nav className="flex-1 px-3 space-y-0.5">
-        {links.map((link) => (
+        {visibleLinks.map((link) => (
           <NavLink
             key={link.to}
             to={link.to}

@@ -19,12 +19,17 @@ for (const env of requiredEnv) {
     process.exit(1);
   }
 }
+if (process.env.JWT_SECRET.length < 16 || process.env.JWT_SECRET.includes('cambia_esto')) {
+  console.error('FATAL: JWT_SECRET debe tener al menos 16 caracteres y no ser un valor de ejemplo');
+  process.exit(1);
+}
 import SupplierRoutes from './modules/Supplier/SupplierRoutes.js';
 import ProductRoutes from './modules/Product/ProductRoutes.js';
 import ReturnRoutes from './modules/Return/ReturnRoutes.js';
 import SaleRoutes from './modules/Sale/SaleRoutes.js';
 import NotificationRoutes from './modules/Notification/NotificationRoutes.js';
 import SalesAuthRoutes from './modules/SalesAuth/SalesAuthRoutes.js';
+import CashWithdrawalRoutes from './modules/CashWithdrawal/CashWithdrawalRoutes.js';
 import User from './modules/Auth/AuthModel.js';
 import Sale from './modules/Sale/SaleModel.js';
 import { ensureTicketNumbers } from './modules/Sale/SaleController.js';
@@ -56,12 +61,14 @@ app.get('/api/health', (req, res) => {
 
 app.use('/api/auth/login', authLimiter);
 app.use('/api/auth', AuthRoutes);
+app.use('/api/sales-auth/login', authLimiter);
+app.use('/api/sales-auth', SalesAuthRoutes);
 app.use('/api/suppliers', SupplierRoutes);
 app.use('/api/products', ProductRoutes);
 app.use('/api/returns', ReturnRoutes);
 app.use('/api/sales', SaleRoutes);
 app.use('/api/notifications', NotificationRoutes);
-app.use('/api/sales-auth', SalesAuthRoutes);
+app.use('/api/cash-withdrawals', CashWithdrawalRoutes);
 
 app.use('/api/*', (req, res) => {
   res.status(404).json({ message: 'Ruta no encontrada' });
@@ -79,50 +86,70 @@ app.use(errorHandler);
 
 const seedUsers = async () => {
   try {
-    const adminUser = await User.findOne({ email: process.env.ADMIN_EMAIL });
-    if (!adminUser) {
-      await User.create({
-        nombre: 'Admin',
-        email: process.env.ADMIN_EMAIL,
-        password: process.env.ADMIN_PASSWORD,
-        rol: 'admin',
-      });
-      if (isDev) console.log('Usuario admin creado');
-    } else {
-      adminUser.password = process.env.ADMIN_PASSWORD;
-      await adminUser.save();
-      if (isDev) console.log('Contraseña de admin actualizada');
-    }
+    await User.updateOne(
+      { email: process.env.ADMIN_EMAIL },
+      {
+        $setOnInsert: {
+          nombre: 'Admin',
+          email: process.env.ADMIN_EMAIL,
+          password: process.env.ADMIN_PASSWORD,
+          rol: 'admin',
+        },
+      },
+      { upsert: true }
+    );
+    if (isDev) console.log('Usuario admin verificado');
 
-    const empleadoUser = await User.findOne({ email: process.env.EMPLEADO_EMAIL });
-    if (!empleadoUser) {
-      await User.create({
-        nombre: 'Empleado',
-        email: process.env.EMPLEADO_EMAIL,
-        password: process.env.EMPLEADO_PASSWORD,
-        rol: 'user',
-      });
-      if (isDev) console.log('Usuario empleado creado');
-    } else {
-      empleadoUser.password = process.env.EMPLEADO_PASSWORD;
-      await empleadoUser.save();
-      if (isDev) console.log('Contraseña de empleado actualizada');
-    }
+    await User.updateOne(
+      { email: process.env.EMPLEADO_EMAIL },
+      {
+        $setOnInsert: {
+          nombre: 'Empleado',
+          email: process.env.EMPLEADO_EMAIL,
+          password: process.env.EMPLEADO_PASSWORD,
+          rol: 'user',
+        },
+      },
+      { upsert: true }
+    );
+    if (isDev) console.log('Usuario empleado verificado');
   } catch (error) {
     console.error('Error al crear usuarios:', error.message);
   }
 };
 
-connectDB().then(async () => {
-  await seedUsers();
-  try {
-    await Sale.init();
-    const migradas = await ensureTicketNumbers();
-    if (isDev && migradas > 0) console.log(`Números de ticket asignados a ${migradas} ventas existentes`);
-  } catch (error) {
-    console.error('Error al asignar números de ticket:', error.message);
-  }
-  app.listen(PORT, () => {
-    if (isDev) console.log(`Servidor corriendo en puerto ${PORT}`);
+connectDB()
+  .then(async () => {
+    await seedUsers();
+    try {
+      await Sale.init();
+      const migradas = await ensureTicketNumbers();
+      if (isDev && migradas > 0) console.log(`Números de ticket asignados a ${migradas} ventas existentes`);
+    } catch (error) {
+      console.error('Error al asignar números de ticket:', error.message);
+    }
+    app.listen(PORT, () => {
+      if (isDev) console.log(`Servidor corriendo en puerto ${PORT}`);
+    });
+  })
+  .catch((error) => {
+    console.error('FATAL: No se pudo iniciar el servidor:', error.message);
+    process.exit(1);
   });
+
+app.on('error', (error) => {
+  if (error.code === 'EADDRINUSE') {
+    console.error(`FATAL: El puerto ${PORT} ya está en uso`);
+    process.exit(1);
+  }
+  console.error('FATAL: Error del servidor:', error.message);
+  process.exit(1);
+});
+
+process.on('unhandledRejection', (reason) => {
+  console.error('Unhandled rejection:', reason);
+});
+
+process.on('uncaughtException', (error) => {
+  console.error('Uncaught exception:', error);
 });

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { loginUser } from '../../api/auth';
 import { useAuth } from '../../context/AuthContext';
+import { getApiErrorMessage } from '../../utils/apiError';
 import IosButton from '../../components/ui/IosButton';
 import { IconEye, IconEyeOff } from '../../components/ui/icons';
 
@@ -16,12 +17,12 @@ const LoginModal = () => {
     setError('');
     setLoading(true);
     try {
-      const res = await loginUser(form);
+      const res = await loginUser({ ...form, email: form.email.trim() });
       login(res.data);
     } catch (err) {
-      setError(err.response?.data?.message || 'Error al iniciar sesión');
+      setError(getApiErrorMessage(err, 'Error al iniciar sesión'));
     } finally {
-      setLoading(false);
+      setLoading(false);    
     }
   };
 

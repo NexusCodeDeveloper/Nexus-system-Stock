@@ -14,6 +14,7 @@ const variantSchema = z.object({
 export const createProductSchema = z.object({
   nombre: z.string().min(1, 'El nombre del producto es obligatorio'),
   precio: z.number().positive('El precio debe ser mayor a $0'),
+  cantidad: z.number().int().min(0, 'La cantidad no puede ser negativa').optional().default(0),
   variants: z.array(variantSchema).optional().default([]),
   colores: z.array(z.string()).optional().default([]),
   categoria: z.string().min(1, 'La categoría es obligatoria'),
@@ -34,11 +35,11 @@ export const createProductSchema = z.object({
 });
 
 export const exchangeSchema = z.object({
-  productoDevolver: z.string().min(1, 'Producto a devolver requerido'),
+  productoDevolver: objectId,
   cantidadDevolver: z.number().int().positive('Debe devolver al menos 1'),
   talleDevolver: z.string().optional().default(''),
   colorDevolver: z.string().optional().default(''),
-  productoCargar: z.string().min(1, 'Producto a cargar requerido'),
+  productoCargar: objectId,
   cantidadCargar: z.number().int().positive('Debe cargar al menos 1'),
   talleCargar: z.string().optional().default(''),
   colorCargar: z.string().optional().default(''),
@@ -63,6 +64,7 @@ export const sellProductSchema = z.object({
 export const updateProductSchema = z.object({
   nombre: z.string().min(1, 'El nombre del producto es obligatorio').optional(),
   precio: z.number().positive('El precio debe ser mayor a $0').optional(),
+  cantidad: z.number().int().min(0, 'La cantidad no puede ser negativa').optional(),
   variants: z.array(variantSchema).optional(),
   colores: z.array(z.string()).optional(),
   categoria: z.string().min(1, 'La categoría es obligatoria').optional(),

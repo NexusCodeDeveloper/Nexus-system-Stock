@@ -51,10 +51,11 @@ export const NotificationProvider = ({ children }) => {
   }, [check]);
 
   useEffect(() => {
+    if (!user) return;
     check();
     const interval = setInterval(check, POLL_MS);
     return () => clearInterval(interval);
-  }, [check]);
+  }, [check, user]);
 
   return (
     <NotificationContext.Provider

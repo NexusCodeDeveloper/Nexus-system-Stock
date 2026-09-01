@@ -24,6 +24,13 @@ const dailyCloseSchema = new mongoose.Schema({
   },
   cerradoPor: { type: String, default: '' },
   cerradoAt: { type: Date, default: Date.now },
+  retiros: [{
+    monto: { type: Number, required: true },
+    motivo: { type: String, trim: true, default: '' },
+    realizadoPor: { type: String, trim: true, default: '' },
+    fecha: { type: Date, default: Date.now },
+  }],
+  totalRetiros: { type: Number, default: 0 },
 });
 
 dailyCloseSchema.index({ fecha: 1, turno: 1 }, { unique: true });

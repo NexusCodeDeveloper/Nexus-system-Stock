@@ -25,3 +25,9 @@ services:
         sync: false
       - key: EMPLEADO_PASSWORD
         sync: false
+      - key: MAIL_TO
+        sync: false
+      - key: MAIL_FROM
+        sync: false
+      - key: MODO_API
+        sync: false

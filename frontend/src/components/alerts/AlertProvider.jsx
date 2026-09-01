@@ -1,19 +1,26 @@
-import { createContext, useCallback, useContext, useRef, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import IosAlert from './IosAlert';
 import Toast from './Toast';
 
 const AlertContext = createContext(null);
-
-let toastTimer = 0;
-let toastSeq = 0;
 
 const AlertProvider = ({ children }) => {
   const [queue, setQueue] = useState([]);
   const [toasts, setToasts] = useState([]);
   const queueRef = useRef([]);
   const seqRef = useRef(0);
+  const toastSeqRef = useRef(0);
+  const toastTimersRef = useRef(new Map());
 
   const active = queue[0] || null;
+
+  useEffect(() => {
+    const timers = toastTimersRef.current;
+    return () => {
+      for (const t of timers.values()) clearTimeout(t);
+      timers.clear();
+    };
+  }, []);
 
   const dismissAlert = useCallback((id) => {
     queueRef.current = queueRef.current.filter((a) => a.id !== id);
@@ -31,10 +38,13 @@ const AlertProvider = ({ children }) => {
   );
 
   const toast = useCallback(({ message, type = 'success', duration = 2200 }) => {
-    const id = ++toastSeq;
+    const id = ++toastSeqRef.current;
     setToasts((prev) => [...prev, { id, message, type }]);
-    clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), duration);
+    const timer = setTimeout(() => {
+      setToasts((prev) => prev.filter((t) => t.id !== id));
+      toastTimersRef.current.delete(id);
+    }, duration);
+    toastTimersRef.current.set(id, timer);
   }, []);
 
   const show = useCallback(
@@ -78,6 +88,7 @@ const AlertProvider = ({ children }) => {
               onPress: () => resolve(true),
             },
           ],
+          onCloseFallback: () => resolve(false),
         });
       }),
     [pushAlert]

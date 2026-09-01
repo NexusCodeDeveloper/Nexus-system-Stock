@@ -52,7 +52,9 @@ const productSchema = new mongoose.Schema(
 );
 
 productSchema.pre('save', function (next) {
-  this.cantidad = this.variants.reduce((sum, v) => sum + v.cantidad, 0);
+  if (this.variants?.length > 0) {
+    this.cantidad = this.variants.reduce((sum, v) => sum + v.cantidad, 0);
+  }
   this.talles = undefined;
   next();
 });

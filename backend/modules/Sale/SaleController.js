@@ -4,23 +4,40 @@ import Sale from './SaleModel.js';
 import Product from '../Product/ProductModel.js';
 import Return from '../Return/ReturnModel.js';
 import DailyClose from './DailyCloseModel.js';
+import CashWithdrawal from '../CashWithdrawal/CashWithdrawalModel.js';
 import { createSaleSchema } from './SaleSchema.js';
 import { generarTicketNumero, guardarConTicketUnico } from './ticketUtils.js';
 import { enviarCierreDeCaja, enviarMailTest, verificarMail } from '../../services/emailService.js';
 
 const parseDate = (str, offset = 0) => {
   if (!str) return null;
-  const [y, m, d] = str.split('-').map(Number);
-  if (isNaN(y) || isNaN(m) || isNaN(d)) return null;
-  const utcDate = Date.UTC(y, m - 1, d);
-  return new Date(utcDate + offset * 60000);
+  const match = String(str).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return null;
+  const y = Number(match[1]);
+  const m = Number(match[2]);
+  const d = Number(match[3]);
+  if (m < 1 || m > 12 || d < 1 || d > 31) return null;
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  if (dt.getUTCFullYear() !== y || dt.getUTCMonth() !== m - 1 || dt.getUTCDate() !== d) return null;
+  return new Date(dt.getTime() + Number(offset) * 60000);
 };
 
 const getRange = (start, end, offset = 0) => {
-  const from = parseDate(start, Number(offset)) || new Date(0);
-  const to = parseDate(end, Number(offset));
+  const off = Number.isFinite(Number(offset)) ? Number(offset) : 0;
+  const from = parseDate(start, off);
+  const to = parseDate(end, off);
+  if (start && !from) {
+    const err = new Error('Fecha inválida');
+    err.statusCode = 400;
+    throw err;
+  }
+  if (end && !to) {
+    const err = new Error('Fecha inválida');
+    err.statusCode = 400;
+    throw err;
+  }
   return {
-    $gte: from,
+    $gte: from || new Date(0),
     $lt: to ? new Date(to.getTime() + 86400000) : new Date(8640000000000000),
   };
 };
@@ -85,18 +102,19 @@ export const createSale = async (req, res, next) => {
 
       await product.save({ session });
 
+      const precioUnitario = Math.round(product.precio * 100) / 100;
       items.push({
         producto: item.producto,
         cantidad: item.cantidad,
-        precio: item.precio,
+        precio: precioUnitario,
         talle: item.talle || '',
         color: item.color || '',
-        subtotal: item.precio * item.cantidad,
+        subtotal: Math.round(precioUnitario * item.cantidad * 100) / 100,
       });
     }
 
     const subtotal = items.reduce((s, i) => s + i.subtotal, 0);
-    const total = subtotal * (1 - (data.descuento || 0) / 100);
+    const total = Math.round(subtotal * (1 - (data.descuento || 0) / 100) * 100) / 100;
 
     const sumaPagos = (data.pagos || []).reduce((s, p) => s + p.monto, 0);
     if (Math.abs(sumaPagos - total) > 0.01) {
@@ -138,10 +156,14 @@ export const deleteSale = async (req, res, next) => {
       await session.abortTransaction();
       return res.status(404).json({ message: 'Venta no encontrada' });
     }
+    if (sale.estado === 'devuelta') {
+      await session.abortTransaction();
+      return res.status(400).json({ message: 'No se puede eliminar una venta ya devuelta' });
+    }
 
     const items = getItems(sale);
 
-    const returnCount = await Return.countDocuments({ producto: { $in: items.map(i => i.producto) } }).session(session);
+    const returnCount = await Return.countDocuments({ sale: sale._id }).session(session);
     if (returnCount > 0) {
       await session.abortTransaction();
       return res.status(400).json({ message: 'No se puede eliminar la venta porque tiene devoluciones asociadas' });
@@ -152,11 +174,14 @@ export const deleteSale = async (req, res, next) => {
       if (product) {
         if (product.variants?.length > 0) {
           const idx = findVariantIdx(product, item.talle, item.color);
-          if (idx !== -1) {
+          if (idx === -1) {
+            product.variants.push({ talle: item.talle || '', color: item.color || '', cantidad: item.cantidad });
+          } else {
             product.variants[idx].cantidad += item.cantidad;
           }
+        } else {
+          product.cantidad += item.cantidad;
         }
-        product.cantidad += item.cantidad;
         await product.save({ session });
       }
     }
@@ -191,7 +216,7 @@ export const getSales = async (req, res, next) => {
       .populate('producto', 'nombre categoria')
       .sort({ createdAt: -1 });
 
-    const total = sales.reduce((sum, s) => sum + s.total, 0);
+    const total = Math.round(sales.reduce((sum, s) => sum + s.total, 0) * 100) / 100;
 
     res.json({ sales, total });
   } catch (error) {
@@ -210,20 +235,34 @@ export const getMostSold = async (req, res, next) => {
 
     const sales = await Sale.find(filter);
 
+    const returns = await Return.find(filter.createdAt ? { createdAt: filter.createdAt } : {})
+      .select('producto cantidad sale');
+    const returnsBySale = new Map();
+    for (const r of returns) {
+      if (!r.sale) continue;
+      const key = r.sale.toString();
+      if (!returnsBySale.has(key)) returnsBySale.set(key, new Map());
+      const porProducto = returnsBySale.get(key);
+      const pid = r.producto?.toString();
+      if (!pid) continue;
+      porProducto.set(pid, (porProducto.get(pid) || 0) + (Number(r.cantidad) || 0));
+    }
+
     const productMap = {};
     for (const sale of sales) {
       if (sale.estado === 'devuelta') continue;
       const items = getItems(sale);
-      const totalUnidades = items.reduce((a, i) => a + (Number(i.cantidad) || 0), 0) || 1;
-      const factor = Math.max(0, 1 - ((sale.cantidadDevuelta || 0) / totalUnidades));
+      const returnMap = returnsBySale.get(sale._id.toString()) || new Map();
       for (const item of items) {
         const pid = item.producto?.toString() || item.producto;
         if (!productMap[pid]) productMap[pid] = { totalVendido: 0, ingresos: 0 };
-        const cantEfectiva = item.cantidad * factor;
+        const devuelto = Math.min(returnMap.get(pid) || 0, item.cantidad);
+        const cantEfectiva = Math.max(0, item.cantidad - devuelto);
+        if (cantEfectiva === 0) continue;
         productMap[pid].totalVendido += cantEfectiva;
         const itemSubtotal = item.subtotal || (item.cantidad * (item.precio || 0));
         const ratio = sale.total > 0 ? itemSubtotal / sale.total : 1 / items.length;
-        productMap[pid].ingresos += sale.total * ratio * factor;
+        productMap[pid].ingresos += sale.total * ratio * (cantEfectiva / item.cantidad);
       }
     }
 
@@ -250,8 +289,11 @@ export const getMostSold = async (req, res, next) => {
 
 export const getDailyClose = async (req, res, next) => {
   try {
-    const offset = Number(req.query.offset) || 0;
-    const turno = req.query.turno === 'tarde' ? 'tarde' : 'manana';
+    const offset = Number.isFinite(Number(req.query.offset)) ? Number(req.query.offset) : 0;
+    const turno = req.query.turno || 'manana';
+    if (turno !== 'manana' && turno !== 'tarde') {
+      return res.status(400).json({ message: 'Turno inválido. Use "manana" o "tarde"' });
+    }
     const cerradoPor = String(req.query.cerradoPor || '').trim();
     if (!cerradoPor) {
       return res.status(400).json({ message: 'Debe indicar quién cierra el turno' });
@@ -277,8 +319,8 @@ export const getDailyClose = async (req, res, next) => {
     }
 
     const existing = await DailyClose.findOne({ fecha: fechaDate, turno });
-    if (!esHoy && existing) {
-      return res.status(400).json({ message: 'Ese turno de esa fecha ya fue cerrado' });
+    if (existing) {
+      return res.status(400).json({ message: `Ese turno (${turno === 'tarde' ? 'tarde' : 'mañana'}) ya fue cerrado` });
     }
     if (!esHoy && !existing) {
       const legacyClose = await DailyClose.findOne({ fecha: fechaDate, turno: { $exists: false } });
@@ -301,7 +343,7 @@ export const getDailyClose = async (req, res, next) => {
 
     let hastaAt = esHoy ? now : new Date(fechaDate.getTime() + 86400000);
 
-    if (!esHoy && turno === 'manana') {
+    if (turno === 'manana') {
       const tardeClose = await DailyClose.findOne({ fecha: fechaDate, turno: 'tarde' });
       if (tardeClose?.desdeAt && tardeClose.desdeAt < hastaAt) {
         hastaAt = tardeClose.desdeAt;
@@ -312,31 +354,31 @@ export const getDailyClose = async (req, res, next) => {
       .populate('items.producto', 'nombre categoria')
       .populate('producto', 'nombre categoria');
 
-    const total = sales.reduce((sum, s) => sum + s.total, 0);
+    const retiros = await CashWithdrawal.find({ createdAt: { $gte: desdeAt, $lt: hastaAt } }).sort({ createdAt: 1 });
+    const totalRetiros = Math.round(retiros.reduce((sum, r) => sum + r.monto, 0) * 100) / 100;
+
+    const total = Math.round(sales.reduce((sum, s) => sum + s.total, 0) * 100) / 100;
     const cantidad = sales.reduce((sum, s) => {
       const items = getItems(s);
       return sum + items.reduce((acc, i) => acc + i.cantidad, 0) - (s.cantidadDevuelta || 0);
     }, 0);
 
     const porMetodo = sales.reduce((acc, s) => {
+      const items = getItems(s);
+      const totalUnidades = items.reduce((a, i) => a + i.cantidad, 0);
+      const unidadesNetas = Math.max(0, totalUnidades - (s.cantidadDevuelta || 0));
       if (s.pagos && s.pagos.length > 0) {
-        const vistos = new Set();
+        const totalPagado = s.pagos.reduce((sum, p) => sum + p.monto, 0);
         for (const p of s.pagos) {
           if (!acc[p.metodo]) acc[p.metodo] = { total: 0, cantidad: 0 };
           acc[p.metodo].total += p.monto;
-          vistos.add(p.metodo);
-        }
-        const items = getItems(s);
-        const totalUnidades = items.reduce((a, i) => a + i.cantidad, 0);
-        for (const m of vistos) {
-          acc[m].cantidad += totalUnidades;
+          acc[p.metodo].cantidad += totalPagado > 0 ? Math.round(unidadesNetas * (p.monto / totalPagado)) : 0;
         }
       } else {
         const m = s.metodoPago || 'efectivo';
         if (!acc[m]) acc[m] = { total: 0, cantidad: 0 };
         acc[m].total += s.total;
-        const items = getItems(s);
-        acc[m].cantidad += items.reduce((a, i) => a + i.cantidad, 0);
+        acc[m].cantidad += unidadesNetas;
       }
       return acc;
     }, {});
@@ -355,6 +397,13 @@ export const getDailyClose = async (req, res, next) => {
           efectivo: porMetodo.efectivo || { total: 0, cantidad: 0 },
           transferencia: porMetodo.transferencia || { total: 0, cantidad: 0 },
           tarjeta: porMetodo.tarjeta || { total: 0, cantidad: 0 },
+          retiros: retiros.map((r) => ({
+            monto: Math.round(r.monto * 100) / 100,
+            motivo: r.motivo,
+            realizadoPor: r.realizadoPor,
+            fecha: r.createdAt,
+          })),
+          totalRetiros,
           cerradoAt: new Date(),
         },
         { upsert: true, new: true }
@@ -379,6 +428,7 @@ export const getDailyClose = async (req, res, next) => {
         totalDia = {
           total: mananaClose.total + close.total,
           cantidad: mananaClose.cantidad + close.cantidad,
+          totalRetiros: Math.round(((mananaClose.totalRetiros || 0) + (close.totalRetiros || 0)) * 100) / 100,
           efectivo: {
             total: mananaClose.efectivo.total + close.efectivo.total,
             cantidad: mananaClose.efectivo.cantidad + close.efectivo.cantidad,
@@ -408,6 +458,9 @@ export const getDailyClose = async (req, res, next) => {
       efectivo: close.efectivo,
       transferencia: close.transferencia,
       tarjeta: close.tarjeta,
+      retiros: close.retiros || [],
+      totalRetiros: close.totalRetiros || 0,
+      efectivoEsperado: Math.max(0, Math.round(((close.efectivo?.total || 0) - (close.totalRetiros || 0)) * 100) / 100),
       cerradoAt: close.cerradoAt,
     });
   } catch (error) {
@@ -435,6 +488,7 @@ export const getDailyCloses = async (req, res, next) => {
             fecha: c.fecha,
             total: 0,
             cantidad: 0,
+            totalRetiros: 0,
             efectivo: { total: 0, cantidad: 0 },
             transferencia: { total: 0, cantidad: 0 },
             tarjeta: { total: 0, cantidad: 0 },
@@ -445,6 +499,7 @@ export const getDailyCloses = async (req, res, next) => {
         const g = grupos.get(key);
         g.total += c.total;
         g.cantidad += c.cantidad;
+        g.totalRetiros += c.totalRetiros || 0;
         g.efectivo.total += c.efectivo?.total || 0;
         g.efectivo.cantidad += c.efectivo?.cantidad || 0;
         g.transferencia.total += c.transferencia?.total || 0;
@@ -544,7 +599,7 @@ export const resendCloseMail = async (req, res, next) => {
 
     const resultado = await enviarCierreDeCaja({ ventas: sales, close, offset, turno: close.turno, totalDia });
     if (!resultado.enviado) {
-      return res.status(500).json({ message: 'Mail no configurado en el servidor' });
+      return res.status(400).json({ message: 'Mail no configurado en el servidor' });
     }
     res.json({ message: 'Mail del cierre reenviado correctamente' });
   } catch (error) {
@@ -677,31 +732,28 @@ export const getSalesStats = async (req, res, next) => {
 
     const sales = await Sale.find(filter);
 
-    const total = sales.reduce((sum, s) => sum + s.total, 0);
+    const total = Math.round(sales.reduce((sum, s) => sum + s.total, 0) * 100) / 100;
     const cantidad = sales.reduce((sum, s) => {
       const items = getItems(s);
       return sum + items.reduce((acc, i) => acc + i.cantidad, 0) - (s.cantidadDevuelta || 0);
     }, 0);
 
     const porMetodo = sales.reduce((acc, s) => {
+      const items = getItems(s);
+      const totalUnidades = items.reduce((a, i) => a + i.cantidad, 0);
+      const unidadesNetas = Math.max(0, totalUnidades - (s.cantidadDevuelta || 0));
       if (s.pagos && s.pagos.length > 0) {
-        const vistos = new Set();
+        const totalPagado = s.pagos.reduce((sum, p) => sum + p.monto, 0);
         for (const p of s.pagos) {
           if (!acc[p.metodo]) acc[p.metodo] = { total: 0, cantidad: 0 };
           acc[p.metodo].total += p.monto;
-          vistos.add(p.metodo);
-        }
-        const items = getItems(s);
-        const totalUnidades = items.reduce((a, i) => a + i.cantidad, 0);
-        for (const m of vistos) {
-          acc[m].cantidad += totalUnidades;
+          acc[p.metodo].cantidad += totalPagado > 0 ? Math.round(unidadesNetas * (p.monto / totalPagado)) : 0;
         }
       } else {
         const m = s.metodoPago || 'efectivo';
         if (!acc[m]) acc[m] = { total: 0, cantidad: 0 };
         acc[m].total += s.total;
-        const items = getItems(s);
-        acc[m].cantidad += items.reduce((a, i) => a + i.cantidad, 0);
+        acc[m].cantidad += unidadesNetas;
       }
       return acc;
     }, {});

@@ -10,10 +10,6 @@ api.interceptors.request.use((config) => {
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
-  const salesToken = localStorage.getItem('salesToken');
-  if (salesToken) {
-    config.headers['x-sales-token'] = salesToken;
-  }
   return config;
 });
 
@@ -27,13 +23,9 @@ api.interceptors.response.use(
         return Promise.reject(error);
       }
 
-      if (url.startsWith('/sales/') && !url.startsWith('/sales-auth/')) {
-        localStorage.removeItem('salesToken');
-      } else if (!url.startsWith('/sales-auth/')) {
-        localStorage.removeItem('token');
-        localStorage.removeItem('user');
-        window.dispatchEvent(new Event('auth-unauthorized'));
-      }
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+      window.dispatchEvent(new Event('auth-unauthorized'));
     }
     return Promise.reject(error);
   }

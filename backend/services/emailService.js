@@ -140,6 +140,9 @@ export const buildDatosCierre = ({ ventas, close, offset = 0, turno, totalDia })
   const empleados = buildEmpleados(ventas);
   const items = buildItemsVenta(ventas);
   const detalle = buildDetalleVentas(ventas);
+  const totalRetiros = close.totalRetiros || 0;
+  const efectivoEsperado = Math.max(0, Math.round(((close.efectivo?.total || 0) - totalRetiros) * 100) / 100);
+  const retiros = close.retiros || [];
 
   const filas = [
     ['Total', total],
@@ -148,6 +151,11 @@ export const buildDatosCierre = ({ ventas, close, offset = 0, turno, totalDia })
     ['Transferencia', transferencia],
     ['Tarjeta', tarjeta],
   ];
+
+  if (totalRetiros > 0) {
+    filas.push(['Retiros de efectivo', formatoPesos(totalRetiros)]);
+    filas.push(['Efectivo esperado', formatoPesos(efectivoEsperado)]);
+  }
 
   if (totalDia) {
     filas.push(
@@ -246,6 +254,35 @@ export const buildDatosCierre = ({ ventas, close, offset = 0, turno, totalDia })
     )
     .join('');
 
+  const retirosRows = retiros
+    .map(
+      (r) => `
+      <tr>
+        <td style="padding:5px 0;font-size:12px;color:#1C1C1E;" class="bn-t1">
+          <span style="font-weight:700;">${escapeHtml(r.realizadoPor || '—')}</span>
+          <span style="color:#8E8E93;" class="bn-m"> &middot; ${escapeHtml(r.motivo || 'Retiro de efectivo')}</span>
+        </td>
+        <td align="right" style="padding:5px 0;font-size:12px;white-space:nowrap;color:#8E8E93;" class="bn-t1">-${formatoPesos(r.monto)}</td>
+      </tr>`
+    )
+    .join('');
+
+  const retirosHtml = totalRetiros > 0
+    ? `
+    <tr><td style="padding:4px 32px 20px;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-top:1px solid #E5E5EA;">
+        <tr><td style="padding:16px 0 6px;">
+          <p style="margin:0;font-size:10px;letter-spacing:1.4px;text-transform:uppercase;color:#8E8E93;font-weight:700;" class="bn-m">Retiros de efectivo</p>
+        </td></tr>
+        ${retirosRows}
+        <tr>
+          <td style="padding:8px 0 2px;font-size:13px;color:#1C1C1E;" class="bn-t1"><span style="font-weight:700;">Efectivo esperado</span></td>
+          <td align="right" style="padding:8px 0 2px;font-size:13px;font-weight:700;color:#000000;white-space:nowrap;" class="bn-t1">${formatoPesos(efectivoEsperado)}</td>
+        </tr>
+      </table>
+    </td></tr>`
+    : '';
+
   const ventasHtml = `
     <tr><td style="padding:8px 32px 24px;">
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-top:1px solid #E5E5EA;">
@@ -315,6 +352,7 @@ export const buildDatosCierre = ({ ventas, close, offset = 0, turno, totalDia })
         ${totalHtml}
         ${statsHtml}
         ${metaHtml}
+        ${retirosHtml}
         ${ventasHtml}
         ${totalDiaHtml}
         ${footerHtml}

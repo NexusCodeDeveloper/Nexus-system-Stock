@@ -2,8 +2,9 @@ import mongoose from 'mongoose';
 import Product from './ProductModel.js';
 import Return from '../Return/ReturnModel.js';
 import Sale from '../Sale/SaleModel.js';
+import Supplier from '../Supplier/SupplierModel.js';
 import { guardarConTicketUnico, registrarDevolucionEnVenta } from '../Sale/ticketUtils.js';
-import { createProductSchema, updateProductSchema, sellProductSchema, exchangeSchema, addStockSchema } from './ProductSchema.js';
+import { createProductSchema, updateProductSchema, exchangeSchema, addStockSchema } from './ProductSchema.js';
 
 const escapeRegex = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -77,44 +78,17 @@ export const updateProduct = async (req, res, next) => {
       return res.status(404).json({ message: 'Producto no encontrado' });
     }
 
+    if (data.nombre) {
+      const existing = await Product.findOne({
+        nombre: { $regex: `^${escapeRegex(data.nombre)}$`, $options: 'i' },
+        _id: { $ne: product._id },
+      });
+      if (existing) {
+        return res.status(409).json({ message: `Ya existe un producto llamado "${data.nombre}"` });
+      }
+    }
+
     Object.assign(product, data);
-    await product.save();
-
-    res.json(product);
-  } catch (error) {
-    next(error);
-  }
-};
-
-export const sellProduct = async (req, res, next) => {
-  try {
-    const { cantidad, talle, color } = sellProductSchema.parse(req.body);
-
-    const product = await Product.findById(req.params.id);
-    if (!product) {
-      return res.status(404).json({ message: 'Producto no encontrado' });
-    }
-
-    if (product.variants?.length > 0) {
-      const variant = findVariant(product, talle, color);
-      if (!variant) {
-        const label = [talle, color].filter(Boolean).join(' / ') || 'sin variante';
-        return res.status(400).json({ message: `Variante "${label}" no encontrada` });
-      }
-      if (variant.cantidad < cantidad) {
-        return res.status(400).json({
-          message: `Stock insuficiente para "${label}". Solo hay ${variant.cantidad} unidad(es).`,
-        });
-      }
-      variant.cantidad -= cantidad;
-    } else {
-      if (product.cantidad < cantidad) {
-        return res.status(400).json({
-          message: `Stock insuficiente. Solo hay ${product.cantidad} unidad(es) disponible(s).`,
-        });
-      }
-    }
-
     await product.save();
 
     res.json(product);
@@ -139,6 +113,8 @@ export const addStock = async (req, res, next) => {
       } else {
         product.variants[idx].cantidad += cantidad;
       }
+    } else {
+      product.cantidad += cantidad;
     }
 
     await product.save();
@@ -197,6 +173,10 @@ export const exchangeProduct = async (req, res, next) => {
         await session.abortTransaction();
         return res.status(400).json({ message: 'El ticket no existe o ya fue devuelto' });
       }
+      if (saleTicket.estado === 'devuelta') {
+        await session.abortTransaction();
+        return res.status(400).json({ message: 'El ticket ya fue devuelto' });
+      }
       const match = saleTicket.items?.find((i) => i.producto?.toString() === data.productoDevolver);
       if (!match) {
         await session.abortTransaction();
@@ -216,6 +196,8 @@ export const exchangeProduct = async (req, res, next) => {
       }
       const targetIdx = idx === -1 ? productoDevuelto.variants.length - 1 : idx;
       productoDevuelto.variants[targetIdx].cantidad += data.cantidadDevolver;
+    } else {
+      productoDevuelto.cantidad += data.cantidadDevolver;
     }
 
     // Deduct stock from new product
@@ -226,6 +208,14 @@ export const exchangeProduct = async (req, res, next) => {
       }
       const targetIdx = idx === -1 ? productoCargado.variants.length - 1 : idx;
       productoCargado.variants[targetIdx].cantidad -= data.cantidadCargar;
+    } else {
+      if (productoCargado.cantidad < data.cantidadCargar) {
+        await session.abortTransaction();
+        return res.status(400).json({
+          message: `Stock insuficiente de "${productoCargado.nombre}". Solo hay ${productoCargado.cantidad} unidad(es).`,
+        });
+      }
+      productoCargado.cantidad -= data.cantidadCargar;
     }
 
     await productoDevuelto.save({ session });
@@ -237,6 +227,76 @@ export const exchangeProduct = async (req, res, next) => {
     const devolverValor = Math.round(precioDevuelto * data.cantidadDevolver * 100) / 100;
     const cargarValor = Math.round(productoCargado.precio * data.cantidadCargar * 100) / 100;
     const diferencia = Math.round((cargarValor - devolverValor) * 100) / 100;
+
+    let pendiente = data.cantidadDevolver;
+    let saleConsumida = null;
+    let montoTotalDevuelto = 0;
+    let sales;
+    if (saleTicket) {
+      sales = [saleTicket];
+    } else {
+      sales = await Sale.find({
+        $or: [
+          { producto: data.productoDevolver },
+          { 'items.producto': data.productoDevolver },
+        ],
+        estado: { $ne: 'devuelta' },
+      }).sort({ createdAt: -1 }).session(session);
+    }
+
+    for (const sale of sales) {
+      if (pendiente <= 0) break;
+      saleConsumida = sale._id;
+
+      const match = sale.items?.find((i) => i.producto?.toString() === data.productoDevolver);
+      const saleCantidad = match?.cantidad ?? sale.cantidad ?? 0;
+      const precioUnit = match?.precio ?? sale.precio ?? 0;
+      const factorDescuento = 1 - (sale.descuento || 0) / 100;
+
+      if (saleCantidad <= pendiente) {
+        pendiente -= saleCantidad;
+        const montoDevuelto = Math.round(precioUnit * saleCantidad * factorDescuento * 100) / 100;
+        montoTotalDevuelto = Math.round((montoTotalDevuelto + montoDevuelto) * 100) / 100;
+        if (sale.items && sale.items.length > 1) {
+          sale.items = sale.items.filter((i) => i.producto?.toString() !== data.productoDevolver);
+          const primerItem = sale.items[0];
+          sale.producto = primerItem.producto;
+          sale.cantidad = primerItem.cantidad;
+          sale.precio = primerItem.precio;
+          sale.talle = primerItem.talle || '';
+          sale.total = Math.round(sale.items.reduce((s, i) => s + i.subtotal, 0) * (1 - (sale.descuento || 0) / 100) * 100) / 100;
+          registrarDevolucionEnVenta(sale, { motivo: data.motivo, cantidad: saleCantidad, monto: montoDevuelto });
+        } else {
+          sale.total = 0;
+          sale.pagos = [];
+          sale.metodoPago = null;
+          sale.estado = 'devuelta';
+          registrarDevolucionEnVenta(sale, { motivo: data.motivo, cantidad: saleCantidad, monto: montoDevuelto });
+        }
+        await sale.save({ session });
+      } else {
+        if (match) {
+          match.cantidad -= pendiente;
+          match.subtotal = Math.round(match.precio * match.cantidad * 100) / 100;
+        }
+        const sumSubtotales = sale.items
+          ? sale.items.reduce((s, i) => s + (i.subtotal ?? i.precio * i.cantidad), 0)
+          : (sale.cantidad - pendiente) * (sale.precio ?? 0);
+        sale.total = Math.round(sumSubtotales * (1 - (sale.descuento || 0) / 100) * 100) / 100;
+        const montoDevuelto = Math.round(precioUnit * pendiente * factorDescuento * 100) / 100;
+        montoTotalDevuelto = Math.round((montoTotalDevuelto + montoDevuelto) * 100) / 100;
+        registrarDevolucionEnVenta(sale, { motivo: data.motivo, cantidad: pendiente, monto: montoDevuelto });
+        await sale.save({ session });
+        pendiente = 0;
+      }
+    }
+
+    if (pendiente > 0) {
+      await session.abortTransaction();
+      return res.status(400).json({
+        message: `Solo se pueden devolver ${data.cantidadDevolver - pendiente} unidad(es): no hay más vendidas de este producto para cubrir el cambio`,
+      });
+    }
 
     let ventaDiferencia = null;
     if (diferencia > 0) {
@@ -251,7 +311,7 @@ export const exchangeProduct = async (req, res, next) => {
           color: data.colorCargar || '',
           subtotal: cargarValor,
         }],
-        total: cargarValor,
+        total: diferencia,
         empleado,
         pagos: [{ metodo, monto: diferencia }],
         descuento: 0,
@@ -268,77 +328,12 @@ export const exchangeProduct = async (req, res, next) => {
       cantidadCargar: data.cantidadCargar,
       talleCargar: data.talleCargar || '',
       colorCargar: data.colorCargar || '',
-      sale: data.sale || null,
+      sale: data.sale || saleConsumida || null,
       diferencia,
+      montoDevuelto: montoTotalDevuelto,
+      ventaDiferenciaId: ventaDiferencia ? ventaDiferencia[0]._id : null,
       motivo: data.motivo || `Cambio por ${productoCargado.nombre}`,
     }], { session });
-
-    let pendiente = data.cantidadDevolver;
-    let sales;
-    if (saleTicket) {
-      sales = [saleTicket];
-    } else {
-      sales = await Sale.find({
-        $or: [
-          { producto: data.productoDevolver },
-          { 'items.producto': data.productoDevolver },
-        ],
-      }).sort({ createdAt: -1 }).session(session);
-    }
-
-    for (const sale of sales) {
-      if (pendiente <= 0) break;
-
-      const match = sale.items?.find((i) => i.producto?.toString() === data.productoDevolver);
-      const saleCantidad = match?.cantidad ?? sale.cantidad ?? 0;
-      const precioUnit = match?.precio ?? sale.precio ?? 0;
-
-      if (saleCantidad <= pendiente) {
-        pendiente -= saleCantidad;
-        if (saleTicket) {
-          const montoDevuelto = precioUnit * saleCantidad;
-          if (sale.items && sale.items.length > 1) {
-            sale.items = sale.items.filter((i) => i.producto?.toString() !== data.productoDevolver);
-            const primerItem = sale.items[0];
-            sale.producto = primerItem.producto;
-            sale.cantidad = primerItem.cantidad;
-            sale.precio = primerItem.precio;
-            sale.talle = primerItem.talle || '';
-            sale.total = sale.items.reduce((s, i) => s + i.subtotal, 0);
-            registrarDevolucionEnVenta(sale, { motivo: data.motivo, cantidad: saleCantidad, monto: montoDevuelto });
-          } else {
-            sale.total = 0;
-            sale.pagos = [];
-            sale.metodoPago = '';
-            sale.estado = 'devuelta';
-            registrarDevolucionEnVenta(sale, { motivo: data.motivo, cantidad: saleCantidad, monto: montoDevuelto });
-          }
-          await sale.save({ session });
-        } else if (sale.items && sale.items.length > 1) {
-          sale.items = sale.items.filter((i) => i.producto?.toString() !== data.productoDevolver);
-          const primerItem = sale.items[0];
-          sale.producto = primerItem.producto;
-          sale.cantidad = primerItem.cantidad;
-          sale.precio = primerItem.precio;
-          sale.talle = primerItem.talle || '';
-          sale.total = sale.items.reduce((s, i) => s + i.subtotal, 0);
-          await sale.save({ session });
-        } else {
-          await Sale.findByIdAndDelete(sale._id).session(session);
-        }
-      } else {
-        if (match) {
-          match.cantidad -= pendiente;
-          match.subtotal = match.precio * match.cantidad;
-        }
-        sale.total = sale.items ? sale.items.reduce((s, i) => s + (i.subtotal ?? i.precio * i.cantidad), 0) : (sale.cantidad - pendiente) * (sale.precio ?? 0);
-        if (saleTicket) {
-          registrarDevolucionEnVenta(sale, { motivo: data.motivo, cantidad: pendiente, monto: precioUnit * pendiente });
-        }
-        await sale.save({ session });
-        pendiente = 0;
-      }
-    }
 
     await session.commitTransaction();
 
@@ -378,9 +373,7 @@ export const getDashboardStats = async (req, res, next) => {
   try {
     const totalProductos = await Product.countDocuments();
     const totalCategorias = await Product.distinct('categoria').then((cats) => cats.length);
-    const totalProveedores = await Product.distinct('proveedor').then(
-      (provs) => provs.filter(Boolean).length
-    );
+    const totalProveedores = await Supplier.countDocuments();
     const totalDevoluciones = await Return.countDocuments();
 
     res.json({
@@ -436,21 +429,33 @@ export const migrateVariants = async (req, res, next) => {
 
 export const getLowStock = async (req, res, next) => {
   try {
-    const products = await Product.find({ variants: { $exists: true, $ne: [] } });
+    const products = await Product.find();
 
     const lowStock = [];
     for (const product of products) {
-      for (const v of product.variants) {
-        if (v.cantidad <= product.stockMinimo) {
-          lowStock.push({
-            productoId: product._id,
-            productoNombre: product.nombre,
-            talle: v.talle,
-            color: v.color,
-            cantidad: v.cantidad,
-            stockMinimo: product.stockMinimo,
-          });
+      const stockMinimo = product.stockMinimo ?? 0;
+      if (product.variants?.length > 0) {
+        for (const v of product.variants) {
+          if (v.cantidad <= stockMinimo) {
+            lowStock.push({
+              productoId: product._id,
+              productoNombre: product.nombre,
+              talle: v.talle,
+              color: v.color,
+              cantidad: v.cantidad,
+              stockMinimo,
+            });
+          }
         }
+      } else if (product.cantidad <= stockMinimo) {
+        lowStock.push({
+          productoId: product._id,
+          productoNombre: product.nombre,
+          talle: '',
+          color: '',
+          cantidad: product.cantidad,
+          stockMinimo,
+        });
       }
     }
 

@@ -10,6 +10,7 @@ import {
 } from '../../api/products';
 import { createReturn } from '../../api/returns';
 import { createSale } from '../../api/sales';
+import { getApiErrorMessage } from '../../utils/apiError';
 import Ticket, { printTicket } from '../../components/Ticket/Ticket';
 import ProductForm from '../../components/ProductForm/ProductForm';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
@@ -85,7 +86,6 @@ const Products = () => {
   const [quickAdd, setQuickAdd] = useState(null);
   const [qaCantidad, setQaCantidad] = useState('1');
   const [qaVariantIdx, setQaVariantIdx] = useState('');
-  const [qaPrecio, setQaPrecio] = useState('');
 
   const [sellEmpleado, setSellEmpleado] = useState('');
   const [sellDescuento, setSellDescuento] = useState('');
@@ -93,6 +93,7 @@ const Products = () => {
   const [sellSplit, setSellSplit] = useState(false);
   const [sellMetodo2, setSellMetodo2] = useState('transferencia');
   const [sellMonto2, setSellMonto2] = useState('');
+  const [sellSaving, setSellSaving] = useState(false);
 
   const [addStockModal, setAddStockModal] = useState(null);
   const [addStockCantidad, setAddStockCantidad] = useState('1');
@@ -103,6 +104,7 @@ const Products = () => {
 
   const [lowStock, setLowStock] = useState([]);
   const [lowStockOpen, setLowStockOpen] = useState(false);
+  const [allProducts, setAllProducts] = useState([]);
 
   const [expandedId, setExpandedId] = useState(null);
 
@@ -126,19 +128,27 @@ const Products = () => {
       const prodRes = await getProducts({ search });
       setProducts(prodRes.data);
     } catch (err) {
-      setError(err.response?.data?.message || 'Error al cargar productos');
+      setError(getApiErrorMessage(err, 'Error al cargar productos'));
     } finally {
       setLoading(false);
     }
   };
 
+  const fetchLowStock = () => {
+    getLowStock()
+      .then((res) => setLowStock(res.data))
+      .catch(() => {});
+  };
+
   useEffect(() => {
-    fetchData();
+    const t = setTimeout(fetchData, search ? 300 : 0);
+    return () => clearTimeout(t);
   }, [search]);
 
   useEffect(() => {
-    getLowStock()
-      .then((res) => setLowStock(res.data))
+    fetchLowStock();
+    getProducts({})
+      .then((res) => setAllProducts(res.data))
       .catch(() => {});
   }, []);
 
@@ -155,7 +165,7 @@ const Products = () => {
       fetchData();
       toast({ message: 'Producto guardado' });
     } catch (err) {
-      alert({ icon: 'error', title: 'Error', message: err.response?.data?.message || 'Error al guardar producto' });
+      alert({ icon: 'error', title: 'Error', message: getApiErrorMessage(err, 'Error al guardar producto') });
     } finally {
       setIsSubmitting(false);
     }
@@ -188,7 +198,6 @@ const Products = () => {
     setQuickAdd(product);
     setQaCantidad('1');
     setQaVariantIdx('');
-    setQaPrecio(String(product.precio));
   };
 
   const confirmQuickAdd = () => {
@@ -201,16 +210,16 @@ const Products = () => {
       alert({ icon: 'warning', title: 'Campo requerido', message: 'Debe seleccionar una variante' });
       return;
     }
-    const precio = Number(qaPrecio);
-    if (precio < 0) {
-      alert({ icon: 'warning', title: 'Precio inválido' });
+    const variant = quickAdd.variants[Number(qaVariantIdx)];
+    const stockDisponible = variant ? variant.cantidad : quickAdd.cantidad;
+    if (cantidad > stockDisponible) {
+      alert({ icon: 'warning', title: 'Stock insuficiente', message: `Solo hay ${stockDisponible} unidad(es) disponible(s)` });
       return;
     }
-    const variant = quickAdd.variants[Number(qaVariantIdx)];
     setCart(prev => [...prev, {
       producto: quickAdd._id,
       nombre: quickAdd.nombre,
-      precio,
+      precio: quickAdd.precio,
       cantidad,
       talle: variant?.talle || '',
       color: variant?.color || '',
@@ -257,24 +266,34 @@ const Products = () => {
   };
 
   const confirmSale = async () => {
+    if (sellSaving) return;
     if (!sellEmpleado.trim()) {
       alert({ icon: 'warning', title: 'Campo requerido', message: 'Debe ingresar el nombre del empleado' });
+      return;
+    }
+    if (descuentoNum < 0 || descuentoNum > 100) {
+      alert({ icon: 'warning', title: 'Descuento inválido', message: 'El descuento debe estar entre 0 y 100%' });
       return;
     }
     if (sellSplit && sellMetodo2 === sellMetodoPago) {
       alert({ icon: 'warning', title: 'Método repetido', message: 'El segundo método de pago debe ser distinto del primero' });
       return;
     }
-    if (sellSplit && Math.abs(sellMonto1 + sellMonto2Num - finalTotal) > 0.01) {
-      alert({ icon: 'warning', title: 'Montos incorrectos', message: 'La suma de los montos debe coincidir con el total' });
+    if (sellSplit && (!Number.isFinite(sellMonto2Num) || sellMonto2Num > finalTotal + 0.01)) {
+      alert({ icon: 'warning', title: 'Montos incorrectos', message: 'El segundo monto no puede superar el total' });
       return;
     }
+    if (cart.some((i) => !Number.isFinite(i.precio) || i.precio <= 0 || !Number.isInteger(i.cantidad) || i.cantidad < 1)) {
+      alert({ icon: 'warning', title: 'Carrito inválido', message: 'Verifique cantidades y precios del carrito' });
+      return;
+    }
+    setSellSaving(true);
     try {
       const pagos = sellSplit
         ? [{ metodo: sellMetodoPago, monto: Math.round(sellMonto1 * 100) / 100 }, { metodo: sellMetodo2, monto: Math.round(sellMonto2Num * 100) / 100 }]
         : [{ metodo: sellMetodoPago, monto: Math.round(finalTotal * 100) / 100 }];
       const res = await createSale({
-        items: cart.map(i => ({ producto: i.producto, cantidad: i.cantidad, precio: i.precio, talle: i.talle, color: i.color || '' })),
+        items: cart.map(i => ({ producto: i.producto, cantidad: i.cantidad, talle: i.talle, color: i.color || '' })),
         empleado: sellEmpleado.trim(),
         pagos,
         descuento: descuentoNum,
@@ -284,9 +303,12 @@ const Products = () => {
       setCart([]);
       setShowCart(false);
       fetchData();
+      fetchLowStock();
       toast({ message: 'Venta registrada' });
     } catch (err) {
-      alert({ icon: 'error', title: 'Error', message: err.response?.data?.message || 'Error al vender' });
+      alert({ icon: 'error', title: 'Error', message: getApiErrorMessage(err, 'Error al vender') });
+    } finally {
+      setSellSaving(false);
     }
   };
 
@@ -309,14 +331,20 @@ const Products = () => {
       alert({ icon: 'warning', title: 'Campo requerido', message: 'Debe seleccionar una variante' });
       return;
     }
+    const cantidad = Number(addStockCantidad);
+    if (!Number.isInteger(cantidad) || cantidad < 1) {
+      alert({ icon: 'warning', title: 'Cantidad inválida', message: 'Debe ingresar al menos 1 unidad' });
+      return;
+    }
     const variant = addStockModal.variants[Number(addStockVariantIdx)];
     try {
-      await addStock(addStockModal._id, { cantidad: Number(addStockCantidad), talle: variant?.talle || '', color: variant?.color || '' });
+      await addStock(addStockModal._id, { cantidad, talle: variant?.talle || '', color: variant?.color || '' });
       setAddStockModal(null);
       fetchData();
+      fetchLowStock();
       toast({ message: 'Stock actualizado' });
     } catch (err) {
-      alert({ icon: 'error', title: 'Error', message: err.response?.data?.message || 'Error al agregar stock' });
+      alert({ icon: 'error', title: 'Error', message: getApiErrorMessage(err, 'Error al agregar stock') });
     }
   };
 
@@ -329,8 +357,18 @@ const Products = () => {
     setExchangeActivo(false);
     setExchangeSearch('');
     setExchangeTarget(null);
-    setExchangeCantidad(1);
+    setExchangeCantidad('1');
     setExchangeVariantIdx('');
+  };
+
+  const toggleExchange = (value) => {
+    setExchangeActivo(value);
+    if (!value) {
+      setExchangeTarget(null);
+      setExchangeCantidad('1');
+      setExchangeVariantIdx('');
+      setExchangeSearch('');
+    }
   };
 
   const getReturnMotivo = () => returnMotivo === 'Otro' ? returnOtroMotivo.trim() : returnMotivo.trim();
@@ -340,6 +378,22 @@ const Products = () => {
     if (!motivoFinal) {
       alert({ icon: 'warning', title: 'Campo requerido', message: 'Debe ingresar un motivo' });
       return;
+    }
+    if (exchangeActivo && !exchangeTarget) {
+      alert({ icon: 'warning', title: 'Falta el producto', message: 'Debe elegir el producto por el que se cambia' });
+      return;
+    }
+    const cantidadDevolver = Number(returnCantidad);
+    if (!Number.isInteger(cantidadDevolver) || cantidadDevolver < 1) {
+      alert({ icon: 'warning', title: 'Cantidad inválida', message: 'Debe devolver al menos 1 unidad' });
+      return;
+    }
+    if (exchangeTarget) {
+      const cantidadCargar = Number(exchangeCantidad);
+      if (!Number.isInteger(cantidadCargar) || cantidadCargar < 1) {
+        alert({ icon: 'warning', title: 'Cantidad inválida', message: 'Debe cargar al menos 1 unidad' });
+        return;
+      }
     }
     if (returnModal.variants?.length > 0 && returnVariantIdx === '') {
       alert({ icon: 'warning', title: 'Campo requerido', message: 'Debe seleccionar la variante a devolver' });
@@ -355,7 +409,7 @@ const Products = () => {
       if (exchangeTarget) {
         await exchangeProduct({
           productoDevolver: returnModal._id,
-          cantidadDevolver: Number(returnCantidad),
+          cantidadDevolver: cantidadDevolver,
           talleDevolver: retVariant?.talle || '',
           colorDevolver: retVariant?.color || '',
           productoCargar: exchangeTarget._id,
@@ -367,7 +421,7 @@ const Products = () => {
       } else {
         await createReturn({
           producto: returnModal._id,
-          cantidad: Number(returnCantidad),
+          cantidad: cantidadDevolver,
           talle: retVariant?.talle || '',
           color: retVariant?.color || '',
           motivo: motivoFinal,
@@ -375,13 +429,14 @@ const Products = () => {
       }
       setReturnModal(null);
       fetchData();
+      fetchLowStock();
       toast({ message: exchangeTarget ? 'Cambio registrado' : 'Devolución registrada' });
     } catch (err) {
-      alert({ icon: 'error', title: 'Error', message: err.response?.data?.message || 'Error al registrar' });
+      alert({ icon: 'error', title: 'Error', message: getApiErrorMessage(err, 'Error al registrar') });
     }
   };
 
-  const filteredExchange = products.filter(
+  const filteredExchange = allProducts.filter(
     (p) =>
       p._id !== returnModal?._id &&
       p.nombre.toLowerCase().includes(exchangeSearch.toLowerCase())
@@ -537,14 +592,9 @@ const Products = () => {
             />
           </IosField>
           <IosField label="Precio unitario">
-            <IosInput
-              type="text" inputMode="decimal"
-              value={qaPrecio}
-              onChange={(e) => {
-                const v = e.target.value;
-                if (v === '' || /^\d*\.?\d{0,2}$/.test(v)) setQaPrecio(v);
-              }}
-            />
+            <div className="px-3.5 py-2.5 bg-ios-surface2 rounded-ios-control text-ios-label text-sm font-medium">
+              ${Number(quickAdd?.precio || 0).toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+            </div>
           </IosField>
           {renderVariantSelect(quickAdd?.variants, qaVariantIdx, setQaVariantIdx)}
         </div>
@@ -558,6 +608,7 @@ const Products = () => {
         confirmText="Confirmar Venta"
         confirmVariant="tinted"
         onConfirm={confirmSale}
+        confirmDisabled={sellSaving}
         maxWidth="max-w-2xl"
       >
         <div className="space-y-2 mb-4">
@@ -587,20 +638,14 @@ const Products = () => {
                   value={item.cantidad}
                   onChange={(e) => {
                     const v = e.target.value;
-                    if (v === '' || /^\d+$/.test(v)) updateCartItem(idx, 'cantidad', v === '' ? 1 : Number(v));
+                    if (v === '' || /^\d+$/.test(v)) updateCartItem(idx, 'cantidad', v === '' ? 1 : Math.max(1, Number(v)));
                   }}
                   className="w-16 px-2 py-1.5 text-center bg-ios-surface2 rounded-lg text-ios-label text-sm [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                 />
                 <span className="text-ios-tertiary">×</span>
-                <input
-                  type="text" inputMode="decimal"
-                  value={item.precio}
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    if (v === '' || /^\d*\.?\d{0,2}$/.test(v)) updateCartItem(idx, 'precio', v === '' ? 0 : Number(v));
-                  }}
-                  className="w-24 px-2 py-1.5 text-right bg-ios-surface2 rounded-lg text-ios-label text-sm [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                />
+                <span className="w-24 px-2 py-1.5 text-right text-ios-label text-sm font-medium">
+                  ${(item.precio).toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                </span>
                 <span className="text-ios-tertiary text-xs font-medium w-20 text-right">
                   ${(item.precio * item.cantidad).toLocaleString('es-AR', { minimumFractionDigits: 2 })}
                 </span>
@@ -630,9 +675,9 @@ const Products = () => {
                 value={sellDescuento}
                 onChange={(e) => {
                   const v = e.target.value;
-                  if (v === '' || /^\d{0,3}$/.test(v)) setSellDescuento(v);
+                  if (v === '' || (/^\d{1,3}$/.test(v) && Number(v) <= 100)) setSellDescuento(v);
                 }}
-                placeholder="%"
+                placeholder="% (0-100)"
               />
             </IosField>
           </div>
@@ -681,7 +726,7 @@ const Products = () => {
                     value={sellMonto2}
                     onChange={(e) => {
                       const v = e.target.value;
-                      if (v === '' || /^\d*\.?\d*$/.test(v)) setSellMonto2(v);
+                      if (v === '' || /^\d*\.?\d{0,2}$/.test(v)) setSellMonto2(v);
                     }}
                     className="w-24 sm:w-28 px-3 py-2.5 bg-ios-surface2 rounded-ios-control text-ios-label text-sm text-right focus:outline-none focus:ring-2 focus:ring-ios-tint/40 transition-all [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                   />
@@ -779,7 +824,7 @@ const Products = () => {
           {renderVariantSelect(returnModal?.variants, returnVariantIdx, setReturnVariantIdx, 'Variante a devolver')}
 
           <label className="flex items-center gap-3 cursor-pointer select-none">
-            <IosToggle checked={exchangeActivo} onChange={setExchangeActivo} />
+            <IosToggle checked={exchangeActivo} onChange={toggleExchange} />
             <span className="text-sm text-ios-label font-medium">Quiero cambiarlo por otro producto</span>
           </label>
 

@@ -7,6 +7,7 @@ import {
   completeNotification,
   reopenNotification,
 } from '../../api/notifications';
+import { getApiErrorMessage } from '../../utils/apiError';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
 import IosButton from '../../components/ui/IosButton';
 import IosModal from '../../components/ui/IosModal';
@@ -49,6 +50,7 @@ const Notifications = () => {
 
   const [detail, setDetail] = useState(null);
   const [formOpen, setFormOpen] = useState(false);
+  const [savingNotif, setSavingNotif] = useState(false);
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState({ titulo: '', descripcion: '' });
 
@@ -72,7 +74,7 @@ const Notifications = () => {
       const res = await getNotifications();
       setNotifications(res.data);
     } catch (err) {
-      setError(err.response?.data?.message || 'Error al cargar avisos');
+      setError(getApiErrorMessage(err, 'Error al cargar avisos'));
     } finally {
       setLoading(false);
     }
@@ -91,7 +93,12 @@ const Notifications = () => {
   };
 
   const handleSave = async () => {
-    if (!form.titulo.trim() || !form.descripcion.trim()) return;
+    if (!form.titulo.trim() || !form.descripcion.trim()) {
+      alert({ icon: 'warning', title: 'Campos requeridos', message: 'Debe completar título y descripción' });
+      return;
+    }
+    if (savingNotif) return;
+    setSavingNotif(true);
     try {
       if (editing) {
         await updateNotification(editing._id, form);
@@ -107,8 +114,10 @@ const Notifications = () => {
       alert({
         icon: 'error',
         title: 'Error',
-        message: err.response?.data?.message || 'Error al guardar el aviso',
+        message: getApiErrorMessage(err, 'Error al guardar el aviso'),
       });
+    } finally {
+      setSavingNotif(false);
     }
   };
 
@@ -130,7 +139,7 @@ const Notifications = () => {
       alert({
         icon: 'error',
         title: 'Error',
-        message: err.response?.data?.message || 'Error al eliminar el aviso',
+        message: getApiErrorMessage(err, 'Error al eliminar el aviso'),
       });
     }
   };
@@ -160,7 +169,7 @@ const Notifications = () => {
       alert({
         icon: 'error',
         title: 'Error',
-        message: err.response?.data?.message || 'Error al marcar el aviso',
+        message: getApiErrorMessage(err, 'Error al marcar el aviso'),
       });
     }
   };
@@ -182,7 +191,7 @@ const Notifications = () => {
       alert({
         icon: 'error',
         title: 'Error',
-        message: err.response?.data?.message || 'Error al reabrir el aviso',
+        message: getApiErrorMessage(err, 'Error al reabrir el aviso'),
       });
     }
   };
@@ -319,6 +328,7 @@ const Notifications = () => {
         title={editing ? 'Editar Aviso' : 'Nuevo Aviso'}
         confirmText={editing ? 'Guardar' : 'Crear'}
         onConfirm={handleSave}
+        confirmDisabled={savingNotif}
       >
         <div className="space-y-4">
           <IosField label="Título" required>

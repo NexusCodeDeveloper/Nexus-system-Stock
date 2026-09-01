@@ -161,6 +161,15 @@ ${renderToHtml(sale)}
 </html>`;
 };
 
+const escapeHtml = (str) =>
+  String(str ?? '').replace(/[&<>"']/g, (c) => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;',
+  }[c]));
+
 const renderToHtml = (sale) => {
   const items = getItems(sale);
   const pagos = getPagos(sale);
@@ -169,7 +178,7 @@ const renderToHtml = (sale) => {
 
   const sep = () => '<div class="ticket-sep">==============================</div>';
   const line = (label, value, extra = '') =>
-    `<div class="ticket-line ${extra}"><span>${label}</span><span>${value}</span></div>`;
+    `<div class="ticket-line ${extra}"><span>${escapeHtml(label)}</span><span>${escapeHtml(value)}</span></div>`;
 
   const itemsHtml = items
     .map((item) => {
@@ -177,8 +186,8 @@ const renderToHtml = (sale) => {
       const precio = Number(item.precio) || 0;
       const lineSub = item.subtotal != null ? item.subtotal : precio * cantidad;
       const variante = [item.talle, item.color].filter(Boolean).join(' / ');
-      return `<p class="ticket-item-nombre">${getNombre(item)}</p>${
-        variante ? `<p class="ticket-item-var">&nbsp;&nbsp;${variante}</p>` : ''
+      return `<p class="ticket-item-nombre">${escapeHtml(getNombre(item))}</p>${
+        variante ? `<p class="ticket-item-var">&nbsp;&nbsp;${escapeHtml(variante)}</p>` : ''
       }<p class="ticket-item-line"><span>${cantidad} x ${formatMoney(precio)}</span><span>${formatMoney(lineSub)}</span></p>`;
     })
     .join('');
@@ -195,7 +204,7 @@ const renderToHtml = (sale) => {
   </div>
   ${sep()}
   ${line('Ticket Nº', getTicketNumber(sale))}
-  ${getDevolucionLabel(sale) ? `<p class="ticket-devolucion" style="text-align:center;font-weight:bold;letter-spacing:1px;color:#b91c1c;">${getDevolucionLabel(sale)}</p>` : ''}
+  ${getDevolucionLabel(sale) ? `<p class="ticket-devolucion" style="text-align:center;font-weight:bold;letter-spacing:1px;color:#b91c1c;">${escapeHtml(getDevolucionLabel(sale))}</p>` : ''}
   ${line('Fecha', formatFecha(new Date(sale.createdAt || Date.now())))}
   ${line('Vendedor', sale.empleado || '—')}
   ${sep()}

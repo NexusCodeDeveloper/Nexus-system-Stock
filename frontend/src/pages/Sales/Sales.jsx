@@ -1,7 +1,9 @@
 import { useState, useEffect, Fragment } from 'react';
 import { getSales, getSalesStats, getMostSold, deleteSale, getDailyClose, getDailyCloses, deleteDailyClose, resendCloseMail } from '../../api/sales';
+import { createCashWithdrawal, getCashWithdrawals, deleteCashWithdrawal, getCashWithdrawalsAvailable } from '../../api/cashWithdrawals';
 import Ticket, { printTicket } from '../../components/Ticket/Ticket';
 import ReturnForm from '../../components/ReturnForm/ReturnForm';
+import { getApiErrorMessage } from '../../utils/apiError';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
 import { useAuth } from '../../context/AuthContext';
 import { useIosAlert } from '../../components/alerts';
@@ -70,9 +72,17 @@ const formatDate = (date) =>
   new Date(date).toLocaleDateString('es-AR', {
     day: '2-digit',
     month: '2-digit',
+    year: 'numeric',
     hour: '2-digit',
     minute: '2-digit',
   });
+
+const formatDateSafe = (dateStr) => {
+  if (!dateStr) return 'hoy';
+  const d = new Date(`${dateStr}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return 'hoy';
+  return d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+};
 
 const formatMoney = (n) =>
   `$${Number(n).toLocaleString('es-AR', { minimumFractionDigits: 2 })}`;
@@ -145,6 +155,32 @@ const SaldosTurno = ({ turno }) => (
     })}
   </div>
 );
+
+const RetirosInfo = ({ turno }) => {
+  const totalRetiros = Number(turno.totalRetiros) || 0;
+  if (totalRetiros <= 0) return null;
+  const efectivoEsperado = Number.isFinite(turno.efectivoEsperado)
+    ? turno.efectivoEsperado
+    : Math.max(0, Number(turno.efectivo?.total || 0) - totalRetiros);
+  return (
+    <div className="pt-3 border-t border-ios-separator/40 mt-3 space-y-1.5 px-2.5">
+      <p className="text-[11px] text-ios-tertiary uppercase tracking-wider font-semibold">Retiros de efectivo</p>
+      {turno.retiros?.map((r, i) => (
+        <div key={i} className="flex items-center justify-between text-[12px]">
+          <span className="text-ios-secondary truncate">
+            {r.motivo}
+            <span className="text-ios-tertiary"> · {r.realizadoPor}</span>
+          </span>
+          <span className="text-ios-red font-semibold whitespace-nowrap">-{formatMoney(r.monto)}</span>
+        </div>
+      ))}
+      <div className="flex items-center justify-between pt-1">
+        <span className="text-[13px] text-ios-secondary font-medium">Efectivo esperado</span>
+        <span className="text-[13px] text-ios-label font-bold whitespace-nowrap tabular-nums">{formatMoney(efectivoEsperado)}</span>
+      </div>
+    </div>
+  );
+};
 const Sales = () => {
   const { user } = useAuth();
   const { show: alert, confirm, toast } = useIosAlert();
@@ -166,6 +202,7 @@ const Sales = () => {
   const [cView, setCView] = useState('turno');
   const [closes, setCloses] = useState([]);
   const [closesLoading, setClosesLoading] = useState(false);
+  const [closesError, setClosesError] = useState('');
 
   const [expandedId, setExpandedId] = useState(null);
   const [ticketModal, setTicketModal] = useState(null);
@@ -178,6 +215,16 @@ const Sales = () => {
   const [closeFecha, setCloseFecha] = useState(today);
   const [closeNombre, setCloseNombre] = useState('');
   const [closeSaving, setCloseSaving] = useState(false);
+
+  const [withdrawalOpen, setWithdrawalOpen] = useState(false);
+  const [withdrawalMonto, setWithdrawalMonto] = useState('');
+  const [withdrawalMotivo, setWithdrawalMotivo] = useState('');
+  const [withdrawalQuien, setWithdrawalQuien] = useState('');
+  const [withdrawalSaving, setWithdrawalSaving] = useState(false);
+  const [withdrawals, setWithdrawals] = useState([]);
+  const [withdrawalsTotal, setWithdrawalsTotal] = useState(0);
+  const [withdrawalsLoading, setWithdrawalsLoading] = useState(false);
+  const [efectivoDisponible, setEfectivoDisponible] = useState(null);
 
   const fetchData = () => {
     setLoading(true);
@@ -194,16 +241,17 @@ const Sales = () => {
         setMostSold(mostSoldRes.data);
       })
       .catch((err) => {
-        setFetchError(err.response?.data?.message || 'Error al cargar ventas');
+        setFetchError(getApiErrorMessage(err, 'Error al cargar ventas'));
       })
       .finally(() => setLoading(false));
   };
 
-  const fetchCloses = () => {
+  const fetchCloses = (d = cDesde, h = cHasta) => {
     setClosesLoading(true);
-    getDailyCloses({ desde: cDesde, hasta: cHasta, offset: new Date().getTimezoneOffset(), agrupar: cView })
+    setClosesError('');
+    getDailyCloses({ desde: d, hasta: h, offset: new Date().getTimezoneOffset(), agrupar: cView })
       .then((res) => setCloses(res.data))
-      .catch(() => {})
+      .catch((err) => setClosesError(getApiErrorMessage(err, 'Error al cargar cierres')))
       .finally(() => setClosesLoading(false));
   };
 
@@ -229,6 +277,7 @@ const Sales = () => {
               <div key={i}>
                 <DetailRow c={t} />
                 <SaldosTurno turno={t} />
+                <RetirosInfo turno={t} />
               </div>
             ))}
           </div>
@@ -240,6 +289,7 @@ const Sales = () => {
             <p className="text-xs text-ios-tertiary mt-0.5">{d.cantidad} unidades</p>
           </div>
           <SaldosTurno turno={d} />
+          <RetirosInfo turno={d} />
         </div>
       ),
     });
@@ -264,7 +314,7 @@ const Sales = () => {
     if (closeFecha !== hoy) {
       const confirmado = await confirm({
         icon: 'warning',
-        title: `¿Cerrar el turno del ${new Date(`${closeFecha}T00:00:00`).toLocaleDateString('es-AR')}?`,
+        title: `¿Cerrar el turno del ${formatDateSafe(closeFecha)}?`,
         message: 'Estás cerrando un turno de un día anterior. Verificá los montos antes de confirmar.',
         confirmText: 'Sí, cerrar',
       });
@@ -274,7 +324,7 @@ const Sales = () => {
     setCloseSaving(true);
     try {
       const params = { offset: new Date().getTimezoneOffset(), turno, cerradoPor: nombre };
-      if (closeFecha !== hoy) params.fecha = closeFecha;
+      if (closeFecha !== hoy && closeFecha) params.fecha = closeFecha;
       const res = await getDailyClose(params);
       const d = res.data;
       setCloseForm(null);
@@ -298,6 +348,7 @@ const Sales = () => {
               <p className="text-xs text-ios-tertiary">{d.cantidad} unidades vendidas</p>
             </div>
             <SaldosTurno turno={d} />
+            <RetirosInfo turno={d} />
           </div>
         ),
       });
@@ -306,10 +357,93 @@ const Sales = () => {
       setCDesde(today());
       setCHasta(today());
       setCActivePeriodo('dia');
-      fetchCloses();
+      fetchCloses(today(), today());
     } catch (err) {
       setCloseSaving(false);
-      alert({ icon: 'error', title: 'Error', message: err.response?.data?.message || 'Error al obtener cierre de caja' });
+      alert({ icon: 'error', title: 'Error', message: getApiErrorMessage(err, 'Error al obtener cierre de caja') });
+    }
+  };
+
+  const openWithdrawalModal = () => {
+    setWithdrawalOpen(true);
+    setWithdrawalMonto('');
+    setWithdrawalMotivo('');
+    setWithdrawalQuien(user?.nombre || '');
+    fetchWithdrawals();
+    fetchAvailableCash();
+  };
+
+  const fetchAvailableCash = () => {
+    getCashWithdrawalsAvailable({ offset: new Date().getTimezoneOffset() })
+      .then((res) => setEfectivoDisponible(Number(res.data.disponible) || 0))
+      .catch(() => setEfectivoDisponible(null));
+  };
+
+  const fetchWithdrawals = () => {
+    setWithdrawalsLoading(true);
+    getCashWithdrawals({ desde: today(), hasta: today(), offset: new Date().getTimezoneOffset() })
+      .then((res) => {
+        setWithdrawals(res.data.withdrawals || []);
+        setWithdrawalsTotal(res.data.total || 0);
+      })
+      .catch(() => {})
+      .finally(() => setWithdrawalsLoading(false));
+  };
+
+  const confirmWithdrawal = async () => {
+    if (withdrawalSaving) return;
+    const monto = Number(withdrawalMonto);
+    if (!Number.isFinite(monto) || monto <= 0) {
+      alert({ icon: 'warning', title: 'Monto inválido', message: 'Debe ingresar un monto mayor a $0' });
+      return;
+    }
+    if (efectivoDisponible != null && monto > efectivoDisponible) {
+      alert({ icon: 'warning', title: 'Sin efectivo suficiente', message: `Solo hay ${formatMoney(efectivoDisponible)} disponibles en caja` });
+      return;
+    }
+    if (!withdrawalMotivo.trim()) {
+      alert({ icon: 'warning', title: 'Campo requerido', message: 'Debe ingresar el motivo del retiro' });
+      return;
+    }
+    if (!withdrawalQuien.trim()) {
+      alert({ icon: 'warning', title: 'Campo requerido', message: 'Debe indicar quién retira el efectivo' });
+      return;
+    }
+    setWithdrawalSaving(true);
+    try {
+      await createCashWithdrawal({
+        monto: Math.round(monto * 100) / 100,
+        motivo: withdrawalMotivo.trim(),
+        realizadoPor: withdrawalQuien.trim(),
+        offset: new Date().getTimezoneOffset(),
+      });
+      setWithdrawalMonto('');
+      setWithdrawalMotivo('');
+      toast({ message: 'Retiro registrado' });
+      fetchWithdrawals();
+      fetchAvailableCash();
+    } catch (err) {
+      alert({ icon: 'error', title: 'Error', message: getApiErrorMessage(err, 'Error al registrar el retiro') });
+    } finally {
+      setWithdrawalSaving(false);
+    }
+  };
+
+  const handleDeleteWithdrawal = async (id) => {
+    const confirmed = await confirm({
+      icon: 'warning',
+      title: '¿Eliminar este retiro?',
+      message: 'El retiro se eliminará del registro',
+      confirmText: 'Eliminar',
+      destructive: true,
+    });
+    if (!confirmed) return;
+    try {
+      await deleteCashWithdrawal(id);
+      toast({ message: 'Retiro eliminado' });
+      fetchWithdrawals();
+    } catch (err) {
+      alert({ icon: 'error', title: 'Error', message: getApiErrorMessage(err, 'Error al eliminar el retiro') });
     }
   };
 
@@ -328,7 +462,7 @@ const Sales = () => {
       setExpandedId(null);
       fetchData();
     } catch (err) {
-      alert({ icon: 'error', title: 'Error', message: err.response?.data?.message || 'Error al eliminar venta' });
+      alert({ icon: 'error', title: 'Error', message: getApiErrorMessage(err, 'Error al eliminar venta') });
     }
   };
 
@@ -346,7 +480,7 @@ const Sales = () => {
       toast({ message: 'Cierre eliminado' });
       fetchCloses();
     } catch (err) {
-      alert({ icon: 'error', title: 'Error', message: err.response?.data?.message || 'Error al eliminar cierre' });
+      alert({ icon: 'error', title: 'Error', message: getApiErrorMessage(err, 'Error al eliminar cierre') });
     }
   };
 
@@ -356,7 +490,7 @@ const Sales = () => {
       await resendCloseMail(id);
       toast({ message: 'Mail reenviado', duration: 2000 });
     } catch (err) {
-      alert({ icon: 'error', title: 'Error', message: err.response?.data?.message || 'Error al reenviar el mail' });
+      alert({ icon: 'error', title: 'Error', message: getApiErrorMessage(err, 'Error al reenviar el mail') });
     } finally {
       setResendingId(null);
     }
@@ -406,6 +540,10 @@ const Sales = () => {
           </IosButton>
           <IosButton variant="tinted" onClick={() => openCloseForm('tarde')} className="flex-1 sm:flex-none">
             Cierre Tarde
+          </IosButton>
+          <IosButton variant="tinted" onClick={openWithdrawalModal} className="flex-1 sm:flex-none">
+            <IconCash className="w-4 h-4" />
+            Retirar Efectivo
           </IosButton>
         </div>
       </div>
@@ -482,9 +620,13 @@ const Sales = () => {
             <p className="text-ios-secondary text-sm font-medium">
               {!desde && !hasta
                 ? 'Todas las ventas'
-                : `Ventas del ${desde === hasta
-                  ? new Date(desde).toLocaleDateString('es-AR')
-                  : `${new Date(desde).toLocaleDateString('es-AR')} al ${new Date(hasta).toLocaleDateString('es-AR')}`}
+                : desde && !hasta
+                  ? `Ventas desde ${formatDateSafe(desde)}`
+                  : !desde && hasta
+                    ? `Ventas hasta ${formatDateSafe(hasta)}`
+                    : `Ventas del ${desde === hasta
+                      ? formatDateSafe(desde)
+                      : `${formatDateSafe(desde)} al ${formatDateSafe(hasta)}`}
               `}
             </p>
             <p className="text-[22px] font-bold text-ios-green break-words min-w-0">{formatMoney(data.total)}</p>
@@ -600,13 +742,15 @@ const Sales = () => {
                                   <div className="flex gap-2">
                                     <button
                                       onClick={(e) => { e.stopPropagation(); setReturnIsCambio(false); setReturnSale(s); }}
-                                      className="text-ios-red hover:text-ios-red/80 text-xs border border-ios-red/30 px-2.5 py-1 rounded-ios-pill hover:bg-ios-red/10 transition-all font-semibold"
+                                      disabled={s.estado === 'devuelta'}
+                                      className="text-ios-red hover:text-ios-red/80 text-xs border border-ios-red/30 px-2.5 py-1 rounded-ios-pill hover:bg-ios-red/10 transition-all font-semibold disabled:opacity-40 disabled:pointer-events-none"
                                     >
                                       Devolver
                                     </button>
                                     <button
                                       onClick={(e) => { e.stopPropagation(); setReturnIsCambio(true); setReturnSale(s); }}
-                                      className="text-ios-tint hover:text-ios-tint/80 text-xs border border-ios-tint/30 px-2.5 py-1 rounded-ios-pill hover:bg-ios-tint/10 transition-all font-semibold"
+                                      disabled={s.estado === 'devuelta'}
+                                      className="text-ios-tint hover:text-ios-tint/80 text-xs border border-ios-tint/30 px-2.5 py-1 rounded-ios-pill hover:bg-ios-tint/10 transition-all font-semibold disabled:opacity-40 disabled:pointer-events-none"
                                     >
                                       Cambiar
                                     </button>
@@ -724,13 +868,15 @@ const Sales = () => {
                         <div className="flex flex-wrap justify-end gap-2">
                           <button
                             onClick={() => { setReturnIsCambio(false); setReturnSale(s); }}
-                            className="text-ios-red text-xs border border-ios-red/30 px-2.5 py-1 rounded-ios-pill hover:bg-ios-red/10 transition-all font-semibold"
+                            disabled={s.estado === 'devuelta'}
+                            className="text-ios-red text-xs border border-ios-red/30 px-2.5 py-1 rounded-ios-pill hover:bg-ios-red/10 transition-all font-semibold disabled:opacity-40 disabled:pointer-events-none"
                           >
                             Devolver
                           </button>
                           <button
                             onClick={() => { setReturnIsCambio(true); setReturnSale(s); }}
-                            className="text-ios-tint text-xs border border-ios-tint/30 px-2.5 py-1 rounded-ios-pill hover:bg-ios-tint/10 transition-all font-semibold"
+                            disabled={s.estado === 'devuelta'}
+                            className="text-ios-tint text-xs border border-ios-tint/30 px-2.5 py-1 rounded-ios-pill hover:bg-ios-tint/10 transition-all font-semibold disabled:opacity-40 disabled:pointer-events-none"
                           >
                             Cambiar
                           </button>
@@ -786,6 +932,12 @@ const Sales = () => {
               >
                 <IconX className="w-4 h-4" strokeWidth={2} />
               </button>
+            </div>
+          )}
+
+          {closesError && (
+            <div className="mb-4 px-4 py-3 bg-ios-red/10 border border-ios-red/25 rounded-ios-control text-ios-red text-sm font-medium">
+              {closesError}
             </div>
           )}
 
@@ -901,7 +1053,7 @@ const Sales = () => {
                             >
                               Ver
                             </button>
-                            {!c.turnos && (
+                            {!c.turnos && user?.rol === 'admin' && (
                               <button
                                 onClick={() => handleResendCloseMail(c._id)}
                                 disabled={resendingId === c._id}
@@ -986,7 +1138,7 @@ const Sales = () => {
                       >
                         Ver
                       </button>
-                      {!c.turnos && (
+                      {!c.turnos && user?.rol === 'admin' && (
                         <button
                           onClick={() => handleResendCloseMail(c._id)}
                           disabled={resendingId === c._id}
@@ -1071,6 +1223,101 @@ const Sales = () => {
               placeholder="Nombre del empleado"
             />
           </IosField>
+        </div>
+      </IosModal>
+
+      <IosModal
+        open={withdrawalOpen}
+        onClose={() => setWithdrawalOpen(false)}
+        title="Retirar Efectivo"
+        cancelText="Cerrar"
+        confirmText={withdrawalSaving ? 'Guardando…' : 'Registrar retiro'}
+        confirmVariant="tinted"
+        onConfirm={confirmWithdrawal}
+        confirmDisabled={withdrawalSaving}
+        maxWidth="max-w-md"
+      >
+        <div className="space-y-4">
+          <div className={`rounded-2xl px-4 py-3 text-sm font-semibold border flex items-center justify-between ${
+            efectivoDisponible != null && efectivoDisponible > 0
+              ? 'bg-emerald-500/10 border-emerald-500/25 text-emerald-400'
+              : 'bg-amber-500/10 border-amber-500/25 text-amber-400'
+          }`}>
+            <span>Efectivo disponible en caja</span>
+            <span className="tabular-nums">{efectivoDisponible != null ? formatMoney(efectivoDisponible) : '—'}</span>
+          </div>
+
+          <div className="bg-ios-surface rounded-2xl border border-ios-separator/30 p-4 space-y-3">
+            <IosField label="Monto a retirar" required>
+              <IosInput
+                type="text"
+                inputMode="decimal"
+                value={withdrawalMonto}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  if (v === '' || /^\d*\.?\d{0,2}$/.test(v)) setWithdrawalMonto(v);
+                }}
+                placeholder="0.00"
+              />
+            </IosField>
+            <IosField label="Motivo" required>
+              <IosInput
+                type="text"
+                value={withdrawalMotivo}
+                onChange={(e) => setWithdrawalMotivo(e.target.value)}
+                placeholder="Ej: pago a proveedor, gastos menores..."
+              />
+            </IosField>
+            <IosField label="Quién retira" required>
+              <IosInput
+                type="text"
+                value={withdrawalQuien}
+                onChange={(e) => setWithdrawalQuien(e.target.value)}
+                placeholder="Nombre"
+              />
+            </IosField>
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-[13px] text-ios-secondary font-medium">Retiros de hoy</p>
+              {withdrawals.length > 0 && (
+                <span className="text-xs text-ios-tertiary font-semibold">
+                  Total: {formatMoney(withdrawalsTotal)}
+                </span>
+              )}
+            </div>
+            {withdrawalsLoading ? (
+              <div className="flex justify-center py-6">
+                <LoadingSpinner size="h-6 w-6" />
+              </div>
+            ) : withdrawals.length === 0 ? (
+              <p className="text-center text-xs text-ios-tertiary py-5 bg-ios-surface2/50 rounded-2xl">
+                No hay retiros registrados hoy
+              </p>
+            ) : (
+              <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+                {withdrawals.map((w) => (
+                  <div key={w._id} className="flex items-center gap-3 bg-ios-surface2/60 rounded-2xl px-3.5 py-2.5">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-semibold text-ios-label truncate">{formatMoney(w.monto)}</p>
+                      <p className="text-[11px] text-ios-tertiary truncate">
+                        {w.motivo} · {w.realizadoPor} · {new Date(w.createdAt).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}
+                      </p>
+                    </div>
+                    {user?.rol === 'admin' && (
+                      <button
+                        onClick={() => handleDeleteWithdrawal(w._id)}
+                        className="text-ios-red text-xs border border-ios-red/30 px-2.5 py-1 rounded-ios-pill hover:bg-ios-red/10 transition-all font-semibold shrink-0"
+                      >
+                        Eliminar
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </IosModal>
     </div>

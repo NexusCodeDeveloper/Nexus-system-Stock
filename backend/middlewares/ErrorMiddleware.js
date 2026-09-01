@@ -21,8 +21,12 @@ export const errorHandler = (err, req, res, next) => {
     return res.status(400).json({ message: isDev ? err.message : 'Datos inválidos' });
   }
 
+  if (err.name === 'CastError') {
+    return res.status(400).json({ message: 'ID inválido' });
+  }
+
   if (err.code === 11000) {
-    return res.status(400).json({ message: 'El valor ya existe en la base de datos' });
+    return res.status(409).json({ message: 'El valor ya existe en la base de datos' });
   }
 
   const status = err.statusCode || 500;

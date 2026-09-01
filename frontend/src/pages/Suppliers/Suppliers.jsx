@@ -21,6 +21,7 @@ const Suppliers = () => {
   const [error, setError] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState(null);
+  const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({
     nombre: '',
     telefono: '',
@@ -65,6 +66,8 @@ const Suppliers = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (saving) return;
+    setSaving(true);
     try {
       if (editing) {
         await updateSupplier(editing._id, form);
@@ -76,6 +79,8 @@ const Suppliers = () => {
       toast({ message: 'Proveedor guardado' });
     } catch (err) {
       alert({ icon: 'error', title: 'Error', message: err.response?.data?.message || 'Error al guardar proveedor' });
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -103,8 +108,8 @@ const Suppliers = () => {
       await deleteSupplier(id);
       fetchSuppliers();
       toast({ message: 'Proveedor eliminado' });
-    } catch {
-      alert({ icon: 'error', title: 'Error', message: 'Error al eliminar proveedor' });
+    } catch (err) {
+      alert({ icon: 'error', title: 'Error', message: err.response?.data?.message || 'Error al eliminar proveedor' });
     }
   };
 
@@ -164,7 +169,7 @@ const Suppliers = () => {
             <IosButton type="button" variant="gray" onClick={resetForm}>
               Cancelar
             </IosButton>
-            <IosButton type="submit">{editing ? 'Actualizar' : 'Crear'}</IosButton>
+            <IosButton type="submit" disabled={saving}>{saving ? 'Guardando…' : editing ? 'Actualizar' : 'Crear'}</IosButton>
           </div>
         </form>
       </IosModal>

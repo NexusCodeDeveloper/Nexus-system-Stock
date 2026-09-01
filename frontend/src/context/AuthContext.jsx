@@ -22,7 +22,12 @@ export const AuthProvider = ({ children }) => {
     if (token) {
       getMe()
         .then((res) => setUser(res.data))
-        .catch(clearSession)
+        .catch((err) => {
+          const status = err.response?.status;
+          if (status === 401 || status === 404) {
+            clearSession();
+          }
+        })
         .finally(() => setLoading(false));
     } else {
       setLoading(false);
