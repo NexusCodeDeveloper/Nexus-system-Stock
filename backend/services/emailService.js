@@ -164,6 +164,11 @@ export const buildDatosCierre = ({ ventas, close, offset = 0, turno, totalDia })
       ['Transferencia del día', `$${Number(totalDia.transferencia.total).toLocaleString('es-AR', { minimumFractionDigits: 2 })}`],
       ['Tarjeta del día', `$${Number(totalDia.tarjeta.total).toLocaleString('es-AR', { minimumFractionDigits: 2 })}`]
     );
+    if ((totalDia.totalRetiros || 0) > 0) {
+      filas.push(['Retiros del día', formatoPesos(totalDia.totalRetiros)]);
+      const esperadoDia = Math.max(0, Math.round(((totalDia.efectivo?.total || 0) - (totalDia.totalRetiros || 0)) * 100) / 100);
+      filas.push(['Efectivo esperado del día', formatoPesos(esperadoDia)]);
+    }
   }
 
   filas.push(['Empleado(s)', empleados], ['Cerrado por', cerradoPor]);

@@ -58,6 +58,14 @@ const getItems = (sale) => {
     : [{ producto: sale.producto, cantidad: sale.cantidad, precio: sale.precio, talle: sale.talle, color: '', subtotal: sale.total }];
 };
 
+const getUnidadesNetas = (sale) => {
+  if (sale.estado === 'devuelta') return 0;
+  const items = getItems(sale);
+  const total = items.reduce((acc, i) => acc + (Number(i.cantidad) || 0), 0);
+  if (sale.items && sale.items.length > 0) return total;
+  return Math.max(0, total - (sale.cantidadDevuelta || 0));
+};
+
 const findVariantIdx = (product, talle, color) => {
   return product.variants.findIndex((v) => v.talle === (talle || '') && v.color === (color || ''));
 };
@@ -136,11 +144,12 @@ export const createSale = async (req, res, next) => {
 
     await session.commitTransaction();
 
+    savedSale.$session(null);
     const populated = await savedSale.populate('items.producto', 'nombre');
 
     res.status(201).json(populated);
   } catch (error) {
-    await session.abortTransaction();
+    await session.abortTransaction().catch(() => {});
     next(error);
   } finally {
     session.endSession();
@@ -235,34 +244,21 @@ export const getMostSold = async (req, res, next) => {
 
     const sales = await Sale.find(filter);
 
-    const returns = await Return.find(filter.createdAt ? { createdAt: filter.createdAt } : {})
-      .select('producto cantidad sale');
-    const returnsBySale = new Map();
-    for (const r of returns) {
-      if (!r.sale) continue;
-      const key = r.sale.toString();
-      if (!returnsBySale.has(key)) returnsBySale.set(key, new Map());
-      const porProducto = returnsBySale.get(key);
-      const pid = r.producto?.toString();
-      if (!pid) continue;
-      porProducto.set(pid, (porProducto.get(pid) || 0) + (Number(r.cantidad) || 0));
-    }
-
     const productMap = {};
     for (const sale of sales) {
       if (sale.estado === 'devuelta') continue;
+      const esLegacy = !(sale.items && sale.items.length > 0);
+      const devueltoLegacy = esLegacy ? (sale.cantidadDevuelta || 0) : 0;
       const items = getItems(sale);
-      const returnMap = returnsBySale.get(sale._id.toString()) || new Map();
       for (const item of items) {
         const pid = item.producto?.toString() || item.producto;
         if (!productMap[pid]) productMap[pid] = { totalVendido: 0, ingresos: 0 };
-        const devuelto = Math.min(returnMap.get(pid) || 0, item.cantidad);
-        const cantEfectiva = Math.max(0, item.cantidad - devuelto);
+        const cantEfectiva = Math.max(0, (item.cantidad || 0) - devueltoLegacy);
         if (cantEfectiva === 0) continue;
         productMap[pid].totalVendido += cantEfectiva;
         const itemSubtotal = item.subtotal || (item.cantidad * (item.precio || 0));
         const ratio = sale.total > 0 ? itemSubtotal / sale.total : 1 / items.length;
-        productMap[pid].ingresos += sale.total * ratio * (cantEfectiva / item.cantidad);
+        productMap[pid].ingresos += sale.total * ratio * (cantEfectiva / (item.cantidad || 1));
       }
     }
 
@@ -289,12 +285,13 @@ export const getMostSold = async (req, res, next) => {
 
 export const getDailyClose = async (req, res, next) => {
   try {
-    const offset = Number.isFinite(Number(req.query.offset)) ? Number(req.query.offset) : 0;
-    const turno = req.query.turno || 'manana';
+    const p = (key) => req.body?.[key] ?? req.query?.[key];
+    const offset = Number.isFinite(Number(p('offset'))) ? Number(p('offset')) : 0;
+    const turno = p('turno') || 'manana';
     if (turno !== 'manana' && turno !== 'tarde') {
       return res.status(400).json({ message: 'Turno inválido. Use "manana" o "tarde"' });
     }
-    const cerradoPor = String(req.query.cerradoPor || '').trim();
+    const cerradoPor = String(p('cerradoPor') || '').trim();
     if (!cerradoPor) {
       return res.status(400).json({ message: 'Debe indicar quién cierra el turno' });
     }
@@ -304,11 +301,11 @@ export const getDailyClose = async (req, res, next) => {
 
     let esHoy;
     let fechaDate;
-    if (!req.query.fecha) {
+    if (!p('fecha')) {
       esHoy = true;
       fechaDate = hoyInicio;
     } else {
-      fechaDate = parseDate(req.query.fecha, Number(offset));
+      fechaDate = parseDate(p('fecha'), Number(offset));
       if (!fechaDate) {
         return res.status(400).json({ message: 'Fecha inválida' });
       }
@@ -328,13 +325,16 @@ export const getDailyClose = async (req, res, next) => {
         return res.status(400).json({ message: 'Ese turno de esa fecha ya fue cerrado' });
       }
     }
+    if (turno === 'tarde') {
+      const mananaClose = await DailyClose.findOne({ fecha: fechaDate, turno: 'manana' });
+      const legacyClose = await DailyClose.findOne({ fecha: fechaDate, turno: { $exists: false } });
+      if (!mananaClose && !legacyClose) {
+        return res.status(400).json({ message: 'Debe cerrar primero el turno mañana de esa fecha' });
+      }
+    }
 
     let desdeAt;
-    if (existing?.hastaAt) {
-      desdeAt = existing.hastaAt;
-    } else if (existing) {
-      desdeAt = existing.desdeAt || fechaDate;
-    } else if (turno === 'manana') {
+    if (turno === 'manana') {
       desdeAt = fechaDate;
     } else {
       const mananaClose = await DailyClose.findOne({ fecha: fechaDate, turno: 'manana' });
@@ -358,21 +358,24 @@ export const getDailyClose = async (req, res, next) => {
     const totalRetiros = Math.round(retiros.reduce((sum, r) => sum + r.monto, 0) * 100) / 100;
 
     const total = Math.round(sales.reduce((sum, s) => sum + s.total, 0) * 100) / 100;
-    const cantidad = sales.reduce((sum, s) => {
-      const items = getItems(s);
-      return sum + items.reduce((acc, i) => acc + i.cantidad, 0) - (s.cantidadDevuelta || 0);
-    }, 0);
+    const cantidad = sales.reduce((sum, s) => sum + getUnidadesNetas(s), 0);
 
     const porMetodo = sales.reduce((acc, s) => {
-      const items = getItems(s);
-      const totalUnidades = items.reduce((a, i) => a + i.cantidad, 0);
-      const unidadesNetas = Math.max(0, totalUnidades - (s.cantidadDevuelta || 0));
+      const unidadesNetas = getUnidadesNetas(s);
+      if (unidadesNetas <= 0) return acc;
       if (s.pagos && s.pagos.length > 0) {
         const totalPagado = s.pagos.reduce((sum, p) => sum + p.monto, 0);
-        for (const p of s.pagos) {
+        if (totalPagado <= 0) return acc;
+        let asignadas = 0;
+        for (let i = 0; i < s.pagos.length; i++) {
+          const p = s.pagos[i];
           if (!acc[p.metodo]) acc[p.metodo] = { total: 0, cantidad: 0 };
           acc[p.metodo].total += p.monto;
-          acc[p.metodo].cantidad += totalPagado > 0 ? Math.round(unidadesNetas * (p.monto / totalPagado)) : 0;
+          const parte = i === s.pagos.length - 1
+            ? unidadesNetas - asignadas
+            : Math.round(unidadesNetas * (p.monto / totalPagado));
+          acc[p.metodo].cantidad += parte;
+          asignadas += parte;
         }
       } else {
         const m = s.metodoPago || 'efectivo';
@@ -733,21 +736,24 @@ export const getSalesStats = async (req, res, next) => {
     const sales = await Sale.find(filter);
 
     const total = Math.round(sales.reduce((sum, s) => sum + s.total, 0) * 100) / 100;
-    const cantidad = sales.reduce((sum, s) => {
-      const items = getItems(s);
-      return sum + items.reduce((acc, i) => acc + i.cantidad, 0) - (s.cantidadDevuelta || 0);
-    }, 0);
+    const cantidad = sales.reduce((sum, s) => sum + getUnidadesNetas(s), 0);
 
     const porMetodo = sales.reduce((acc, s) => {
-      const items = getItems(s);
-      const totalUnidades = items.reduce((a, i) => a + i.cantidad, 0);
-      const unidadesNetas = Math.max(0, totalUnidades - (s.cantidadDevuelta || 0));
+      const unidadesNetas = getUnidadesNetas(s);
+      if (unidadesNetas <= 0) return acc;
       if (s.pagos && s.pagos.length > 0) {
         const totalPagado = s.pagos.reduce((sum, p) => sum + p.monto, 0);
-        for (const p of s.pagos) {
+        if (totalPagado <= 0) return acc;
+        let asignadas = 0;
+        for (let i = 0; i < s.pagos.length; i++) {
+          const p = s.pagos[i];
           if (!acc[p.metodo]) acc[p.metodo] = { total: 0, cantidad: 0 };
           acc[p.metodo].total += p.monto;
-          acc[p.metodo].cantidad += totalPagado > 0 ? Math.round(unidadesNetas * (p.monto / totalPagado)) : 0;
+          const parte = i === s.pagos.length - 1
+            ? unidadesNetas - asignadas
+            : Math.round(unidadesNetas * (p.monto / totalPagado));
+          acc[p.metodo].cantidad += parte;
+          asignadas += parte;
         }
       } else {
         const m = s.metodoPago || 'efectivo';
