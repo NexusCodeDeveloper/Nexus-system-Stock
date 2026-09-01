@@ -28,7 +28,6 @@ import ProductRoutes from './modules/Product/ProductRoutes.js';
 import ReturnRoutes from './modules/Return/ReturnRoutes.js';
 import SaleRoutes from './modules/Sale/SaleRoutes.js';
 import NotificationRoutes from './modules/Notification/NotificationRoutes.js';
-import SalesAuthRoutes from './modules/SalesAuth/SalesAuthRoutes.js';
 import CashWithdrawalRoutes from './modules/CashWithdrawal/CashWithdrawalRoutes.js';
 import User from './modules/Auth/AuthModel.js';
 import Sale from './modules/Sale/SaleModel.js';
@@ -61,8 +60,6 @@ app.get('/api/health', (req, res) => {
 
 app.use('/api/auth/login', authLimiter);
 app.use('/api/auth', AuthRoutes);
-app.use('/api/sales-auth/login', authLimiter);
-app.use('/api/sales-auth', SalesAuthRoutes);
 app.use('/api/suppliers', SupplierRoutes);
 app.use('/api/products', ProductRoutes);
 app.use('/api/returns', ReturnRoutes);
@@ -84,34 +81,22 @@ if (!isDev) {
 
 app.use(errorHandler);
 
+const seedUser = async (nombre, email, password, rol) => {
+  const exists = await User.exists({ email });
+  if (exists) return;
+  try {
+    await User.create({ nombre, email, password, rol });
+  } catch (error) {
+    if (error.code !== 11000) throw error;
+  }
+};
+
 const seedUsers = async () => {
   try {
-    await User.updateOne(
-      { email: process.env.ADMIN_EMAIL },
-      {
-        $setOnInsert: {
-          nombre: 'Admin',
-          email: process.env.ADMIN_EMAIL,
-          password: process.env.ADMIN_PASSWORD,
-          rol: 'admin',
-        },
-      },
-      { upsert: true }
-    );
+    await seedUser('Admin', process.env.ADMIN_EMAIL, process.env.ADMIN_PASSWORD, 'admin');
     if (isDev) console.log('Usuario admin verificado');
 
-    await User.updateOne(
-      { email: process.env.EMPLEADO_EMAIL },
-      {
-        $setOnInsert: {
-          nombre: 'Empleado',
-          email: process.env.EMPLEADO_EMAIL,
-          password: process.env.EMPLEADO_PASSWORD,
-          rol: 'user',
-        },
-      },
-      { upsert: true }
-    );
+    await seedUser('Empleado', process.env.EMPLEADO_EMAIL, process.env.EMPLEADO_PASSWORD, 'user');
     if (isDev) console.log('Usuario empleado verificado');
   } catch (error) {
     console.error('Error al crear usuarios:', error.message);
