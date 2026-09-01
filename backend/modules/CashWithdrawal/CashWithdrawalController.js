@@ -1,4 +1,5 @@
 import CashWithdrawal from './CashWithdrawalModel.js';
+import CashWithdrawalDay from './CashWithdrawalDayModel.js';
 import Sale from '../Sale/SaleModel.js';
 import { createCashWithdrawalSchema } from './CashWithdrawalSchema.js';
 
@@ -53,15 +54,21 @@ const getEfectivoDeVenta = (sale) => {
   return metodo === 'efectivo' ? Number(sale.total) || 0 : 0;
 };
 
+const calcularRetiradoReal = async (offset = 0) => {
+  const desde = startOfDayDate(offset);
+  const hasta = new Date();
+  const retiros = await CashWithdrawal.find({ createdAt: { $gte: desde, $lt: hasta } }).select('monto');
+  return Math.round(retiros.reduce((sum, r) => sum + (Number(r.monto) || 0), 0) * 100) / 100;
+};
+
 const calcularEfectivoDisponible = async (offset = 0) => {
   const desde = startOfDayDate(offset);
   const hasta = new Date();
 
-  const sales = await Sale.find({ createdAt: { $gte: desde, $lt: hasta } }).select('pagos metodoPago total');
+  const sales = await Sale.find({ createdAt: { $gte: desde, $lt: hasta }, estado: { $ne: 'devuelta' } }).select('pagos metodoPago total estado');
   const efectivoVendido = sales.reduce((sum, s) => sum + getEfectivoDeVenta(s), 0);
 
-  const retiros = await CashWithdrawal.find({ createdAt: { $gte: desde, $lt: hasta } }).select('monto');
-  const retirado = retiros.reduce((sum, r) => sum + (Number(r.monto) || 0), 0);
+  const retirado = await calcularRetiradoReal(offset);
 
   return Math.max(0, Math.round((efectivoVendido - retirado) * 100) / 100);
 };
@@ -83,6 +90,46 @@ export const createCashWithdrawal = async (req, res, next) => {
 
     const disponible = await calcularEfectivoDisponible(offset);
     if (data.monto > disponible) {
+      return res.status(400).json({
+        message: `No hay suficiente efectivo en caja. Disponible: $${disponible.toFixed(2)}`,
+      });
+    }
+
+    const dayKey = (() => {
+      const d = new Date(Date.now() - offset * 60000);
+      const pad = (n) => String(n).padStart(2, '0');
+      return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
+    })();
+
+    const montoRedondo = Math.round(data.monto * 100) / 100;
+    let dayRecord = await CashWithdrawalDay.findOne({ fecha: dayKey });
+    if (dayRecord) {
+      const retiradoReal = await calcularRetiradoReal(offset);
+      if (Math.abs(dayRecord.retirado - retiradoReal) > 0.001) {
+        await CashWithdrawalDay.updateOne({ fecha: dayKey }, { $set: { retirado: retiradoReal } });
+        dayRecord.retirado = retiradoReal;
+      }
+    }
+    if (!dayRecord) {
+      try {
+        dayRecord = await CashWithdrawalDay.create({ fecha: dayKey, retirado: montoRedondo });
+      } catch (error) {
+        if (error.code !== 11000) throw error;
+        dayRecord = await CashWithdrawalDay.findOneAndUpdate(
+          { fecha: dayKey, retirado: { $lte: Math.round((disponible - montoRedondo) * 100) / 100 } },
+          { $inc: { retirado: montoRedondo } },
+          { new: true }
+        );
+      }
+    } else {
+      dayRecord = await CashWithdrawalDay.findOneAndUpdate(
+        { fecha: dayKey, retirado: { $lte: Math.round((disponible - montoRedondo) * 100) / 100 } },
+        { $inc: { retirado: montoRedondo } },
+        { new: true }
+      );
+    }
+
+    if (!dayRecord) {
       return res.status(400).json({
         message: `No hay suficiente efectivo en caja. Disponible: $${disponible.toFixed(2)}`,
       });
@@ -119,6 +166,17 @@ export const deleteCashWithdrawal = async (req, res, next) => {
     if (!withdrawal) {
       return res.status(404).json({ message: 'Retiro no encontrado' });
     }
+
+    const offset = Number.isFinite(Number(req.query.offset)) ? Number(req.query.offset) : 0;
+    const d = new Date(withdrawal.createdAt.getTime() - offset * 60000);
+    const pad = (n) => String(n).padStart(2, '0');
+    const dayKey = `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
+    const monto = Math.round(withdrawal.monto * 100) / 100;
+    await CashWithdrawalDay.findOneAndUpdate(
+      { fecha: dayKey, retirado: { $gte: monto } },
+      { $inc: { retirado: -monto } }
+    );
+
     res.json({ message: 'Retiro eliminado correctamente' });
   } catch (error) {
     next(error);
