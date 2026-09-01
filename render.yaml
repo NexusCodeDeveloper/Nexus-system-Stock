@@ -29,5 +29,13 @@ services:
         sync: false
       - key: MAIL_FROM
         sync: false
-      - key: MODO_API
+      - key: BREVO_API_KEY
+        sync: false
+      - key: MAIL_HOST
+        sync: false
+      - key: MAIL_PORT
+        sync: false
+      - key: MAIL_USER
+        sync: false
+      - key: MAIL_PASS
         sync: false
