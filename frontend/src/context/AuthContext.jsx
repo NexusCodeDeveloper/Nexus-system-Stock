@@ -13,7 +13,6 @@ export const AuthProvider = ({ children }) => {
 
   const clearSession = useCallback(() => {
     localStorage.removeItem('token');
-    localStorage.removeItem('user');
     setUser(null);
   }, []);
 
@@ -42,7 +41,6 @@ export const AuthProvider = ({ children }) => {
 
   const login = (data) => {
     localStorage.setItem('token', data.token);
-    localStorage.setItem('user', JSON.stringify(data));
     setUser(data);
     navigate('/', { replace: true });
   };
