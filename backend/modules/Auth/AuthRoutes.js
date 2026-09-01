@@ -6,6 +6,8 @@ const router = Router();
 
 router.post('/login', login);
 router.get('/me', protect, getMe);
-router.post('/seed', protect, admin, seed);
+if (process.env.NODE_ENV !== 'production') {
+  router.post('/seed', protect, admin, seed);
+}
 
 export default router;

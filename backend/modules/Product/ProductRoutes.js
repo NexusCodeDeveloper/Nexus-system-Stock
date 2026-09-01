@@ -26,6 +26,8 @@ router.put('/:id', admin, updateProduct);
 router.put('/:id/add-stock', admin, addStock);
 router.post('/exchange', exchangeProduct);
 router.delete('/:id', admin, deleteProduct);
-router.post('/migrate-variants', admin, migrateVariants);
+if (process.env.NODE_ENV !== 'production') {
+  router.post('/migrate-variants', admin, migrateVariants);
+}
 
 export default router;
