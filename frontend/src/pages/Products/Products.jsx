@@ -11,6 +11,7 @@ import {
 import { createReturn } from '../../api/returns';
 import { createSale } from '../../api/sales';
 import { getApiErrorMessage } from '../../utils/apiError';
+import { escucharPush } from '../../services/pushManager';
 import Ticket, { printTicket } from '../../components/Ticket/Ticket';
 import ProductForm from '../../components/ProductForm/ProductForm';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
@@ -150,6 +151,13 @@ const Products = () => {
     getProducts({})
       .then((res) => setAllProducts(res.data))
       .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    const off = escucharPush((payload) => {
+      if (payload?.tipo === 'stock') fetchLowStock();
+    });
+    return off;
   }, []);
 
   const handleSubmit = async (data) => {

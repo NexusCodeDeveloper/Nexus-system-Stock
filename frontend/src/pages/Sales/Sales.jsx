@@ -4,6 +4,7 @@ import { createCashWithdrawal, getCashWithdrawals, deleteCashWithdrawal, getCash
 import Ticket, { printTicket } from '../../components/Ticket/Ticket';
 import ReturnForm from '../../components/ReturnForm/ReturnForm';
 import { getApiErrorMessage } from '../../utils/apiError';
+import { escucharPush } from '../../services/pushManager';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
 import { useAuth } from '../../context/AuthContext';
 import { useIosAlert } from '../../components/alerts';
@@ -528,6 +529,17 @@ const Sales = () => {
   useEffect(() => {
     fetchCloses();
   }, [cDesde, cHasta, cView]);
+
+  useEffect(() => {
+    const off = escucharPush((payload) => {
+      const tipo = payload?.tipo;
+      if (['venta', 'cierre', 'retiro', 'devolucion'].includes(tipo)) {
+        fetchData();
+        if (tipo === 'cierre' || tipo === 'retiro') fetchCloses();
+      }
+    });
+    return off;
+  }, [desde, hasta, cDesde, cHasta, cView]);
 
   const selectPeriodo = (p) => {
     setActivePeriodo(p.key);

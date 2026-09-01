@@ -8,6 +8,7 @@ import CashWithdrawal from '../CashWithdrawal/CashWithdrawalModel.js';
 import { createSaleSchema } from './SaleSchema.js';
 import { generarTicketNumero, guardarConTicketUnico } from './ticketUtils.js';
 import { enviarCierreDeCaja, enviarMailTest, verificarMail } from '../../services/emailService.js';
+import { enviarEvento, enviarStockBajo } from '../../services/pushService.js';
 
 const parseDate = (str, offset = 0) => {
   if (!str) return null;
@@ -77,12 +78,14 @@ export const createSale = async (req, res, next) => {
     const data = createSaleSchema.parse(req.body);
 
     const items = [];
+    const productosVendidos = [];
     for (const item of data.items) {
       const product = await Product.findById(item.producto).session(session);
       if (!product) {
         await session.abortTransaction();
         return res.status(404).json({ message: `Producto ${item.producto} no encontrado` });
       }
+      productosVendidos.push(product);
 
       if (product.variants?.length > 0) {
         const idx = findVariantIdx(product, item.talle, item.color);
@@ -146,6 +149,15 @@ export const createSale = async (req, res, next) => {
 
     savedSale.$session(null);
     const populated = await savedSale.populate('items.producto', 'nombre');
+
+    void enviarStockBajo(productosVendidos);
+    void enviarEvento({
+      tipo: 'venta',
+      titulo: 'Nueva venta',
+      mensaje: `$${Number(total).toLocaleString('es-AR', { minimumFractionDigits: 2 })} · ${data.empleado}`,
+      url: '/sales',
+      para: { empleado: data.empleado },
+    });
 
     res.status(201).json(populated);
   } catch (error) {
@@ -451,6 +463,14 @@ export const getDailyClose = async (req, res, next) => {
     enviarCierreDeCaja({ ventas: sales, close, offset, turno, totalDia }).catch((err) =>
       console.error('[Mail] Error al enviar el cierre de caja:', err.message)
     );
+
+    void enviarEvento({
+      tipo: 'cierre',
+      titulo: 'Cierre de caja',
+      mensaje: `Turno ${turno === 'tarde' ? 'Tarde' : 'Mañana'} · $${Number(close.total).toLocaleString('es-AR', { minimumFractionDigits: 2 })} · ${cerradoPor}`,
+      url: '/sales',
+      para: 'admins',
+    });
 
     res.json({
       fecha: close.fecha,

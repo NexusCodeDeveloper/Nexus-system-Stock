@@ -5,8 +5,11 @@ import { AuthProvider } from './context/AuthContext'
 import { ThemeProvider } from './context/ThemeContext'
 import ErrorBoundary from './components/ErrorBoundary/ErrorBoundary'
 import AlertProvider from './components/alerts'
+import { registrarServiceWorker } from './services/pushManager'
 import './index.css'
 import App from './App.jsx'
+
+registrarServiceWorker()
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>

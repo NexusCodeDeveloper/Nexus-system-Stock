@@ -29,6 +29,7 @@ import ReturnRoutes from './modules/Return/ReturnRoutes.js';
 import SaleRoutes from './modules/Sale/SaleRoutes.js';
 import NotificationRoutes from './modules/Notification/NotificationRoutes.js';
 import CashWithdrawalRoutes from './modules/CashWithdrawal/CashWithdrawalRoutes.js';
+import PushRoutes from './modules/Push/PushRoutes.js';
 import User from './modules/Auth/AuthModel.js';
 import Sale from './modules/Sale/SaleModel.js';
 import { ensureTicketNumbers } from './modules/Sale/SaleController.js';
@@ -66,6 +67,7 @@ app.use('/api/returns', ReturnRoutes);
 app.use('/api/sales', SaleRoutes);
 app.use('/api/notifications', NotificationRoutes);
 app.use('/api/cash-withdrawals', CashWithdrawalRoutes);
+app.use('/api/push', PushRoutes);
 
 app.use('/api/*', (req, res) => {
   res.status(404).json({ message: 'Ruta no encontrada' });

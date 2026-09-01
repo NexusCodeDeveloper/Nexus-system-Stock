@@ -4,6 +4,7 @@ import {
   updateNotificationSchema,
   completeNotificationSchema,
 } from './NotificationSchema.js';
+import { enviarEvento } from '../../services/pushService.js';
 
 const populateUsers = (query) =>
   query
@@ -28,6 +29,15 @@ export const createNotification = async (req, res, next) => {
       ...data,
       creadoPor: req.user.id,
     });
+
+    void enviarEvento({
+      tipo: 'aviso',
+      titulo: 'Nuevo aviso',
+      mensaje: data.titulo,
+      url: '/notifications',
+      para: 'empleados',
+    });
+
     res.status(201).json(notification);
   } catch (error) {
     next(error);
@@ -82,6 +92,15 @@ export const completeNotification = async (req, res, next) => {
     const populated = await populateUsers(
       Notification.findById(notification._id)
     );
+
+    void enviarEvento({
+      tipo: 'aviso',
+      titulo: 'Aviso completado',
+      mensaje: `${notification.titulo} · ${data.realizadoNombre}`,
+      url: '/notifications',
+      para: 'admins',
+    });
+
     res.json(populated);
   } catch (error) {
     next(error);

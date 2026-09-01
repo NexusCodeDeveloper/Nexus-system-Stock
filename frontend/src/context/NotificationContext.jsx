@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import { getNotifications, markVistasAdmin as apiMarkVistasAdmin } from '../api/notifications';
 import { useAuth } from './AuthContext';
+import { escucharPush } from '../services/pushManager';
 
 const POLL_MS = 30000;
 const MAX_COMPLETADAS = 3;
@@ -55,6 +56,12 @@ export const NotificationProvider = ({ children }) => {
     check();
     const interval = setInterval(check, POLL_MS);
     return () => clearInterval(interval);
+  }, [check, user]);
+
+  useEffect(() => {
+    if (!user) return;
+    const off = escucharPush(() => check());
+    return off;
   }, [check, user]);
 
   return (

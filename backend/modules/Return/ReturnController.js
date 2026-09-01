@@ -4,6 +4,7 @@ import Product from '../Product/ProductModel.js';
 import Sale from '../Sale/SaleModel.js';
 import { registrarDevolucionEnVenta, anularDevolucionEnVenta } from '../Sale/ticketUtils.js';
 import { createReturnSchema } from './ReturnSchema.js';
+import { enviarEvento } from '../../services/pushService.js';
 
 const findVariantIdx = (product, talle, color) => {
   return product.variants.findIndex((v) => v.talle === (talle || '') && v.color === (color || ''));
@@ -144,6 +145,14 @@ export const createReturn = async (req, res, next) => {
       { path: 'producto', select: 'nombre categoria' },
       { path: 'sale', select: 'ticketNumero total empleado' },
     ]);
+
+    void enviarEvento({
+      tipo: 'devolucion',
+      titulo: 'Devolución registrada',
+      mensaje: `${product.nombre} × ${data.cantidad}${data.sale ? ' · con ticket' : ''}`,
+      url: '/returns',
+      para: 'admins',
+    });
 
     res.status(201).json(populated);
   } catch (error) {

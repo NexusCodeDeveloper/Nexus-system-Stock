@@ -12,6 +12,7 @@ import Notifications from './pages/Notifications/Notifications'
 import LoadingSpinner from './components/common/LoadingSpinner'
 import WelcomeOverlay from './components/Layout/WelcomeOverlay'
 import RoleGuideOverlay from './components/Layout/RoleGuideOverlay'
+import PushPermissionBanner from './components/PushPermissionBanner'
 
 function App() {
   const { user, loading } = useAuth()
@@ -48,6 +49,7 @@ function App() {
       {!user && <LoginModal />}
       {user && <WelcomeOverlay />}
       {user && <RoleGuideOverlay />}
+      {user && <PushPermissionBanner />}
     </>
   )
 }

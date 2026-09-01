@@ -5,6 +5,7 @@ import Sale from '../Sale/SaleModel.js';
 import Supplier from '../Supplier/SupplierModel.js';
 import { guardarConTicketUnico, registrarDevolucionEnVenta } from '../Sale/ticketUtils.js';
 import { createProductSchema, updateProductSchema, exchangeSchema, addStockSchema } from './ProductSchema.js';
+import { enviarEvento, enviarStockBajo } from '../../services/pushService.js';
 
 const escapeRegex = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -344,6 +345,15 @@ export const exchangeProduct = async (req, res, next) => {
     }], { session });
 
     await session.commitTransaction();
+
+    void enviarEvento({
+      tipo: 'devolucion',
+      titulo: 'Cambio registrado',
+      mensaje: `${productoDevuelto.nombre} → ${productoCargado.nombre}`,
+      url: '/returns',
+      para: 'admins',
+    });
+    void enviarStockBajo([productoCargado]);
 
     res.json({
       message: diferencia > 0

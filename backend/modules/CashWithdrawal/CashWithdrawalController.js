@@ -2,6 +2,7 @@ import CashWithdrawal from './CashWithdrawalModel.js';
 import CashWithdrawalDay from './CashWithdrawalDayModel.js';
 import Sale from '../Sale/SaleModel.js';
 import { createCashWithdrawalSchema } from './CashWithdrawalSchema.js';
+import { enviarEvento } from '../../services/pushService.js';
 
 const parseDate = (str, offset = 0) => {
   if (!str) return null;
@@ -136,6 +137,15 @@ export const createCashWithdrawal = async (req, res, next) => {
     }
 
     const withdrawal = await CashWithdrawal.create(data);
+
+    void enviarEvento({
+      tipo: 'retiro',
+      titulo: 'Retiro de efectivo',
+      mensaje: `$${montoRedondo.toLocaleString('es-AR', { minimumFractionDigits: 2 })} · ${data.motivo} · ${data.realizadoPor}`,
+      url: '/sales',
+      para: { empleado: data.realizadoPor },
+    });
+
     res.status(201).json(withdrawal);
   } catch (error) {
     next(error);
