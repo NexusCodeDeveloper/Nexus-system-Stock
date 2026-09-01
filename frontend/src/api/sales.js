@@ -1,9 +1,7 @@
 import api from './axios';
 
-export const salesLogin = (data) => api.post('/sales-auth/login', data);
 export const createSale = (data) => api.post('/sales', data);
 export const getSales = (params) => api.get('/sales', { params });
-export const getTickets = (params) => api.get('/sales', { params });
 export const getSalesStats = (params) => api.get('/sales/stats', { params });
 export const getMostSold = (params) => api.get('/sales/most-sold', { params });
 export const deleteSale = (id) => api.delete(`/sales/${id}`);

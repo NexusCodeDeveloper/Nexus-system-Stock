@@ -8,8 +8,7 @@
   "scripts": {
     "dev": "nodemon index.js",
     "start": "node index.js",
-    "start:prod": "cross-env NODE_ENV=production node index.js",
-    "seed": "node seed.js"
+    "start:prod": "cross-env NODE_ENV=production node index.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

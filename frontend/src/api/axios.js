@@ -19,12 +19,11 @@ api.interceptors.response.use(
     if (error.response?.status === 401) {
       const url = error.config?.url || '';
 
-      if (url === '/auth/login' || url === '/sales-auth/login') {
+      if (url === '/auth/login') {
         return Promise.reject(error);
       }
 
       localStorage.removeItem('token');
-      localStorage.removeItem('user');
       window.dispatchEvent(new Event('auth-unauthorized'));
     }
     return Promise.reject(error);

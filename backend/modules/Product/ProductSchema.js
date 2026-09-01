@@ -55,12 +55,6 @@ export const addStockSchema = z.object({
   color: z.string().optional().default(''),
 });
 
-export const sellProductSchema = z.object({
-  cantidad: z.number().int().positive('Debe vender al menos 1'),
-  talle: z.string().optional().default(''),
-  color: z.string().optional().default(''),
-});
-
 export const updateProductSchema = z.object({
   nombre: z.string().min(1, 'El nombre del producto es obligatorio').optional(),
   precio: z.number().positive('El precio debe ser mayor a $0').optional(),
