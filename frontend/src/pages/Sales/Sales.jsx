@@ -1,4 +1,4 @@
-import { useState, useEffect, Fragment } from 'react';
+import { useState, useEffect, Fragment, useRef } from 'react';
 import { getSales, getSalesStats, getMostSold, deleteSale, getDailyClose, getDailyCloses, deleteDailyClose, resendCloseMail } from '../../api/sales';
 import { createCashWithdrawal, getCashWithdrawals, deleteCashWithdrawal, getCashWithdrawalsAvailable } from '../../api/cashWithdrawals';
 import Ticket, { printTicket } from '../../components/Ticket/Ticket';
@@ -216,6 +216,9 @@ const Sales = () => {
   const [closeNombre, setCloseNombre] = useState('');
   const [closeSaving, setCloseSaving] = useState(false);
 
+  const ventasSeqRef = useRef(0);
+  const cierresSeqRef = useRef(0);
+
   const [withdrawalOpen, setWithdrawalOpen] = useState(false);
   const [withdrawalMonto, setWithdrawalMonto] = useState('');
   const [withdrawalMotivo, setWithdrawalMotivo] = useState('');
@@ -224,9 +227,11 @@ const Sales = () => {
   const [withdrawals, setWithdrawals] = useState([]);
   const [withdrawalsTotal, setWithdrawalsTotal] = useState(0);
   const [withdrawalsLoading, setWithdrawalsLoading] = useState(false);
+  const [withdrawalsError, setWithdrawalsError] = useState('');
   const [efectivoDisponible, setEfectivoDisponible] = useState(null);
 
   const fetchData = () => {
+    const seq = ++ventasSeqRef.current;
     setLoading(true);
     setFetchError('');
     const tz = new Date().getTimezoneOffset();
@@ -236,23 +241,36 @@ const Sales = () => {
       getMostSold({ desde, hasta, offset: tz }),
     ])
       .then(([salesRes, statsRes, mostSoldRes]) => {
+        if (seq !== ventasSeqRef.current) return;
         setData(salesRes.data);
         setStats(statsRes.data);
         setMostSold(mostSoldRes.data);
       })
       .catch((err) => {
+        if (seq !== ventasSeqRef.current) return;
         setFetchError(getApiErrorMessage(err, 'Error al cargar ventas'));
       })
-      .finally(() => setLoading(false));
+      .finally(() => {
+        if (seq === ventasSeqRef.current) setLoading(false);
+      });
   };
 
   const fetchCloses = (d = cDesde, h = cHasta) => {
+    const seq = ++cierresSeqRef.current;
     setClosesLoading(true);
     setClosesError('');
     getDailyCloses({ desde: d, hasta: h, offset: new Date().getTimezoneOffset(), agrupar: cView })
-      .then((res) => setCloses(res.data))
-      .catch((err) => setClosesError(getApiErrorMessage(err, 'Error al cargar cierres')))
-      .finally(() => setClosesLoading(false));
+      .then((res) => {
+        if (seq !== cierresSeqRef.current) return;
+        setCloses(res.data);
+      })
+      .catch((err) => {
+        if (seq !== cierresSeqRef.current) return;
+        setClosesError(getApiErrorMessage(err, 'Error al cargar cierres'));
+      })
+      .finally(() => {
+        if (seq === cierresSeqRef.current) setClosesLoading(false);
+      });
   };
 
   const viewCloseDetail = (d) => {
@@ -310,6 +328,11 @@ const Sales = () => {
     }
     const turno = closeForm;
     const hoy = today();
+
+    if (!closeFecha) {
+      alert({ icon: 'warning', title: 'Fecha requerida', message: 'Seleccioná la fecha del cierre' });
+      return;
+    }
 
     if (closeFecha !== hoy) {
       const confirmado = await confirm({
@@ -381,12 +404,13 @@ const Sales = () => {
 
   const fetchWithdrawals = () => {
     setWithdrawalsLoading(true);
+    setWithdrawalsError('');
     getCashWithdrawals({ desde: today(), hasta: today(), offset: new Date().getTimezoneOffset() })
       .then((res) => {
         setWithdrawals(res.data.withdrawals || []);
         setWithdrawalsTotal(res.data.total || 0);
       })
-      .catch(() => {})
+      .catch(() => setWithdrawalsError('No se pudieron cargar los retiros'))
       .finally(() => setWithdrawalsLoading(false));
   };
 
@@ -442,6 +466,7 @@ const Sales = () => {
       await deleteCashWithdrawal(id);
       toast({ message: 'Retiro eliminado' });
       fetchWithdrawals();
+      fetchAvailableCash();
     } catch (err) {
       alert({ icon: 'error', title: 'Error', message: getApiErrorMessage(err, 'Error al eliminar el retiro') });
     }
@@ -1291,6 +1316,10 @@ const Sales = () => {
               <div className="flex justify-center py-6">
                 <LoadingSpinner size="h-6 w-6" />
               </div>
+            ) : withdrawalsError ? (
+              <p className="text-center text-xs text-ios-red py-5 bg-ios-surface2/50 rounded-2xl">
+                {withdrawalsError}
+              </p>
             ) : withdrawals.length === 0 ? (
               <p className="text-center text-xs text-ios-tertiary py-5 bg-ios-surface2/50 rounded-2xl">
                 No hay retiros registrados hoy
