@@ -75,6 +75,7 @@ const Products = () => {
   const [returnVariantIdx, setReturnVariantIdx] = useState('');
   const [returnMotivo, setReturnMotivo] = useState('');
   const [returnOtroMotivo, setReturnOtroMotivo] = useState('');
+  const [returnSaving, setReturnSaving] = useState(false);
   const [exchangeActivo, setExchangeActivo] = useState(false);
   const [exchangeSearch, setExchangeSearch] = useState('');
   const [exchangeTarget, setExchangeTarget] = useState(null);
@@ -110,7 +111,6 @@ const Products = () => {
 
   const [lastSale, setLastSale] = useState(null);
   const [showTicketModal, setShowTicketModal] = useState(false);
-  const [ticketPrinting, setTicketPrinting] = useState(false);
 
   const agotados = lowStock.filter((i) => i.cantidad === 0);
   const bajos = lowStock.filter((i) => i.cantidad > 0);
@@ -163,6 +163,7 @@ const Products = () => {
       setShowForm(false);
       setEditing(null);
       fetchData();
+      fetchLowStock();
       toast({ message: 'Producto guardado' });
     } catch (err) {
       alert({ icon: 'error', title: 'Error', message: getApiErrorMessage(err, 'Error al guardar producto') });
@@ -188,9 +189,10 @@ const Products = () => {
     try {
       await deleteProduct(id);
       fetchData();
+      fetchLowStock();
       toast({ message: 'Producto eliminado' });
     } catch (err) {
-      alert({ icon: 'error', title: 'Error', message: 'Error al eliminar producto' });
+      alert({ icon: 'error', title: 'Error', message: getApiErrorMessage(err, 'Error al eliminar producto') });
     }
   };
 
@@ -210,7 +212,7 @@ const Products = () => {
       alert({ icon: 'warning', title: 'Campo requerido', message: 'Debe seleccionar una variante' });
       return;
     }
-    const variant = quickAdd.variants[Number(qaVariantIdx)];
+    const variant = quickAdd.variants?.[Number(qaVariantIdx)];
     const stockDisponible = variant ? variant.cantidad : quickAdd.cantidad;
     if (cantidad > stockDisponible) {
       alert({ icon: 'warning', title: 'Stock insuficiente', message: `Solo hay ${stockDisponible} unidad(es) disponible(s)` });
@@ -313,10 +315,8 @@ const Products = () => {
   };
 
   const handlePrintTicket = () => {
-    if (!lastSale || ticketPrinting) return;
-    setTicketPrinting(true);
+    if (!lastSale) return;
     const ok = printTicket(lastSale);
-    setTicketPrinting(false);
     if (ok) setShowTicketModal(false);
   };
 
@@ -336,7 +336,7 @@ const Products = () => {
       alert({ icon: 'warning', title: 'Cantidad inválida', message: 'Debe ingresar al menos 1 unidad' });
       return;
     }
-    const variant = addStockModal.variants[Number(addStockVariantIdx)];
+    const variant = addStockModal.variants?.[Number(addStockVariantIdx)];
     try {
       await addStock(addStockModal._id, { cantidad, talle: variant?.talle || '', color: variant?.color || '' });
       setAddStockModal(null);
@@ -374,6 +374,7 @@ const Products = () => {
   const getReturnMotivo = () => returnMotivo === 'Otro' ? returnOtroMotivo.trim() : returnMotivo.trim();
 
   const confirmReturn = async () => {
+    if (returnSaving) return;
     const motivoFinal = getReturnMotivo();
     if (!motivoFinal) {
       alert({ icon: 'warning', title: 'Campo requerido', message: 'Debe ingresar un motivo' });
@@ -405,6 +406,7 @@ const Products = () => {
     }
     const retVariant = returnModal.variants?.[Number(returnVariantIdx)];
     const excVariant = exchangeTarget?.variants?.[Number(exchangeVariantIdx)];
+    setReturnSaving(true);
     try {
       if (exchangeTarget) {
         await exchangeProduct({
@@ -433,6 +435,8 @@ const Products = () => {
       toast({ message: exchangeTarget ? 'Cambio registrado' : 'Devolución registrada' });
     } catch (err) {
       alert({ icon: 'error', title: 'Error', message: getApiErrorMessage(err, 'Error al registrar') });
+    } finally {
+      setReturnSaving(false);
     }
   };
 
@@ -754,7 +758,6 @@ const Products = () => {
         showCancel
         confirmText="Imprimir ticket"
         onConfirm={handlePrintTicket}
-        confirmDisabled={ticketPrinting}
         maxWidth="max-w-md"
       >
         <div className="flex flex-col items-center gap-4">
@@ -800,9 +803,10 @@ const Products = () => {
         onClose={() => setReturnModal(null)}
         title="Devolución / Cambio"
         cancelText="Cancelar"
-        confirmText={exchangeTarget ? 'Confirmar Cambio' : 'Confirmar Devolución'}
+        confirmText={returnSaving ? 'Guardando…' : exchangeTarget ? 'Confirmar Cambio' : 'Confirmar Devolución'}
         confirmVariant="destructiveTinted"
         onConfirm={confirmReturn}
+        confirmDisabled={returnSaving}
         maxWidth="max-w-xl"
       >
         <p className="text-ios-secondary text-sm mb-4">

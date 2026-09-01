@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useLayoutEffect } from 'react';
-import { getTickets } from '../../api/sales';
+import { getSales as getTickets } from '../../api/sales';
 import Ticket, { printTicket } from '../../components/Ticket/Ticket';
 import ReturnForm from '../../components/ReturnForm/ReturnForm';
 import { getApiErrorMessage } from '../../utils/apiError';
@@ -57,6 +57,7 @@ const Tickets = () => {
   const [returnIsCambio, setReturnIsCambio] = useState(false);
   const [dropdown, setDropdown] = useState({ sale: null, x: 0, y: 0 });
   const dropdownRef = useRef(null);
+  const fetchSeqRef = useRef(0);
   const anchorRef = useRef(null);
 
   useLayoutEffect(() => {
@@ -100,17 +101,24 @@ const Tickets = () => {
   };
 
   const fetchData = () => {
+    const seq = ++fetchSeqRef.current;
     setLoading(true);
     setFetchError('');
     const params = { offset: new Date().getTimezoneOffset() };
     const soloDigitos = numero.trim().replace(/[^0-9]/g, '');
     if (soloDigitos) params.numero = soloDigitos;
     getTickets(params)
-      .then((res) => setData(res.data))
+      .then((res) => {
+        if (seq !== fetchSeqRef.current) return;
+        setData(res.data);
+      })
       .catch((err) => {
+        if (seq !== fetchSeqRef.current) return;
         setFetchError(getApiErrorMessage(err, 'Error al cargar tickets'));
       })
-      .finally(() => setLoading(false));
+      .finally(() => {
+        if (seq === fetchSeqRef.current) setLoading(false);
+      });
   };
 
   useEffect(() => {
@@ -172,7 +180,6 @@ const Tickets = () => {
                 ) : (
                   data.sales.map((s) => {
                     const items = getItems(s);
-                    const isExpanded = expandedId === s._id;
                     return (
                       <tr
                         key={s._id}

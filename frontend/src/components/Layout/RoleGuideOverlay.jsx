@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import IosButton from '../ui/IosButton';
-import { IconTile, IconBell, IconCheck, IconPencil, IconUsers, IconList } from '../ui/icons';
+import { IconTile, IconBell, IconCheck, IconPencil, IconList } from '../ui/icons';
 import { useAuth } from '../../context/AuthContext';
 
 const HOURS_24 = 24 * 60 * 60 * 1000;

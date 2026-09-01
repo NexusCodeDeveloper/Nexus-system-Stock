@@ -16,11 +16,24 @@ const Spinner = () => (
 );
 
 const WelcomeOverlay = () => {
-  const [visible, setVisible] = useState(true);
+  const [visible, setVisible] = useState(() => {
+    try {
+      if (localStorage.getItem('welcome-overlay-seen')) return false;
+    } catch {
+      /* ignore */
+    }
+    return true;
+  });
   const [closing, setClosing] = useState(false);
   const [status, setStatus] = useState('loading');
 
   useEffect(() => {
+    if (!visible) return;
+    try {
+      localStorage.setItem('welcome-overlay-seen', '1');
+    } catch {
+      /* ignore */
+    }
     const doneTimer = setTimeout(() => setStatus('done'), 2000);
     const closeTimer = setTimeout(() => {
       setClosing(true);
@@ -31,7 +44,7 @@ const WelcomeOverlay = () => {
       clearTimeout(doneTimer);
       clearTimeout(closeTimer);
     };
-  }, []);
+  }, [visible]);
 
   const dismiss = () => {
     if (closing || !visible) return;
