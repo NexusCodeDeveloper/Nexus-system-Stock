@@ -10,12 +10,7 @@
     <title>NexusCode Stock</title>
   </head>
   <body>
-    <script>
-      try {
-        var t = localStorage.getItem('theme');
-        document.documentElement.setAttribute('data-theme', t === 'light' ? 'light' : 'dark');
-      } catch (e) {}
-    </script>
+    <script src="/theme.js"></script>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
   </body>
