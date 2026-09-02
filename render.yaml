@@ -45,3 +45,5 @@ services:
         sync: false
       - key: VAPID_SUBJECT
         sync: false
+      - key: VITE_VAPID_PUBLIC_KEY
+        sync: false
