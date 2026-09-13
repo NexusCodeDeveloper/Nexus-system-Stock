@@ -1,4 +1,5 @@
 import { Component } from 'react';
+import { reportarError } from '../../utils/errorReporter';
 
 class ErrorBoundary extends Component {
   constructor(props) {
@@ -12,6 +13,8 @@ class ErrorBoundary extends Component {
 
   componentDidCatch(error, errorInfo) {
     console.error('[ErrorBoundary]', error, errorInfo);
+    const componente = errorInfo?.componentStack?.split('\n').find((l) => l.trim())?.trim() || '';
+    reportarError(error, { lugar: 'ErrorBoundary', componente });
   }
 
   render() {
