@@ -3,12 +3,15 @@
   "version": "1.0.0",
   "type": "module",
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=20.19.0"
   },
   "scripts": {
     "dev": "nodemon index.js",
     "start": "node index.js",
-    "start:prod": "cross-env NODE_ENV=production node index.js"
+    "migrate:money": "node scripts/migrate-money.js",
+    "migrate:money:apply": "node scripts/migrate-money.js --apply",
+    "migrate:tickets": "node scripts/migrate-tickets.js",
+    "migrate:tickets:apply": "node scripts/migrate-tickets.js --apply"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
@@ -21,10 +24,13 @@
     "mongoose": "^8.7.0",
     "nodemailer": "^9.0.3",
     "web-push": "^3.6.7",
+    "winston": "^3.19.0",
     "zod": "^3.23.8"
   },
   "devDependencies": {
-    "cross-env": "^7.0.3",
     "nodemon": "^3.1.4"
+  },
+  "overrides": {
+    "qs": "^6.16.0"
   }
 }
