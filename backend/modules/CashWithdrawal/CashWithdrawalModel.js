@@ -1,11 +1,12 @@
 import mongoose from 'mongoose';
+import { campoCentavos } from '../../utils/money.js';
 
 const cashWithdrawalSchema = new mongoose.Schema(
   {
     monto: {
-      type: Number,
+      ...campoCentavos,
       required: true,
-      min: 0.01,
+      min: 1,
     },
     motivo: {
       type: String,
@@ -18,7 +19,7 @@ const cashWithdrawalSchema = new mongoose.Schema(
       trim: true,
     },
   },
-  { timestamps: true }
+  { timestamps: true, toJSON: { getters: true } }
 );
 
 cashWithdrawalSchema.index({ createdAt: -1 });
