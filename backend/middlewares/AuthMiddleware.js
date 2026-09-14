@@ -1,17 +1,33 @@
 import jwt from 'jsonwebtoken';
+import User from '../modules/Auth/AuthModel.js';
 
-export const protect = (req, res, next) => {
-  if (!req.headers.authorization || !req.headers.authorization.toLowerCase().startsWith('bearer')) {
-    return res.status(401).json({ message: 'No autorizado, no hay token' });
-  }
-
+export const protect = async (req, res, next) => {
   try {
-    const token = req.headers.authorization.split(' ')[1];
+    const auth = req.headers.authorization;
+    if (!auth || !auth.toLowerCase().startsWith('bearer ')) {
+      return res.status(401).json({ message: 'No autorizado, no hay token' });
+    }
+
+    const token = auth.split(' ')[1];
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    if (!decoded.id || !decoded.rol) {
+    if (!decoded.id) {
       return res.status(401).json({ message: 'No autorizado, token inválido' });
     }
-    req.user = decoded;
+
+    const user = await User.findById(decoded.id).select('nombre email rol tokenVersion');
+    if (!user) {
+      return res.status(401).json({ message: 'Sesión inválida, usuario no encontrado' });
+    }
+    if ((user.tokenVersion || 0) !== (decoded.tokenVersion || 0)) {
+      return res.status(401).json({ message: 'Sesión expirada, vuelva a iniciar sesión' });
+    }
+
+    req.user = {
+      id: user._id.toString(),
+      nombre: user.nombre,
+      email: user.email,
+      rol: user.rol,
+    };
     next();
   } catch (error) {
     return res.status(401).json({ message: 'No autorizado, token inválido' });

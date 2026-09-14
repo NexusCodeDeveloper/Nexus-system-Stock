@@ -1,13 +1,9 @@
 import mongoose from 'mongoose';
-
-const isDev = process.env.NODE_ENV !== 'production';
+import logger from '../utils/logger.js';
 
 export const connectDB = async () => {
-  try {
-    const conn = await mongoose.connect(process.env.MONGO_URI);
-    if (isDev) console.log(`MongoDB conectado: ${conn.connection.host}`);
-  } catch (error) {
-    console.error(`Error al conectar MongoDB: ${error.message}`);
-    process.exit(1);
-  }
+  const conn = await mongoose.connect(process.env.MONGO_URI, {
+    serverSelectionTimeoutMS: 15000,
+  });
+  logger.info('Base de datos conectada', { servidor: conn.connection.host });
 };
