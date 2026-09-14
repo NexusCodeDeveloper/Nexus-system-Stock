@@ -252,7 +252,7 @@ export const deleteReturn = async (req, res, next) => {
     await session.commitTransaction();
     res.json({ message: 'Devolución eliminada correctamente' });
   } catch (error) {
-    await session.abortTransaction();
+    await session.abortTransaction().catch(() => {});
     next(error);
   } finally {
     session.endSession();

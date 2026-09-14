@@ -1,12 +1,15 @@
 import { useState, useEffect } from 'react';
 import { createReturn } from '../../api/returns';
-import { exchangeProduct, getProducts } from '../../api/products';
+import { exchangeProduct, getProducts, getProductByCodigo } from '../../api/products';
 import { useIosAlert } from '../alerts';
 import { getApiErrorMessage } from '../../utils/apiError';
 import IosModal from '../ui/IosModal';
 import IosSearch from '../ui/IosSearch';
 import IosToggle from '../ui/IosToggle';
 import { IosField, IosInput, IosSelect } from '../ui/IosForm';
+import ScannerButton from '../scanner/ScannerButton';
+import ScannerModal from '../scanner/ScannerModal';
+import { useLector } from '../../context/LectorContext';
 
 const variantLabel = (v) => [v.talle, v.color].filter(Boolean).join(' / ') || 'Base';
 
@@ -22,7 +25,7 @@ const getItems = (sale) =>
     ? sale.items
     : [{ producto: sale.producto, cantidad: sale.cantidad, precio: sale.precio, talle: sale.talle, color: '', subtotal: sale.total }]);
 
-const ReturnForm = ({ sale, open, onClose, onDone, defaultExchange = false }) => {
+const ReturnForm = ({ sale, open, onClose, onDone, defaultExchange = false, initialCodigo = '' }) => {
   const { show: alert, toast } = useIosAlert();
 
   const [products, setProducts] = useState([]);
@@ -37,6 +40,7 @@ const ReturnForm = ({ sale, open, onClose, onDone, defaultExchange = false }) =>
   const [exchangeVariantIdx, setExchangeVariantIdx] = useState('');
   const [metodoPago, setMetodoPago] = useState('efectivo');
   const [saving, setSaving] = useState(false);
+  const [scannerOpen, setScannerOpen] = useState(false);
 
   const items = sale ? getItems(sale) : [];
   const item = items[itemIdx] || items[0] || {};
@@ -44,8 +48,14 @@ const ReturnForm = ({ sale, open, onClose, onDone, defaultExchange = false }) =>
 
   useEffect(() => {
     if (open && sale) {
-      setItemIdx(0);
-      setCantidad(String(sale.items?.[0]?.cantidad || 1));
+      const saleItems = getItems(sale);
+      const codigoBuscado = String(initialCodigo || '').trim().toLowerCase();
+      const idx = codigoBuscado
+        ? saleItems.findIndex((it) => String(it.producto?.codigo || '').toLowerCase() === codigoBuscado)
+        : -1;
+      const idxFinal = idx !== -1 ? idx : 0;
+      setItemIdx(idxFinal);
+      setCantidad(String(saleItems[idxFinal]?.cantidad || 1));
       setMotivo('');
       setOtroMotivo('');
       setExchangeActivo(defaultExchange);
@@ -58,7 +68,7 @@ const ReturnForm = ({ sale, open, onClose, onDone, defaultExchange = false }) =>
         .then((res) => setProducts(res.data || []))
         .catch(() => {});
     }
-  }, [open, sale]);
+  }, [open, sale, defaultExchange, initialCodigo]);
 
   const selectItem = (idx) => {
     setItemIdx(idx);
@@ -76,7 +86,7 @@ const ReturnForm = ({ sale, open, onClose, onDone, defaultExchange = false }) =>
   const filteredExchange = products.filter(
     (p) =>
       p._id !== getItemId(item) &&
-      p.nombre.toLowerCase().includes(exchangeSearch.toLowerCase())
+      (p.nombre || '').toLowerCase().includes(exchangeSearch.toLowerCase())
   );
 
   const confirmar = async () => {
@@ -167,8 +177,41 @@ const ReturnForm = ({ sale, open, onClose, onDone, defaultExchange = false }) =>
     }
   };
 
+  const manejarCodigo = async (codigo) => {
+    try {
+      const { data: producto } = await getProductByCodigo(codigo);
+      const idx = items.findIndex((it) => getItemId(it) === producto._id);
+      if (idx !== -1) {
+        selectItem(idx);
+        toast({ message: `Producto del ticket: ${producto.nombre}`, duration: 1600 });
+        return;
+      }
+      if (exchangeActivo) {
+        setExchangeTarget(producto);
+        setExchangeSearch('');
+        setExchangeCantidad('1');
+        setExchangeVariantIdx('');
+        toast({ message: `Cambio por: ${producto.nombre}`, duration: 1600 });
+        return;
+      }
+      toast({
+        message: 'El producto escaneado no está en este ticket. Activá "Quiero cambiarlo por otro producto".',
+        duration: 2600,
+      });
+    } catch (err) {
+      if (err.response?.status === 404) {
+        toast({ message: `No existe un producto con el código "${codigo}"` });
+      } else {
+        toast({ message: getApiErrorMessage(err, 'Error al buscar el código') });
+      }
+    }
+  };
+
+  useLector(manejarCodigo, open);
+
   return (
-    <IosModal
+    <>
+      <IosModal
       open={open}
       onClose={onClose}
       title="Devolución / Cambio"
@@ -240,7 +283,10 @@ const ReturnForm = ({ sale, open, onClose, onDone, defaultExchange = false }) =>
         {exchangeActivo && (
           <>
             <IosField label="Buscar producto nuevo">
-              <IosSearch value={exchangeSearch} onChange={setExchangeSearch} placeholder="Escribí el nombre..." />
+              <div className="flex items-center gap-2">
+                <IosSearch value={exchangeSearch} onChange={setExchangeSearch} placeholder="Escribí el nombre o escaneá..." className="flex-1" />
+                <ScannerButton onClick={() => setScannerOpen(true)} title="Escanear producto" />
+              </div>
             </IosField>
 
             {exchangeSearch && filteredExchange.length > 0 && (
@@ -348,6 +394,16 @@ const ReturnForm = ({ sale, open, onClose, onDone, defaultExchange = false }) =>
         )}
       </div>
     </IosModal>
+      <ScannerModal
+        open={scannerOpen}
+        onClose={() => setScannerOpen(false)}
+        onLeer={(codigo) => {
+          manejarCodigo(codigo);
+          setScannerOpen(false);
+        }}
+        titulo="Escanear producto"
+      />
+    </>
   );
 };
 

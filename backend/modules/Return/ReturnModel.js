@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { campoCentavos, campoCentavosPositivo } from '../../utils/money.js';
 
 const returnSchema = new mongoose.Schema(
   {
@@ -47,11 +48,11 @@ const returnSchema = new mongoose.Schema(
       default: null,
     },
     diferencia: {
-      type: Number,
+      ...campoCentavos,
       default: 0,
     },
     montoDevuelto: {
-      type: Number,
+      ...campoCentavosPositivo,
       default: 0,
     },
     ventaDiferenciaId: {
@@ -65,7 +66,7 @@ const returnSchema = new mongoose.Schema(
       trim: true,
     },
   },
-  { timestamps: true }
+  { timestamps: true, toJSON: { getters: true } }
 );
 
 returnSchema.index({ producto: 1, createdAt: -1 });
