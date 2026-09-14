@@ -186,6 +186,11 @@ const Sales = () => {
   const { user } = useAuth();
   const { show: alert, confirm, toast } = useIosAlert();
 
+  const imprimirTicket = async (s) => {
+    const ok = await printTicket(s);
+    if (!ok) toast({ message: 'Habilitá las ventanas emergentes para imprimir' });
+  };
+
   const [desde, setDesde] = useState(today);
   const [hasta, setHasta] = useState(today);
   const [activePeriodo, setActivePeriodo] = useState('dia');
@@ -243,7 +248,8 @@ const Sales = () => {
     ])
       .then(([salesRes, statsRes, mostSoldRes]) => {
         if (seq !== ventasSeqRef.current) return;
-        setData(salesRes.data);
+        const ventas = salesRes.data?.sales;
+        setData({ sales: Array.isArray(ventas) ? ventas : [], total: salesRes.data?.total || 0 });
         setStats(statsRes.data);
         setMostSold(mostSoldRes.data);
       })
@@ -527,8 +533,9 @@ const Sales = () => {
   }, [desde, hasta]);
 
   useEffect(() => {
+    if (activeTab !== 'cierres') return;
     fetchCloses();
-  }, [cDesde, cHasta, cView]);
+  }, [activeTab, cDesde, cHasta, cView]);
 
   useEffect(() => {
     const off = escucharPush((payload) => {
@@ -798,7 +805,7 @@ const Sales = () => {
                                       Ver ticket
                                     </button>
                                     <button
-                                      onClick={(e) => { e.stopPropagation(); printTicket(s); }}
+                                      onClick={(e) => { e.stopPropagation(); imprimirTicket(s); }}
                                       className="text-ios-tint hover:text-ios-tint/80 text-xs border border-ios-tint/30 px-2.5 py-1 rounded-ios-pill hover:bg-ios-tint/10 transition-all font-semibold"
                                     >
                                       Imprimir ticket
@@ -924,7 +931,7 @@ const Sales = () => {
                             Ver ticket
                           </button>
                           <button
-                            onClick={() => printTicket(s)}
+                            onClick={() => imprimirTicket(s)}
                             className="text-ios-tint text-xs border border-ios-tint/30 px-2.5 py-1 rounded-ios-pill hover:bg-ios-tint/10 transition-all font-semibold"
                           >
                             Imprimir ticket

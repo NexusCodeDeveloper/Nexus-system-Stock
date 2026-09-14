@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { campoCentavosPositivo } from '../../utils/money.js';
 
 const dailyCloseSchema = new mongoose.Schema({
   fecha: {
@@ -8,30 +9,30 @@ const dailyCloseSchema = new mongoose.Schema({
   turno: { type: String, enum: ['manana', 'tarde'] },
   desdeAt: { type: Date },
   hastaAt: { type: Date },
-  total: { type: Number, required: true },
+  total: { ...campoCentavosPositivo, required: true },
   cantidad: { type: Number, required: true },
   efectivo: {
-    total: { type: Number, default: 0 },
+    total: { ...campoCentavosPositivo, default: 0 },
     cantidad: { type: Number, default: 0 },
   },
   transferencia: {
-    total: { type: Number, default: 0 },
+    total: { ...campoCentavosPositivo, default: 0 },
     cantidad: { type: Number, default: 0 },
   },
   tarjeta: {
-    total: { type: Number, default: 0 },
+    total: { ...campoCentavosPositivo, default: 0 },
     cantidad: { type: Number, default: 0 },
   },
   cerradoPor: { type: String, default: '' },
   cerradoAt: { type: Date, default: Date.now },
   retiros: [{
-    monto: { type: Number, required: true },
+    monto: { ...campoCentavosPositivo, required: true },
     motivo: { type: String, trim: true, default: '' },
     realizadoPor: { type: String, trim: true, default: '' },
     fecha: { type: Date, default: Date.now },
   }],
-  totalRetiros: { type: Number, default: 0 },
-});
+  totalRetiros: { ...campoCentavosPositivo, default: 0 },
+}, { toJSON: { getters: true } });
 
 dailyCloseSchema.index({ fecha: 1, turno: 1 }, { unique: true });
 
