@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { pushSoportado, getPushEstado, activarPush } from '../services/pushManager';
 import { IconBell } from './ui/icons';
+import { getItem, setItem } from '../utils/storage';
 
 const LS_DISMISSED = 'push-banner-dismissed';
 const LS_NEVER = 'push-banner-never';
@@ -16,35 +17,31 @@ const PushPermissionBanner = () => {
       return;
     }
     let activo = true;
-    getPushEstado().then((e) => {
-      if (!activo) return;
-      if (e.suscrito) {
-        setEstado('oculto');
-        return;
-      }
-      if (e.permiso === 'granted') {
-        setEstado('oculto');
-        return;
-      }
-      if (e.permiso === 'denied') {
-        setEstado('denegado');
-        return;
-      }
-      try {
-        if (localStorage.getItem(LS_NEVER)) {
+    getPushEstado()
+      .then((e) => {
+        if (!activo) return;
+        if (!e.soportado || e.suscrito || e.permiso === 'granted') {
           setEstado('oculto');
           return;
         }
-        const ultimo = Number(localStorage.getItem(LS_DISMISSED) || 0);
+        if (e.permiso === 'denied') {
+          setEstado('denegado');
+          return;
+        }
+        if (getItem(LS_NEVER)) {
+          setEstado('oculto');
+          return;
+        }
+        const ultimo = Number(getItem(LS_DISMISSED) || 0);
         if (Date.now() - ultimo < 3 * 24 * 60 * 60 * 1000) {
           setEstado('oculto');
           return;
         }
-      } catch {
-        /* ignore */
-      }
-      setEstado('promo');
-    });
+        setEstado('promo');
+      })
+      .catch(() => {
+        if (activo) setEstado('oculto');
+      });
     return () => {
       activo = false;
     };
@@ -53,29 +50,25 @@ const PushPermissionBanner = () => {
   if (estado === 'cargando' || estado === 'oculto') return null;
 
   const activar = async () => {
-    const res = await activarPush();
-    if (res.ok) {
+    try {
+      const res = await activarPush();
+      if (res.ok) {
+        setEstado('oculto');
+      } else if (res.motivo === 'denied' || res.motivo === 'default') {
+        setEstado('denegado');
+      }
+    } catch {
       setEstado('oculto');
-    } else if (res.motivo === 'denied' || res.motivo === 'default') {
-      setEstado('denegado');
     }
   };
 
   const ahoraNo = () => {
-    try {
-      localStorage.setItem(LS_DISMISSED, String(Date.now()));
-    } catch {
-      /* ignore */
-    }
+    setItem(LS_DISMISSED, String(Date.now()));
     setEstado('oculto');
   };
 
   const noPreguntar = () => {
-    try {
-      localStorage.setItem(LS_NEVER, '1');
-    } catch {
-      /* ignore */
-    }
+    setItem(LS_NEVER, '1');
     setEstado('oculto');
   };
 
