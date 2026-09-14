@@ -1,6 +1,8 @@
-import { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getMe } from '../api/auth';
+import { getItem, setItem, removeItem } from '../utils/storage';
+import { useIosAlert } from '../components/alerts';
 
 const AuthContext = createContext();
 
@@ -10,14 +12,19 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
+  const { toast } = useIosAlert();
+
+  const userRef = useRef(user);
+  userRef.current = user;
+  const avisoRef = useRef(0);
 
   const clearSession = useCallback(() => {
-    localStorage.removeItem('token');
+    removeItem('token');
     setUser(null);
   }, []);
 
   useEffect(() => {
-    const token = localStorage.getItem('token');
+    const token = getItem('token');
     if (token) {
       getMe()
         .then((res) => setUser(res.data))
@@ -34,23 +41,33 @@ export const AuthProvider = ({ children }) => {
   }, [clearSession]);
 
   useEffect(() => {
-    const handleUnauthorized = () => clearSession();
+    const handleUnauthorized = () => {
+      const habiaSesion = Boolean(userRef.current);
+      clearSession();
+      if (!habiaSesion) return;
+      const ahora = Date.now();
+      if (ahora - avisoRef.current < 5000) return;
+      avisoRef.current = ahora;
+      toast({ message: 'Sesión expirada, iniciá sesión de nuevo', type: 'info', duration: 3200 });
+    };
     window.addEventListener('auth-unauthorized', handleUnauthorized);
     return () => window.removeEventListener('auth-unauthorized', handleUnauthorized);
-  }, [clearSession]);
+  }, [clearSession, toast]);
 
-  const login = (data) => {
-    localStorage.setItem('token', data.token);
+  const login = useCallback((data) => {
+    setItem('token', data.token);
     setUser(data);
     navigate('/', { replace: true });
-  };
+  }, [navigate]);
 
-  const logout = () => {
+  const logout = useCallback(() => {
     clearSession();
-  };
+  }, [clearSession]);
+
+  const value = useMemo(() => ({ user, loading, login, logout }), [user, loading, login, logout]);
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout }}>
+    <AuthContext.Provider value={value}>
       {children}
     </AuthContext.Provider>
   );
