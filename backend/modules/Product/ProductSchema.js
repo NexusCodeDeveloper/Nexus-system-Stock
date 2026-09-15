@@ -9,16 +9,28 @@ const variantSchema = z.object({
   talle: z.string().optional().default(''),
   color: z.string().optional().default(''),
   cantidad: z.number().int().min(0, 'La cantidad no puede ser negativa'),
+  deposito: z.number().int().min(0, 'La cantidad no puede ser negativa').optional().default(0),
 });
+
+const codigoSchema = z.preprocess(
+  (val) => (typeof val === 'string' && val.trim() === '' ? undefined : val),
+  z
+    .string()
+    .trim()
+    .regex(/^NC-\d{6}$/, 'El código debe tener el formato NC-000001')
+    .optional()
+);
 
 export const createProductSchema = z.object({
   nombre: z.string().min(1, 'El nombre del producto es obligatorio'),
-  precio: z.number().positive('El precio debe ser mayor a $0'),
+  precio: z.number().finite().positive('El precio debe ser mayor a $0'),
   cantidad: z.number().int().min(0, 'La cantidad no puede ser negativa').optional().default(0),
+  deposito: z.number().int().min(0, 'La cantidad no puede ser negativa').optional().default(0),
   variants: z.array(variantSchema).optional().default([]),
   colores: z.array(z.string()).optional().default([]),
   categoria: z.string().min(1, 'La categoría es obligatoria'),
   proveedor: z.string().optional().default(''),
+  codigo: codigoSchema,
   stockMinimo: z.number().int().min(0).optional().default(2),
 }).superRefine((data, ctx) => {
   if (data.colores && data.colores.length > 0) {
@@ -55,10 +67,24 @@ export const addStockSchema = z.object({
   color: z.string().optional().default(''),
 });
 
+export const movimientoStockSchema = z.object({
+  cantidad: z.number().int().positive('La cantidad debe ser al menos 1'),
+  talle: z.string().optional().default(''),
+  color: z.string().optional().default(''),
+});
+
+export const depositoSchema = z.object({
+  cantidad: z.number().int().min(0, 'La cantidad no puede ser negativa'),
+  talle: z.string().optional().default(''),
+  color: z.string().optional().default(''),
+  modo: z.enum(['sumar', 'fijar']).optional().default('sumar'),
+});
+
 export const updateProductSchema = z.object({
   nombre: z.string().min(1, 'El nombre del producto es obligatorio').optional(),
-  precio: z.number().positive('El precio debe ser mayor a $0').optional(),
+  precio: z.number().finite().positive('El precio debe ser mayor a $0').optional(),
   cantidad: z.number().int().min(0, 'La cantidad no puede ser negativa').optional(),
+  deposito: z.number().int().min(0, 'La cantidad no puede ser negativa').optional(),
   variants: z.array(variantSchema).optional(),
   colores: z.array(z.string()).optional(),
   categoria: z.string().min(1, 'La categoría es obligatoria').optional(),

@@ -1,9 +1,11 @@
 import mongoose from 'mongoose';
+import { campoCentavosPositivo } from '../../utils/money.js';
 
 const variantSubSchema = new mongoose.Schema({
   talle: { type: String, trim: true, default: '' },
   color: { type: String, trim: true, default: '' },
   cantidad: { type: Number, required: true, min: 0, default: 0 },
+  deposito: { type: Number, min: 0, default: 0 },
 }, { _id: false });
 
 const productSchema = new mongoose.Schema(
@@ -14,13 +16,17 @@ const productSchema = new mongoose.Schema(
       trim: true,
     },
     precio: {
-      type: Number,
+      ...campoCentavosPositivo,
       required: true,
-      min: 0,
     },
     cantidad: {
       type: Number,
       required: true,
+      min: 0,
+      default: 0,
+    },
+    deposito: {
+      type: Number,
       min: 0,
       default: 0,
     },
@@ -42,13 +48,19 @@ const productSchema = new mongoose.Schema(
       trim: true,
       default: '',
     },
+    codigo: {
+      type: String,
+      trim: true,
+      uppercase: true,
+      immutable: true,
+    },
     stockMinimo: {
       type: Number,
       default: 2,
       min: 0,
     },
   },
-  { timestamps: true }
+  { timestamps: true, toJSON: { getters: true } }
 );
 
 productSchema.pre('save', function (next) {
@@ -61,5 +73,6 @@ productSchema.pre('save', function (next) {
 
 productSchema.index({ nombre: 'text' });
 productSchema.index({ categoria: 1 });
+productSchema.index({ codigo: 1 }, { unique: true, sparse: true });
 
 export default mongoose.model('Product', productSchema);
