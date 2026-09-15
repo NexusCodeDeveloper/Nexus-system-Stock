@@ -4,6 +4,7 @@ import ProtectedRoute from './components/ProtectedRoute/ProtectedRoute'
 import Layout from './components/Layout/Layout'
 import LoginModal from './pages/Login/Login'
 import Products from './pages/Products/Products'
+import Deposito from './pages/Deposito/Deposito'
 import Suppliers from './pages/Suppliers/Suppliers'
 import Returns from './pages/Returns/Returns'
 import Sales from './pages/Sales/Sales'
@@ -11,7 +12,6 @@ import Tickets from './pages/Tickets/Tickets'
 import Notifications from './pages/Notifications/Notifications'
 import LoadingSpinner from './components/common/LoadingSpinner'
 import WelcomeOverlay from './components/Layout/WelcomeOverlay'
-import RoleGuideOverlay from './components/Layout/RoleGuideOverlay'
 import PushPermissionBanner from './components/PushPermissionBanner'
 
 function App() {
@@ -38,6 +38,7 @@ function App() {
         >
           <Route index element={<Products />} />
           <Route path="products" element={<Products />} />
+          <Route path="deposito" element={<Deposito />} />
           <Route path="sales" element={<Sales />} />
           <Route path="tickets" element={<Tickets />} />
           <Route path="suppliers" element={<Suppliers />} />
@@ -48,7 +49,6 @@ function App() {
       </Routes>
       {!user && <LoginModal />}
       {user && <WelcomeOverlay />}
-      {user && <RoleGuideOverlay />}
       {user && <PushPermissionBanner />}
     </>
   )

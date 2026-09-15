@@ -1,10 +1,11 @@
 import { NavLink } from 'react-router-dom';
-import { IconBox, IconChart, IconUsers, IconReturn, IconBell, IconTile, IconTicket } from '../ui/icons';
+import { IconBox, IconChart, IconUsers, IconReturn, IconBell, IconTile, IconTicket, IconWarehouse } from '../ui/icons';
 import { useNotifications } from '../../context/NotificationContext';
 import { useAuth } from '../../context/AuthContext';
 
 const links = [
-  { to: '/products', label: 'Productos', icon: IconBox, gradient: 'from-sky-500 to-blue-600' },
+  { to: '/products', label: 'Salón', icon: IconBox, gradient: 'from-sky-500 to-blue-600' },
+  { to: '/deposito', label: 'Depósito', icon: IconWarehouse, gradient: 'from-violet-500 to-purple-600' },
   { to: '/sales', label: 'Ventas', icon: IconChart, gradient: 'from-emerald-500 to-teal-600' },
   { to: '/tickets', label: 'Tickets', icon: IconTicket, gradient: 'from-amber-500 to-orange-600' },
   { to: '/suppliers', label: 'Proveedores', icon: IconUsers, gradient: 'from-indigo-500 to-purple-600', adminOnly: true },
@@ -16,14 +17,15 @@ const Sidebar = () => {
   const { pendingCount } = useNotifications();
   const { user } = useAuth();
   const visibleLinks = links.filter((link) => !link.adminOnly || user?.rol === 'admin');
+
   return (
-    <aside className="hidden md:flex w-[260px] bg-ios-surface/70 backdrop-blur-2xl border-r border-ios-separator/40 flex-col shrink-0">
-      <div className="px-5 pt-7 pb-6">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-[11px] bg-gradient-to-br from-ios-tint to-blue-600 flex items-center justify-center shadow-[0_4px_14px_rgba(10,132,255,0.4)]">
+    <aside className="group absolute inset-y-0 left-0 z-30 w-[72px] hover:w-[260px] transition-[width] duration-300 ease-out overflow-hidden bg-ios-surface/95 backdrop-blur-2xl border-r border-ios-separator/40 flex flex-col shadow-[8px_0_28px_rgba(0,0,0,0.28)]">
+      <div className="px-4 pt-7 pb-6">
+        <div className="relative flex items-center">
+          <div className="w-10 h-10 shrink-0 rounded-[11px] bg-gradient-to-br from-ios-tint to-blue-600 flex items-center justify-center shadow-[0_4px_14px_rgba(10,132,255,0.4)]">
             <span className="text-white font-bold text-[15px] tracking-tight">NC</span>
           </div>
-          <div>
+          <div className="pointer-events-none absolute left-[56px] top-1/2 -translate-y-1/2 whitespace-nowrap opacity-0 transition-opacity duration-200 group-hover:opacity-100">
             <h1 className="text-[17px] font-bold text-ios-label tracking-tight">NexusCode</h1>
             <p className="text-[11px] text-ios-tertiary font-medium">Sistema de stock</p>
           </div>
@@ -37,7 +39,7 @@ const Sidebar = () => {
             to={link.to}
             end={link.to === '/'}
             className={({ isActive }) =>
-              `group flex items-center gap-3 px-3 py-2.5 rounded-2xl transition-all duration-200 ${
+              `relative flex items-center pl-2 pr-3 py-2.5 rounded-2xl transition-colors duration-200 ${
                 isActive
                   ? 'bg-ios-hover/[0.08]'
                   : 'hover:bg-ios-hover/[0.05] active:bg-ios-hover/[0.09]'
@@ -49,7 +51,7 @@ const Sidebar = () => {
                 <span className="relative shrink-0">
                   <IconTile
                     gradient={link.gradient}
-                    className={`w-8 h-8 transition-all duration-200 ${
+                    className={`w-8 h-8 transition-opacity duration-200 ${
                       isActive ? 'opacity-100' : 'opacity-60 group-hover:opacity-90'
                     }`}
                   >
@@ -62,7 +64,7 @@ const Sidebar = () => {
                   )}
                 </span>
                 <span
-                  className={`text-[15px] transition-colors duration-200 ${
+                  className={`pointer-events-none absolute left-[56px] top-1/2 -translate-y-1/2 whitespace-nowrap text-[15px] opacity-0 transition-opacity duration-200 group-hover:opacity-100 ${
                     isActive
                       ? 'text-ios-label font-semibold'
                       : 'text-ios-secondary group-hover:text-ios-label'
@@ -76,7 +78,7 @@ const Sidebar = () => {
         ))}
       </nav>
 
-      <div className="p-5">
+      <div className="p-4 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
         <div className="[perspective:700px]">
           <div className="relative h-11 animate-ios-flip bg-ios-surface2 border border-ios-separator/40 rounded-2xl px-4 py-3 text-center shadow-ios-card">
             <div className="ios-flip-face absolute inset-0 flex items-center justify-center">

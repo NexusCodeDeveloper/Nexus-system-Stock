@@ -1,10 +1,11 @@
 import { NavLink } from 'react-router-dom';
-import { IconBox, IconChart, IconUsers, IconReturn, IconBell, IconTicket } from '../ui/icons';
+import { IconBox, IconChart, IconUsers, IconReturn, IconBell, IconTicket, IconWarehouse } from '../ui/icons';
 import { useNotifications } from '../../context/NotificationContext';
 import { useAuth } from '../../context/AuthContext';
 
 const links = [
   { to: '/products', label: 'Productos', icon: IconBox, gradient: 'from-sky-500 to-blue-600' },
+  { to: '/deposito', label: 'Depósito', icon: IconWarehouse, gradient: 'from-violet-500 to-purple-600' },
   { to: '/sales', label: 'Ventas', icon: IconChart, gradient: 'from-emerald-500 to-teal-600' },
   { to: '/tickets', label: 'Tickets', icon: IconTicket, gradient: 'from-amber-500 to-orange-600' },
   { to: '/suppliers', label: 'Proveedores', icon: IconUsers, gradient: 'from-indigo-500 to-purple-600', adminOnly: true },
@@ -18,7 +19,7 @@ const MobileNav = () => {
   const visibleLinks = links.filter((link) => !link.adminOnly || user?.rol === 'admin');
   return (
     <nav className="fixed bottom-0 inset-x-0 z-40 md:hidden bg-ios-surface/90 backdrop-blur-2xl border-t border-ios-separator/50 safe-bottom">
-      <div className="grid grid-cols-6">
+      <div className="grid grid-cols-7">
         {visibleLinks.map((link) => (
           <NavLink
             key={link.to}
