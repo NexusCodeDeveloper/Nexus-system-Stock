@@ -1,13 +1,10 @@
-import { createContext, useContext, useEffect, useState } from 'react';
+import { createContext, useContext, useEffect, useState, useCallback, useMemo } from 'react';
+import { getItem, setItem } from '../utils/storage';
 
 const ThemeContext = createContext(null);
 
 const getInitialTheme = () => {
-  try {
-    return localStorage.getItem('theme') === 'light' ? 'light' : 'dark';
-  } catch {
-    return 'dark';
-  }
+  return getItem('theme') === 'light' ? 'light' : 'dark';
 };
 
 export const ThemeProvider = ({ children }) => {
@@ -15,15 +12,15 @@ export const ThemeProvider = ({ children }) => {
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
-    try {
-      localStorage.setItem('theme', theme);
-    } catch {}
+    setItem('theme', theme);
   }, [theme]);
 
-  const toggleTheme = () => setTheme((t) => (t === 'dark' ? 'light' : 'dark'));
+  const toggleTheme = useCallback(() => setTheme((t) => (t === 'dark' ? 'light' : 'dark')), []);
+
+  const value = useMemo(() => ({ theme, toggleTheme }), [theme, toggleTheme]);
 
   return (
-    <ThemeContext.Provider value={{ theme, toggleTheme }}>
+    <ThemeContext.Provider value={value}>
       {children}
     </ThemeContext.Provider>
   );

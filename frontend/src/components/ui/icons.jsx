@@ -39,6 +39,10 @@ export const IconLock = (p) => <Icon {...p} d="M12 15v3m-6-9h12v11a1 1 0 01-1 1H
 export const IconBell = (p) => <Icon {...p} d="M18 8a6 6 0 10-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 01-3.4 0" />;
 export const IconTicket = (p) => <Icon {...p} d="M4 6a1 1 0 011-1h14a1 1 0 011 1v3a2 2 0 000 6v3a1 1 0 01-1 1H5a1 1 0 01-1-1v-3a2 2 0 000-6V6zm4 3h8M8 12h8M8 15h4" />;
 export const IconPrint = (p) => <Icon {...p} d="M6 9V2h12v7M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2M6 14h12v8H6z" />;
+export const IconCamera = (p) => <Icon {...p} d="M4 7h3l2-2h6l2 2h3a1 1 0 011 1v11a1 1 0 01-1 1H4a1 1 0 01-1-1V8a1 1 0 011-1zm8 3a4 4 0 100 8 4 4 0 000-8z" />;
+export const IconBarcode = (p) => <Icon {...p} d="M4 5v14M7 5v14M10 5v10M13 5v14M16 5v10M19 5v14" />;
+
+export const IconWarehouse = (p) => <Icon {...p} d="M3 21h18M5 21V8l7-5 7 5v13M9 21v-6h6v6M9 11h6" />;
 
 export const IconTile = ({ children, gradient = 'from-sky-500 to-blue-600', className = 'w-7 h-7' }) => (
   <span
