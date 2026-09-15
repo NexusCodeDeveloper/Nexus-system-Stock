@@ -72,7 +72,7 @@ const Notifications = () => {
     setError('');
     try {
       const res = await getNotifications();
-      setNotifications(res.data);
+      setNotifications(Array.isArray(res.data) ? res.data : []);
     } catch (err) {
       setError(getApiErrorMessage(err, 'Error al cargar avisos'));
     } finally {

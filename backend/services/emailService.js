@@ -1,4 +1,5 @@
 import nodemailer from 'nodemailer';
+import logger from '../utils/logger.js';
 
 const MAX_LINEAS = 8;
 
@@ -437,7 +438,11 @@ const enviarCorreo = async ({ subject, text, html }) => {
 
 export const enviarCierreDeCaja = async ({ ventas, close, offset, turno, totalDia }) => {
   if (!estaConfigurado()) {
-    console.warn('[Mail] No configurado, se omite el envío del cierre.');
+    logger.warn('Mail no configurado: se omite el envío del cierre', {
+      queRevisar: 'Configurá BREVO_API_KEY o las variables MAIL_HOST/MAIL_USER/MAIL_PASS.',
+      origen: 'backend',
+      lugar: 'emailService.js',
+    });
     return { enviado: false };
   }
 

@@ -84,7 +84,7 @@ export const completeNotification = async (req, res, next) => {
     }
     notification.estado = 'realizado';
     notification.comentario = data.comentario || '';
-    notification.realizadoNombre = data.realizadoNombre;
+    notification.realizadoNombre = req.user.nombre;
     notification.realizadoPor = req.user.id;
     notification.realizadoEn = new Date();
     notification.nuevaParaAdmin = req.user.rol === 'admin' ? false : true;
@@ -96,7 +96,7 @@ export const completeNotification = async (req, res, next) => {
     void enviarEvento({
       tipo: 'aviso',
       titulo: 'Aviso completado',
-      mensaje: `${notification.titulo} · ${data.realizadoNombre}`,
+      mensaje: `${notification.titulo} · ${req.user.nombre}`,
       url: '/notifications',
       para: 'admins',
     });
