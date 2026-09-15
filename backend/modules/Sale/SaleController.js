@@ -1,5 +1,4 @@
 import mongoose from 'mongoose';
-import net from 'node:net';
 import Sale from './SaleModel.js';
 import Product from '../Product/ProductModel.js';
 import Return from '../Return/ReturnModel.js';
@@ -9,6 +8,17 @@ import { createSaleSchema } from './SaleSchema.js';
 import { generarTicketNumero, guardarConTicketUnico } from './ticketUtils.js';
 import { enviarCierreDeCaja, enviarMailTest, verificarMail } from '../../services/emailService.js';
 import { enviarEvento, enviarStockBajo } from '../../services/pushService.js';
+import { aCentavos } from '../../utils/money.js';
+import logger from '../../utils/logger.js';
+
+const escapeRegex = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+const extraDeposito = (product, talle, color) => {
+  const disponible = product.variants?.length > 0
+    ? (product.variants.find((v) => v.talle === (talle || '') && v.color === (color || ''))?.deposito || 0)
+    : (product.deposito || 0);
+  return disponible > 0 ? ` Hay ${disponible} en depósito: reponé primero.` : '';
+};
 
 const parseDate = (str, offset = 0) => {
   if (!str) return null;
@@ -97,7 +107,7 @@ export const createSale = async (req, res, next) => {
         if (product.variants[idx].cantidad < item.cantidad) {
           await session.abortTransaction();
           return res.status(400).json({
-            message: `Stock insuficiente para "${product.nombre}". Solo hay ${product.variants[idx].cantidad} unidad(es).`,
+            message: `Stock insuficiente para "${product.nombre}". Solo hay ${product.variants[idx].cantidad} unidad(es) en salón.${extraDeposito(product, item.talle, item.color)}`,
           });
         }
         product.variants[idx].cantidad -= item.cantidad;
@@ -105,7 +115,7 @@ export const createSale = async (req, res, next) => {
         if (product.cantidad < item.cantidad) {
           await session.abortTransaction();
           return res.status(400).json({
-            message: `Stock insuficiente para "${product.nombre}". Solo hay ${product.cantidad} unidad(es).`,
+            message: `Stock insuficiente para "${product.nombre}". Solo hay ${product.cantidad} unidad(es) en salón.${extraDeposito(product, item.talle, item.color)}`,
           });
         }
         product.cantidad -= item.cantidad;
@@ -138,7 +148,7 @@ export const createSale = async (req, res, next) => {
     const sale = await Sale.create([{
       items,
       total,
-      empleado: data.empleado,
+      empleado: req.user.nombre,
       pagos: data.pagos,
       descuento: data.descuento || 0,
     }], { session });
@@ -148,15 +158,15 @@ export const createSale = async (req, res, next) => {
     await session.commitTransaction();
 
     savedSale.$session(null);
-    const populated = await savedSale.populate('items.producto', 'nombre');
+    const populated = await savedSale.populate('items.producto', 'nombre codigo');
 
     void enviarStockBajo(productosVendidos);
     void enviarEvento({
       tipo: 'venta',
       titulo: 'Nueva venta',
-      mensaje: `$${Number(total).toLocaleString('es-AR', { minimumFractionDigits: 2 })} · ${data.empleado}`,
+      mensaje: `$${Number(total).toLocaleString('es-AR', { minimumFractionDigits: 2 })} · ${req.user.nombre}`,
       url: '/sales',
-      para: { empleado: data.empleado },
+      para: { userId: req.user.id, nombre: req.user.nombre },
     });
 
     res.status(201).json(populated);
@@ -211,7 +221,7 @@ export const deleteSale = async (req, res, next) => {
     await session.commitTransaction();
     res.json({ message: 'Venta eliminada correctamente' });
   } catch (error) {
-    await session.abortTransaction();
+    await session.abortTransaction().catch(() => {});
     next(error);
   } finally {
     session.endSession();
@@ -220,7 +230,7 @@ export const deleteSale = async (req, res, next) => {
 
 export const getSales = async (req, res, next) => {
   try {
-    const { desde, hasta, offset = 0, numero } = req.query;
+    const { desde, hasta, offset = 0, numero, codigo, buscar } = req.query;
     const filter = {};
 
     if (desde || hasta) {
@@ -229,12 +239,40 @@ export const getSales = async (req, res, next) => {
 
     const numeroStr = String(numero || '').trim().replace(/[^0-9]/g, '');
     if (numeroStr) {
-      filter.ticketNumero = { $regex: numeroStr, $options: 'i' };
+      filter.ticketNumero = { $regex: `^${numeroStr}` };
+    }
+
+    const codigoStr = String(codigo || '').trim();
+    if (codigoStr) {
+      const product = await Product.findOne({
+        codigo: { $regex: `^${escapeRegex(codigoStr)}$`, $options: 'i' },
+      })
+        .select('_id')
+        .lean();
+      if (!product) {
+        return res.json({ sales: [], total: 0 });
+      }
+      filter.$or = [{ 'items.producto': product._id }, { producto: product._id }];
+    }
+
+    const buscarStr = String(buscar || '').trim();
+    if (buscarStr) {
+      const safe = escapeRegex(buscarStr);
+      const or = [{ ticketNumero: { $regex: `^(T-)?${safe}`, $options: 'i' } }];
+      const product = await Product.findOne({
+        codigo: { $regex: `^${safe}$`, $options: 'i' },
+      })
+        .select('_id')
+        .lean();
+      if (product) {
+        or.push({ 'items.producto': product._id }, { producto: product._id });
+      }
+      filter.$or = or;
     }
 
     const sales = await Sale.find(filter)
-      .populate('items.producto', 'nombre categoria')
-      .populate('producto', 'nombre categoria')
+      .populate('items.producto', 'nombre categoria codigo')
+      .populate('producto', 'nombre categoria codigo')
       .sort({ createdAt: -1 });
 
     const total = Math.round(sales.reduce((sum, s) => sum + s.total, 0) * 100) / 100;
@@ -303,10 +341,7 @@ export const getDailyClose = async (req, res, next) => {
     if (turno !== 'manana' && turno !== 'tarde') {
       return res.status(400).json({ message: 'Turno inválido. Use "manana" o "tarde"' });
     }
-    const cerradoPor = String(p('cerradoPor') || '').trim();
-    if (!cerradoPor) {
-      return res.status(400).json({ message: 'Debe indicar quién cierra el turno' });
-    }
+    const cerradoPor = req.user.nombre;
 
     const now = new Date();
     const hoyInicio = startOfDayDate(offset);
@@ -407,18 +442,18 @@ export const getDailyClose = async (req, res, next) => {
           desdeAt,
           hastaAt,
           cerradoPor,
-          total,
+          total: aCentavos(total),
           cantidad,
-          efectivo: porMetodo.efectivo || { total: 0, cantidad: 0 },
-          transferencia: porMetodo.transferencia || { total: 0, cantidad: 0 },
-          tarjeta: porMetodo.tarjeta || { total: 0, cantidad: 0 },
+          efectivo: { total: aCentavos(porMetodo.efectivo?.total || 0), cantidad: porMetodo.efectivo?.cantidad || 0 },
+          transferencia: { total: aCentavos(porMetodo.transferencia?.total || 0), cantidad: porMetodo.transferencia?.cantidad || 0 },
+          tarjeta: { total: aCentavos(porMetodo.tarjeta?.total || 0), cantidad: porMetodo.tarjeta?.cantidad || 0 },
           retiros: retiros.map((r) => ({
-            monto: Math.round(r.monto * 100) / 100,
+            monto: aCentavos(r.monto),
             motivo: r.motivo,
             realizadoPor: r.realizadoPor,
             fecha: r.createdAt,
           })),
-          totalRetiros,
+          totalRetiros: aCentavos(totalRetiros),
           cerradoAt: new Date(),
         },
         { upsert: true, new: true }
@@ -461,7 +496,13 @@ export const getDailyClose = async (req, res, next) => {
     }
 
     enviarCierreDeCaja({ ventas: sales, close, offset, turno, totalDia }).catch((err) =>
-      console.error('[Mail] Error al enviar el cierre de caja:', err.message)
+      logger.error('No se pudo enviar el mail del cierre de caja', {
+        motivo: err.message,
+        queRevisar: 'Revisá la configuración MAIL_* o BREVO_API_KEY.',
+        origen: 'backend',
+        lugar: 'SaleController.js → getDailyClose',
+        stack: err.stack,
+      })
     );
 
     void enviarEvento({
@@ -626,9 +667,14 @@ export const resendCloseMail = async (req, res, next) => {
     }
     res.json({ message: 'Mail del cierre reenviado correctamente' });
   } catch (error) {
-    const detalle = error.message || error.code || 'Error desconocido';
-    console.error('[Mail] Error al reenviar mail del cierre:', detalle);
-    return res.status(500).json({ message: `No se pudo enviar el mail: ${detalle}` });
+    logger.error('No se pudo reenviar el mail del cierre', {
+      motivo: error.message,
+      queRevisar: 'Revisá la configuración MAIL_* o BREVO_API_KEY.',
+      origen: 'backend',
+      lugar: 'SaleController.js → resendCloseMail',
+      stack: error.stack,
+    });
+    next(error);
   }
 };
 
@@ -647,44 +693,17 @@ export const mailStatus = async (req, res, next) => {
     const datos = await verificarMail();
     res.json({ message: 'Conexión SMTP y autenticación OK', ...datos });
   } catch (error) {
-    const detalle = error.message || error.code || 'Error desconocido';
-    console.error('[Mail] mail-status:', detalle);
-    res.status(500).json({
-      message: `Fallo al conectar con el SMTP: ${detalle}`,
-      host: process.env.MAIL_HOST || 'smtp-relay.brevo.com',
-      port: Number(process.env.MAIL_PORT || 587),
-      user: process.env.MAIL_USER ? `*${process.env.MAIL_USER.slice(-4)}` : '(vacío)',
-      to: process.env.MAIL_TO || '(vacío)',
+    logger.error('No se pudo verificar el estado del mail', {
+      motivo: error.message,
+      queRevisar: 'Revisá la configuración MAIL_* o BREVO_API_KEY.',
+      origen: 'backend',
+      lugar: 'SaleController.js → mailStatus',
+      stack: error.stack,
     });
+    const err = new Error('No se pudo conectar con el servidor de mail');
+    err.statusCode = 502;
+    next(err);
   }
-};
-
-export const netProbe = async (req, res, next) => {
-  const host = String(req.query.host || '').trim();
-  const port = Number(req.query.port);
-
-  if (!host || !Number.isInteger(port) || port < 1 || port > 65535) {
-    return res.status(400).json({ message: 'Parámetros inválidos: host y port (1-65535) son requeridos' });
-  }
-  if (host.includes('://') || /[\s/]/.test(host)) {
-    return res.status(400).json({ message: 'host inválido' });
-  }
-
-  const TIMEOUT = 5000;
-  const t0 = Date.now();
-  const socket = net.connect({ host, port, timeout: TIMEOUT, family: 4 });
-
-  const resultado = await new Promise((resolve) => {
-    const done = (reachable, error) => {
-      socket.destroy();
-      resolve({ host, port, reachable, error: error || null, ms: Date.now() - t0 });
-    };
-    socket.once('connect', () => done(true, null));
-    socket.once('timeout', () => done(false, 'timeout'));
-    socket.once('error', (err) => done(false, err.code || err.message));
-  });
-
-  res.json(resultado);
 };
 
 export const runMigration = async (req, res, next) => {
@@ -704,7 +723,13 @@ export const runMigration = async (req, res, next) => {
     }
     try {
       await DailyClose.collection.dropIndex('fecha_1');
-    } catch {}
+    } catch (error) {
+      logger.debug('Índice fecha_1 no existía al migrar cierres', {
+        origen: 'backend',
+        lugar: 'SaleController.js:runMigration',
+        motivo: error.message,
+      });
+    }
     await DailyClose.syncIndexes();
     res.json({ message: `Migradas ${count} ventas al formato items[]; índices de cierres actualizados` });
   } catch (error) {
@@ -717,18 +742,8 @@ export const ensureTicketNumbers = async () => {
   let count = 0;
 
   for await (const sale of cursor) {
-    sale.ticketNumero = generarTicketNumero();
-    let guardado = false;
-    for (let i = 0; i < 10 && !guardado; i++) {
-      try {
-        await sale.save();
-        guardado = true;
-      } catch (error) {
-        if (error.code !== 11000) throw error;
-        sale.ticketNumero = generarTicketNumero();
-      }
-    }
-    if (!guardado) throw new Error('No se pudo asignar un número de ticket único');
+    sale.ticketNumero = await generarTicketNumero();
+    await sale.save();
     count++;
   }
 

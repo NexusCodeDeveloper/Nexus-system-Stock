@@ -6,6 +6,10 @@ import { getApiErrorMessage } from '../../utils/apiError';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
 import IosModal from '../../components/ui/IosModal';
 import IosSearch from '../../components/ui/IosSearch';
+import ScannerButton from '../../components/scanner/ScannerButton';
+import ScannerModal from '../../components/scanner/ScannerModal';
+import { useLector } from '../../context/LectorContext';
+import { useIosAlert } from '../../components/alerts';
 import { IconTicket, IconTile, IconEye, IconPrint, IconReturn, IconRefresh } from '../../components/ui/icons';
 
 const formatDate = (date) =>
@@ -35,10 +39,7 @@ const pagoBadge = (metodo) => {
 const pagoLabel = (metodo) =>
   metodo === 'efectivo' ? 'Efectivo' : metodo === 'transferencia' ? 'Transferencia' : 'Tarjeta';
 
-const getNumero = (s) =>
-  s.ticketNumero
-    ? String(s.ticketNumero)
-    : (String(s.numero || s._id || '').replace(/[^0-9]/g, '').slice(-6) || '000000');
+const getNumero = (s) => (s.ticketNumero ? String(s.ticketNumero) : '—');
 
 const getEstadoTicket = (s) => {
   if (s.estado === 'devuelta') return { label: 'Devuelto', cls: 'bg-ios-red/15 text-ios-red' };
@@ -47,7 +48,7 @@ const getEstadoTicket = (s) => {
 };
 
 const Tickets = () => {
-  const [numero, setNumero] = useState('');
+  const [busqueda, setBusqueda] = useState('');
   const [data, setData] = useState({ sales: [], total: 0 });
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState('');
@@ -55,10 +56,14 @@ const Tickets = () => {
   const [ticketModal, setTicketModal] = useState(null);
   const [returnSale, setReturnSale] = useState(null);
   const [returnIsCambio, setReturnIsCambio] = useState(false);
+  const [returnCodigo, setReturnCodigo] = useState('');
+  const [scannerOpen, setScannerOpen] = useState(false);
   const [dropdown, setDropdown] = useState({ sale: null, x: 0, y: 0 });
   const dropdownRef = useRef(null);
   const fetchSeqRef = useRef(0);
   const anchorRef = useRef(null);
+
+  const { toast } = useIosAlert();
 
   useLayoutEffect(() => {
     if (!dropdown.sale) return;
@@ -90,14 +95,24 @@ const Tickets = () => {
     }
   };
 
-  const handleDropdownAction = (action) => {
+  const abrirReturn = (s, esCambio) => {
+    const termino = busqueda.trim();
+    setReturnCodigo(/^T-/i.test(termino) ? '' : termino);
+    setReturnIsCambio(esCambio);
+    setReturnSale(s);
+  };
+
+  const handleDropdownAction = async (action) => {
     const s = dropdown.sale;
     setDropdown({ sale: null, x: 0, y: 0 });
     if (!s) return;
     if (action === 'ver') setTicketModal(s);
-    else if (action === 'imprimir') printTicket(s);
-    else if (action === 'devolver' && s.estado !== 'devuelta') { setReturnIsCambio(false); setReturnSale(s); }
-    else if (action === 'cambiar' && s.estado !== 'devuelta') { setReturnIsCambio(true); setReturnSale(s); }
+    else if (action === 'imprimir') {
+      const ok = await printTicket(s);
+      if (!ok) toast({ message: 'Habilitá las ventanas emergentes para imprimir' });
+    }
+    else if (action === 'devolver' && s.estado !== 'devuelta') abrirReturn(s, false);
+    else if (action === 'cambiar' && s.estado !== 'devuelta') abrirReturn(s, true);
   };
 
   const fetchData = () => {
@@ -105,12 +120,13 @@ const Tickets = () => {
     setLoading(true);
     setFetchError('');
     const params = { offset: new Date().getTimezoneOffset() };
-    const soloDigitos = numero.trim().replace(/[^0-9]/g, '');
-    if (soloDigitos) params.numero = soloDigitos;
+    const termino = busqueda.trim();
+    if (termino) params.buscar = termino;
     getTickets(params)
       .then((res) => {
         if (seq !== fetchSeqRef.current) return;
-        setData(res.data);
+        const sales = res.data?.sales;
+        setData({ sales: Array.isArray(sales) ? sales : [], total: res.data?.total || 0 });
       })
       .catch((err) => {
         if (seq !== fetchSeqRef.current) return;
@@ -126,7 +142,11 @@ const Tickets = () => {
       fetchData();
     }, 350);
     return () => clearTimeout(t);
-  }, [numero]);
+  }, [busqueda]);
+
+  useLector((codigo) => {
+    setBusqueda(String(codigo).trim());
+  }, !ticketModal && !returnSale);
 
   return (
     <div>
@@ -145,13 +165,25 @@ const Tickets = () => {
         </div>
       </div>
 
-      <div className="bg-ios-surface border border-ios-separator/30 rounded-3xl p-5 mb-4">
+      <div className="bg-ios-surface border border-ios-separator/30 rounded-3xl p-5 mb-4 flex items-center gap-3">
         <IosSearch
-          value={numero}
-          onChange={setNumero}
-          placeholder="Buscar por número de ticket…"
+          value={busqueda}
+          onChange={setBusqueda}
+          placeholder="Buscar por ticket o código de producto…"
+          className="flex-1"
         />
+        <ScannerButton onClick={() => setScannerOpen(true)} title="Escanear ticket o producto" />
       </div>
+
+      <ScannerModal
+        open={scannerOpen}
+        onClose={() => setScannerOpen(false)}
+        onLeer={(codigo) => {
+          setBusqueda(String(codigo).trim());
+          setScannerOpen(false);
+        }}
+        titulo="Escanear ticket o producto"
+      />
 
       {loading ? (
         <LoadingSpinner />
@@ -174,7 +206,7 @@ const Tickets = () => {
                 {data.sales.length === 0 ? (
                   <tr>
                     <td colSpan={7} className="text-center py-10 text-ios-tertiary text-sm">
-                      No se encontraron tickets{numero.trim() ? ' con ese número' : ''}
+                      No se encontraron tickets{busqueda.trim() ? ' con ese criterio' : ''}
                     </td>
                   </tr>
                 ) : (
@@ -198,6 +230,9 @@ const Tickets = () => {
                         <td className="px-4 py-3.5 text-ios-secondary">
                           {items[0]?.producto?.nombre || 'Producto'}
                           {items.length > 1 && <span className="text-ios-tertiary"> +{items.length - 1} más</span>}
+                          {items[0]?.producto?.codigo && (
+                            <span className="block text-[11px] text-ios-tertiary mt-0.5">Cód. {items[0].producto.codigo}</span>
+                          )}
                         </td>
                         <td className="px-4 py-3.5 text-ios-green font-semibold whitespace-nowrap tabular-nums">{formatMoney(s.total)}</td>
                         <td className="px-4 py-3.5 text-ios-secondary">{s.empleado}</td>
@@ -233,7 +268,7 @@ const Tickets = () => {
           <div className="md:hidden space-y-2.5">
             {data.sales.length === 0 ? (
               <div className="text-center py-10 text-ios-tertiary text-sm">
-                No se encontraron tickets{numero.trim() ? ' con ese número' : ''}
+                No se encontraron tickets{busqueda.trim() ? ' con ese criterio' : ''}
               </div>
             ) : (
               data.sales.map((s) => {
@@ -312,6 +347,7 @@ const Tickets = () => {
                             <div className="min-w-0">
                               <p className="text-ios-label font-medium truncate">{item.producto?.nombre || 'Producto'}</p>
                               <p className="text-xs text-ios-tertiary">
+                                {item.producto?.codigo ? `Cód. ${item.producto.codigo} · ` : ''}
                                 {item.producto?.categoria || '—'}
                                 {item.talle ? ` · Talle ${item.talle}` : ''}
                               </p>
@@ -403,7 +439,11 @@ const Tickets = () => {
         sale={returnSale}
         open={!!returnSale}
         defaultExchange={returnIsCambio}
-        onClose={() => setReturnSale(null)}
+        initialCodigo={returnCodigo}
+        onClose={() => {
+          setReturnSale(null);
+          setReturnCodigo('');
+        }}
         onDone={() => {
           fetchData();
           setTicketModal(null);

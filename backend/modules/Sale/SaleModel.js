@@ -1,12 +1,13 @@
 import mongoose from 'mongoose';
+import { campoCentavos, campoCentavosPositivo } from '../../utils/money.js';
 
 const itemSchema = new mongoose.Schema({
   producto: { type: mongoose.Schema.Types.ObjectId, ref: 'Product', required: true },
   cantidad: { type: Number, required: true, min: 1 },
-  precio: { type: Number, required: true, min: 0 },
+  precio: { ...campoCentavosPositivo, required: true },
   talle: { type: String, default: '' },
   color: { type: String, default: '' },
-  subtotal: { type: Number, required: true, min: 0 },
+  subtotal: { ...campoCentavosPositivo, required: true },
 }, { _id: false });
 
 const saleSchema = new mongoose.Schema({
@@ -14,26 +15,26 @@ const saleSchema = new mongoose.Schema({
   items: [itemSchema],
   producto: { type: mongoose.Schema.Types.ObjectId, ref: 'Product' },
   cantidad: { type: Number, min: 1 },
-  precio: { type: Number, min: 0 },
+  precio: campoCentavosPositivo,
   talle: { type: String, default: '' },
-  total: { type: Number, required: true, min: 0 },
+  total: { ...campoCentavosPositivo, required: true },
   empleado: { type: String, required: true, trim: true },
   pagos: [{
     metodo: { type: String, enum: ['efectivo', 'transferencia', 'tarjeta'], required: true },
-    monto: { type: Number, required: true, min: 0 },
+    monto: { ...campoCentavosPositivo, required: true },
   }],
   metodoPago: { type: String, enum: ['efectivo', 'transferencia', 'tarjeta'] },
   descuento: { type: Number, default: 0, min: 0, max: 100 },
   estado: { type: String, enum: ['activa', 'devuelta'], default: 'activa' },
-  montoDevuelto: { type: Number, default: 0, min: 0 },
+  montoDevuelto: { ...campoCentavosPositivo, default: 0 },
   cantidadDevuelta: { type: Number, default: 0, min: 0 },
   devoluciones: [{
     motivo: { type: String, trim: true, default: '' },
     cantidad: { type: Number, min: 1 },
-    monto: { type: Number, min: 0 },
+    monto: campoCentavos,
     fecha: { type: Date, default: Date.now },
   }],
-}, { timestamps: true });
+}, { timestamps: true, toJSON: { getters: true } });
 
 saleSchema.pre('save', function (next) {
   if (this.items && this.items.length > 0) {

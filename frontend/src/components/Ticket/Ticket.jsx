@@ -1,4 +1,7 @@
-const NEGOCIO = 'StockSistem';
+import { useEffect, useState } from 'react';
+
+const NEGOCIO = 'Desarrollo by NexusCode';
+const NEGOCIONAME = 'NexusCode';
 
 const pad = (n) => String(n).padStart(2, '0');
 
@@ -21,10 +24,9 @@ const getPagos = (sale) =>
 
 const getNombre = (item) => item.producto?.nombre || item.nombre || 'Producto';
 
-const getTicketNumber = (sale) =>
-  sale.ticketNumero
-    ? String(sale.ticketNumero)
-    : (String(sale.numero || sale._id || '').replace(/[^0-9]/g, '').slice(-6) || '000000');
+const getCodigo = (item) => item.producto?.codigo || item.codigo || '';
+
+const getTicketNumber = (sale) => (sale.ticketNumero ? String(sale.ticketNumero) : '');
 
 const getDevolucionLabel = (sale) => {
   if (sale.estado === 'devuelta') return '*** DEVOLUCIÓN ***';
@@ -34,16 +36,71 @@ const getDevolucionLabel = (sale) => {
   return null;
 };
 
+const generarImagenesTicket = async (sale) => {
+  let qrDataUrl = '';
+  const barcodes = {};
+
+  try {
+    const numero = getTicketNumber(sale);
+    if (numero) {
+      const QRCode = (await import('qrcode')).default;
+      qrDataUrl = await QRCode.toDataURL(numero, { margin: 1, width: 220 });
+    }
+  } catch {
+    qrDataUrl = '';
+  }
+
+  try {
+    const JsBarcode = (await import('jsbarcode')).default;
+    const codigos = [...new Set(getItems(sale).map((item) => getCodigo(item)).filter(Boolean))];
+    for (const codigo of codigos) {
+      const canvas = document.createElement('canvas');
+      JsBarcode(canvas, codigo, {
+        format: 'CODE128',
+        displayValue: false,
+        width: 2,
+        height: 40,
+        margin: 0,
+      });
+      barcodes[codigo] = canvas.toDataURL('image/png');
+    }
+  } catch {
+    // sin códigos de barras: el ticket igual se muestra/imprime con el texto del código
+  }
+
+  return { qrDataUrl, barcodes };
+};
+
 const TicketBody = ({ sale }) => {
+  const [qrDataUrl, setQrDataUrl] = useState('');
+  const [barcodes, setBarcodes] = useState({});
+
+  useEffect(() => {
+    let cancelado = false;
+    setQrDataUrl('');
+    setBarcodes({});
+    generarImagenesTicket(sale)
+      .then((res) => {
+        if (cancelado) return;
+        setQrDataUrl(res.qrDataUrl);
+        setBarcodes(res.barcodes);
+      })
+      .catch(() => {});
+    return () => {
+      cancelado = true;
+    };
+  }, [sale]);
+
   const items = getItems(sale);
   const pagos = getPagos(sale);
   const descuento = Number(sale.descuento) || 0;
   const subtotal = items.reduce((s, i) => s + (i.subtotal != null ? i.subtotal : i.precio * i.cantidad), 0);
+  const codigosBarras = [...new Set(items.map((item) => getCodigo(item)).filter((codigo) => codigo && barcodes[codigo]))];
 
   return (
     <div className="ticket-body">
       <div className="text-center">
-        <p className="text-[15px] font-bold tracking-widest">{NEGOCIO.toUpperCase()}</p>
+        <p className="text-[15px] font-bold tracking-widest">{NEGOCIONAME.toUpperCase()}</p>
         <p className="text-[10px] opacity-70 mt-0.5">Comprobante de compra</p>
       </div>
 
@@ -51,7 +108,7 @@ const TicketBody = ({ sale }) => {
 
       <div className="ticket-line">
         <span>Ticket Nº</span>
-        <span>{getTicketNumber(sale)}</span>
+        <span>{getTicketNumber(sale) || '—'}</span>
       </div>
       {getDevolucionLabel(sale) && (
         <div className="ticket-line ticket-devolucion justify-center">
@@ -74,10 +131,12 @@ const TicketBody = ({ sale }) => {
         const precio = Number(item.precio) || 0;
         const lineSub = item.subtotal != null ? item.subtotal : precio * cantidad;
         const variante = [item.talle, item.color].filter(Boolean).join(' / ');
+        const codigo = getCodigo(item);
         return (
           <div key={i} className="mb-1.5">
             <p className="ticket-item-nombre">{getNombre(item)}</p>
             {variante && <p className="ticket-item-var">  {variante}</p>}
+            {codigo && <p className="ticket-item-cod">  Cód. {codigo}</p>}
             <p className="ticket-item-line">
               <span>{cantidad} x {formatMoney(precio)}</span>
               <span>{formatMoney(lineSub)}</span>
@@ -114,6 +173,21 @@ const TicketBody = ({ sale }) => {
 
       <div className="ticket-sep">==============================</div>
 
+      {(qrDataUrl || codigosBarras.length > 0) && (
+        <div className="ticket-codes">
+          {qrDataUrl && (
+            <div className="ticket-qr">
+              <img src={qrDataUrl} alt="QR del ticket" />
+            </div>
+          )}
+          {codigosBarras.map((codigo) => (
+            <p key={codigo} className="ticket-barcode">
+              <img src={barcodes[codigo]} alt={`Código de barras ${codigo}`} />
+            </p>
+          ))}
+        </div>
+      )}
+
       <p className="text-center text-[10px] opacity-70 leading-relaxed">
         ¡Gracias por su compra!
         <br />
@@ -123,7 +197,7 @@ const TicketBody = ({ sale }) => {
   );
 };
 
-const buildPrintHtml = (sale) => {
+const buildPrintHtml = (sale, qrDataUrl = '', barcodes = {}) => {
   return `<!DOCTYPE html>
 <html>
 <head>
@@ -151,12 +225,18 @@ const buildPrintHtml = (sale) => {
   .ticket-devolucion { font-weight: bold; color: #b91c1c; letter-spacing: 1px; }
   .ticket-item-nombre { font-weight: bold; }
   .ticket-item-var { opacity: 0.75; }
+  .ticket-item-cod { opacity: 0.75; }
   .ticket-item-line { display: flex; justify-content: space-between; gap: 8px; margin-top: 1px; }
   .ticket-item-line span:last-child { text-align: right; white-space: nowrap; }
+  .ticket-codes { text-align: center; margin-top: 6px; page-break-inside: avoid; }
+  .ticket-qr { margin: 0; }
+  .ticket-qr img { width: 110px; height: 110px; display: block; margin: 0 auto; }
+  .ticket-barcode { margin: 5px 0 0; }
+  .ticket-barcode img { max-width: 100%; height: auto; display: block; margin: 0 auto; }
 </style>
 </head>
 <body>
-${renderToHtml(sale)}
+${renderToHtml(sale, qrDataUrl, barcodes)}
 </body>
 </html>`;
 };
@@ -170,7 +250,7 @@ const escapeHtml = (str) =>
     "'": '&#39;',
   }[c]));
 
-const renderToHtml = (sale) => {
+const renderToHtml = (sale, qrDataUrl = '', barcodes = {}) => {
   const items = getItems(sale);
   const pagos = getPagos(sale);
   const descuento = Number(sale.descuento) || 0;
@@ -186,10 +266,16 @@ const renderToHtml = (sale) => {
       const precio = Number(item.precio) || 0;
       const lineSub = item.subtotal != null ? item.subtotal : precio * cantidad;
       const variante = [item.talle, item.color].filter(Boolean).join(' / ');
+      const codigo = getCodigo(item);
       return `<p class="ticket-item-nombre">${escapeHtml(getNombre(item))}</p>${
         variante ? `<p class="ticket-item-var">&nbsp;&nbsp;${escapeHtml(variante)}</p>` : ''
-      }<p class="ticket-item-line"><span>${cantidad} x ${formatMoney(precio)}</span><span>${formatMoney(lineSub)}</span></p>`;
+      }${codigo ? `<p class="ticket-item-cod">&nbsp;&nbsp;Cód. ${escapeHtml(codigo)}</p>` : ''}<p class="ticket-item-line"><span>${cantidad} x ${formatMoney(precio)}</span><span>${formatMoney(lineSub)}</span></p>`;
     })
+    .join('');
+
+  const codigosBarras = [...new Set(items.map((item) => getCodigo(item)).filter((codigo) => codigo && barcodes[codigo]))];
+  const barcodesHtml = codigosBarras
+    .map((codigo) => `<p class="ticket-barcode"><img src="${barcodes[codigo]}" alt="Código de barras" /></p>`)
     .join('');
 
   const pagosHtml = pagos
@@ -203,7 +289,7 @@ const renderToHtml = (sale) => {
     <p style="font-size:10px;opacity:0.7;margin-top:2px;">Comprobante de venta</p>
   </div>
   ${sep()}
-  ${line('Ticket Nº', getTicketNumber(sale))}
+  ${line('Ticket Nº', getTicketNumber(sale) || '—')}
   ${getDevolucionLabel(sale) ? `<p class="ticket-devolucion" style="text-align:center;font-weight:bold;letter-spacing:1px;color:#b91c1c;">${escapeHtml(getDevolucionLabel(sale))}</p>` : ''}
   ${line('Fecha', formatFecha(new Date(sale.createdAt || Date.now())))}
   ${line('Vendedor', sale.empleado || '—')}
@@ -216,21 +302,52 @@ const renderToHtml = (sale) => {
   ${sep()}
   ${pagosHtml}
   ${sep()}
+  ${(qrDataUrl || barcodesHtml) ? `<div class="ticket-codes">${qrDataUrl ? `<div class="ticket-qr"><img src="${qrDataUrl}" alt="QR del ticket" /></div>` : ''}${barcodesHtml}</div>` : ''}
   <p class="text-center" style="font-size:10px;opacity:0.7;">¡Gracias por su compra!<br/>${NEGOCIO}</p>
 </div>`;
 };
 
-export const printTicket = (sale) => {
+export const printTicket = async (sale) => {
   const win = window.open('', '_blank', 'width=400,height=600');
   if (!win) return false;
+
+  win.document.write('<!doctype html><title>Ticket</title><p style="font-family:monospace;padding:16px;">Generando ticket…</p>');
+
+  const { qrDataUrl, barcodes } = await generarImagenesTicket(sale);
+  if (win.closed) return false;
+
   win.document.open();
-  win.document.write(buildPrintHtml(sale));
+  win.document.write(buildPrintHtml(sale, qrDataUrl, barcodes));
   win.document.close();
   win.focus();
-  win.onafterprint = () => win.close();
-  setTimeout(() => {
+
+  const esperarImagenes = () =>
+    Promise.all(
+      Array.from(win.document.images || []).map((img) =>
+        img.complete
+          ? Promise.resolve()
+          : new Promise((resolve) => {
+              img.addEventListener('load', resolve, { once: true });
+              img.addEventListener('error', resolve, { once: true });
+            })
+      )
+    );
+
+  const imprimir = () => {
+    win.focus();
+    win.onafterprint = () => win.close();
     win.print();
-  }, 150);
+  };
+
+  if (win.document.readyState === 'complete') {
+    await esperarImagenes();
+    setTimeout(imprimir, 50);
+  } else {
+    win.addEventListener('load', () => {
+      esperarImagenes().then(() => setTimeout(imprimir, 50));
+    }, { once: true });
+  }
+
   return true;
 };
 
