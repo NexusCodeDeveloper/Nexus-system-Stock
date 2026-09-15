@@ -1,28 +1,29 @@
 import { useState, useEffect, useLayoutEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   getProducts,
-  createProduct,
-  updateProduct,
+  getProductByCodigo,
   deleteProduct,
   exchangeProduct,
-  addStock,
+  retirarStock,
   getLowStock,
 } from '../../api/products';
 import { createReturn } from '../../api/returns';
-import { createSale } from '../../api/sales';
 import { getApiErrorMessage } from '../../utils/apiError';
 import { escucharPush } from '../../services/pushManager';
-import Ticket, { printTicket } from '../../components/Ticket/Ticket';
-import ProductForm from '../../components/ProductForm/ProductForm';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
+import ScannerButton from '../../components/scanner/ScannerButton';
+import ScannerModal from '../../components/scanner/ScannerModal';
 import { useAuth } from '../../context/AuthContext';
+import { useLector } from '../../context/LectorContext';
+import { useCart } from '../../context/CartContext';
 import { useIosAlert, IconAlert } from '../../components/alerts';
 import IosButton from '../../components/ui/IosButton';
 import IosModal from '../../components/ui/IosModal';
 import IosSearch from '../../components/ui/IosSearch';
 import IosToggle from '../../components/ui/IosToggle';
 import { IosField, IosInput, IosSelect } from '../../components/ui/IosForm';
-import { IconCart, IconPlus, IconChevronDown, IconTrash, IconX, IconPencil, IconList, IconBox } from '../../components/ui/icons';
+import { IconCart, IconArrowUp, IconChevronDown, IconTrash, IconX, IconBox, IconCamera } from '../../components/ui/icons';
 
 const variantLabel = (v) => {
   const parts = [];
@@ -38,12 +39,14 @@ const variantShortLabel = (v) => {
   if (v.color) parts.push(v.color);
   return parts.join(' / ') || '—';
 };
+
+const depositoTotal = (p) =>
+  p.variants?.length > 0 ? p.variants.reduce((s, v) => s + (v.deposito || 0), 0) : (p.deposito || 0);
 const Products = () => {
+  const navigate = useNavigate();
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
-  const [showForm, setShowForm] = useState(false);
-  const [editing, setEditing] = useState(null);
   const [dropdown, setDropdown] = useState({ product: null, x: 0, y: 0 });
   const dropdownRef = useRef(null);
   const anchorRef = useRef(null);
@@ -69,7 +72,6 @@ const Products = () => {
     setDropdown((prev) => ({ ...prev, x, y }));
   }, [dropdown.product]);
 
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [returnModal, setReturnModal] = useState(null);
   const [returnCantidad, setReturnCantidad] = useState('1');
@@ -83,26 +85,46 @@ const Products = () => {
   const [exchangeCantidad, setExchangeCantidad] = useState('1');
   const [exchangeVariantIdx, setExchangeVariantIdx] = useState('');
 
-  const [cart, setCart] = useState([]);
-  const [showCart, setShowCart] = useState(false);
+  const [scannerOpen, setScannerOpen] = useState(false);
+  const [scannerContinuo, setScannerContinuo] = useState(false);
   const [quickAdd, setQuickAdd] = useState(null);
   const [qaCantidad, setQaCantidad] = useState('1');
   const [qaVariantIdx, setQaVariantIdx] = useState('');
 
-  const [sellEmpleado, setSellEmpleado] = useState('');
-  const [sellDescuento, setSellDescuento] = useState('');
-  const [sellMetodoPago, setSellMetodoPago] = useState('efectivo');
-  const [sellSplit, setSellSplit] = useState(false);
-  const [sellMetodo2, setSellMetodo2] = useState('transferencia');
-  const [sellMonto2, setSellMonto2] = useState('');
-  const [sellSaving, setSellSaving] = useState(false);
-
-  const [addStockModal, setAddStockModal] = useState(null);
-  const [addStockCantidad, setAddStockCantidad] = useState('1');
-  const [addStockVariantIdx, setAddStockVariantIdx] = useState('');
+  const [retirarModal, setRetirarModal] = useState(null);
+  const [retirarCantidad, setRetirarCantidad] = useState('1');
+  const [retirarVariantIdx, setRetirarVariantIdx] = useState('');
 
   const { user } = useAuth();
   const { show: alert, confirm, toast } = useIosAlert();
+  const {
+    cart,
+    addItem,
+    removeFromCart,
+    updateCartItem,
+    showCartModal,
+    openCart,
+    closeCart,
+    metodos,
+    sellEmpleado,
+    setSellEmpleado,
+    sellDescuento,
+    setSellDescuento,
+    sellMetodoPago,
+    setMetodoPago,
+    sellSplit,
+    toggleSplit,
+    sellMetodo2,
+    setSellMetodo2,
+    sellMonto2,
+    setSellMonto2,
+    sellSaving,
+    descuentoNum,
+    finalTotal,
+    sellMonto1,
+    confirmSale,
+    saleVersion,
+  } = useCart();
 
   const [lowStock, setLowStock] = useState([]);
   const [lowStockOpen, setLowStockOpen] = useState(false);
@@ -110,17 +132,8 @@ const Products = () => {
 
   const [expandedId, setExpandedId] = useState(null);
 
-  const [lastSale, setLastSale] = useState(null);
-  const [showTicketModal, setShowTicketModal] = useState(false);
-
   const agotados = lowStock.filter((i) => i.cantidad === 0);
   const bajos = lowStock.filter((i) => i.cantidad > 0);
-
-  const cartTotal = cart.reduce((s, i) => s + i.precio * i.cantidad, 0);
-  const descuentoNum = sellDescuento === '' ? 0 : Number(sellDescuento);
-  const finalTotal = cartTotal * (1 - descuentoNum / 100);
-  const sellMonto2Num = sellMonto2 === '' ? 0 : Number(sellMonto2);
-  const sellMonto1 = sellSplit ? finalTotal - sellMonto2Num : finalTotal;
 
   const fetchData = async () => {
     setLoading(true);
@@ -128,11 +141,23 @@ const Products = () => {
     try {
       const prodRes = await getProducts({ search });
       setProducts(prodRes.data);
+      if (!search) setAllProducts(prodRes.data);
     } catch (err) {
       setError(getApiErrorMessage(err, 'Error al cargar productos'));
     } finally {
       setLoading(false);
     }
+  };
+
+  const fetchAllProducts = () => {
+    getProducts({})
+      .then((res) => setAllProducts(res.data))
+      .catch(() => {});
+  };
+
+  const refreshProducts = () => {
+    fetchData();
+    fetchAllProducts();
   };
 
   const fetchLowStock = () => {
@@ -148,9 +173,6 @@ const Products = () => {
 
   useEffect(() => {
     fetchLowStock();
-    getProducts({})
-      .then((res) => setAllProducts(res.data))
-      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -160,30 +182,13 @@ const Products = () => {
     return off;
   }, []);
 
-  const handleSubmit = async (data) => {
-    setIsSubmitting(true);
-    try {
-      if (editing) {
-        await updateProduct(editing._id, data);
-      } else {
-        await createProduct(data);
-      }
-      setShowForm(false);
-      setEditing(null);
-      fetchData();
-      fetchLowStock();
-      toast({ message: 'Producto guardado' });
-    } catch (err) {
-      alert({ icon: 'error', title: 'Error', message: getApiErrorMessage(err, 'Error al guardar producto') });
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const handleEdit = (product) => {
-    setEditing(product);
-    setShowForm(true);
-  };
+  const saleVersionRef = useRef(saleVersion);
+  useEffect(() => {
+    if (saleVersion === saleVersionRef.current) return;
+    saleVersionRef.current = saleVersion;
+    refreshProducts();
+    fetchLowStock();
+  }, [saleVersion]);
 
   const handleDelete = async (id) => {
     const confirmed = await confirm({
@@ -196,7 +201,7 @@ const Products = () => {
     if (!confirmed) return;
     try {
       await deleteProduct(id);
-      fetchData();
+      refreshProducts();
       fetchLowStock();
       toast({ message: 'Producto eliminado' });
     } catch (err) {
@@ -211,6 +216,7 @@ const Products = () => {
   };
 
   const confirmQuickAdd = () => {
+    if (!quickAdd) return;
     const cantidad = Number(qaCantidad);
     if (cantidad < 1) {
       alert({ icon: 'warning', title: 'Cantidad inválida' });
@@ -222,137 +228,58 @@ const Products = () => {
     }
     const variant = quickAdd.variants?.[Number(qaVariantIdx)];
     const stockDisponible = variant ? variant.cantidad : quickAdd.cantidad;
-    if (cantidad > stockDisponible) {
+    const talle = variant?.talle || '';
+    const color = variant?.color || '';
+    const enCarrito = cart.find(
+      (i) => i.producto === quickAdd._id && i.talle === talle && i.color === color
+    );
+    if ((enCarrito?.cantidad || 0) + cantidad > stockDisponible) {
       alert({ icon: 'warning', title: 'Stock insuficiente', message: `Solo hay ${stockDisponible} unidad(es) disponible(s)` });
       return;
     }
-    setCart(prev => [...prev, {
+    addItem({
       producto: quickAdd._id,
       nombre: quickAdd.nombre,
       precio: quickAdd.precio,
       cantidad,
-      talle: variant?.talle || '',
-      color: variant?.color || '',
-    }]);
+      talle,
+      color,
+    });
     setQuickAdd(null);
     toast({ message: 'Agregado al carrito', duration: 1400 });
   };
 
-  const removeFromCart = (idx) => {
-    setCart(prev => prev.filter((_, i) => i !== idx));
+  const openRetirar = (product) => {
+    setRetirarModal(product);
+    setRetirarCantidad('1');
+    setRetirarVariantIdx(product?.variants?.length === 1 ? '0' : '');
   };
 
-  const updateCartItem = (idx, field, value) => {
-    setCart(prev => prev.map((item, i) => i === idx ? { ...item, [field]: value } : item));
-  };
+  const retirarVariants = retirarModal?.variants || [];
+  const retirarVariant = retirarVariants[Number(retirarVariantIdx)] || null;
+  const retirarDisponible = retirarVariants.length > 0
+    ? (retirarVariant ? (retirarVariant.cantidad || 0) : null)
+    : (retirarModal?.cantidad || 0);
 
-  const openCart = () => {
-    if (cart.length === 0) {
-      alert({ icon: 'info', title: 'Carrito vacío', message: 'Agregue productos desde el menú de cada producto' });
-      return;
-    }
-    setSellEmpleado('');
-    setSellDescuento('');
-    setSellMetodoPago('efectivo');
-    setSellSplit(false);
-    setSellMetodo2('transferencia');
-    setSellMonto2('');
-    setShowCart(true);
-  };
-
-  const setMetodoPago = (key) => {
-    setSellMetodoPago(key);
-    if (sellSplit && sellMetodo2 === key) {
-      setSellMetodo2(metodos.find((m) => m.key !== key)?.key || '');
-    }
-  };
-
-  const toggleSplit = () => {
-    setSellSplit(!sellSplit);
-    setSellMonto2('');
-    if (!sellSplit && sellMetodo2 === sellMetodoPago) {
-      setSellMetodo2(metodos.find((m) => m.key !== sellMetodoPago)?.key || '');
-    }
-  };
-
-  const confirmSale = async () => {
-    if (sellSaving) return;
-    if (!sellEmpleado.trim()) {
-      alert({ icon: 'warning', title: 'Campo requerido', message: 'Debe ingresar el nombre del empleado' });
-      return;
-    }
-    if (descuentoNum < 0 || descuentoNum > 100) {
-      alert({ icon: 'warning', title: 'Descuento inválido', message: 'El descuento debe estar entre 0 y 100%' });
-      return;
-    }
-    if (sellSplit && sellMetodo2 === sellMetodoPago) {
-      alert({ icon: 'warning', title: 'Método repetido', message: 'El segundo método de pago debe ser distinto del primero' });
-      return;
-    }
-    if (sellSplit && (!Number.isFinite(sellMonto2Num) || sellMonto2Num > finalTotal + 0.01)) {
-      alert({ icon: 'warning', title: 'Montos incorrectos', message: 'El segundo monto no puede superar el total' });
-      return;
-    }
-    if (cart.some((i) => !Number.isFinite(i.precio) || i.precio <= 0 || !Number.isInteger(i.cantidad) || i.cantidad < 1)) {
-      alert({ icon: 'warning', title: 'Carrito inválido', message: 'Verifique cantidades y precios del carrito' });
-      return;
-    }
-    setSellSaving(true);
-    try {
-      const pagos = sellSplit
-        ? [{ metodo: sellMetodoPago, monto: Math.round(sellMonto1 * 100) / 100 }, { metodo: sellMetodo2, monto: Math.round(sellMonto2Num * 100) / 100 }]
-        : [{ metodo: sellMetodoPago, monto: Math.round(finalTotal * 100) / 100 }];
-      const res = await createSale({
-        items: cart.map(i => ({ producto: i.producto, cantidad: i.cantidad, talle: i.talle, color: i.color || '' })),
-        empleado: sellEmpleado.trim(),
-        pagos,
-        descuento: descuentoNum,
-      });
-      setLastSale(res.data);
-      setShowTicketModal(true);
-      setCart([]);
-      setShowCart(false);
-      fetchData();
-      fetchLowStock();
-      toast({ message: 'Venta registrada' });
-    } catch (err) {
-      alert({ icon: 'error', title: 'Error', message: getApiErrorMessage(err, 'Error al vender') });
-    } finally {
-      setSellSaving(false);
-    }
-  };
-
-  const handlePrintTicket = () => {
-    if (!lastSale) return;
-    const ok = printTicket(lastSale);
-    if (ok) setShowTicketModal(false);
-  };
-
-  const openAddStock = (product) => {
-    setAddStockModal(product);
-    setAddStockCantidad('1');
-    setAddStockVariantIdx('');
-  };
-
-  const confirmAddStock = async () => {
-    if (addStockModal.variants?.length > 0 && addStockVariantIdx === '') {
+  const confirmRetirar = async () => {
+    if (!retirarModal) return;
+    if (retirarVariants.length > 0 && retirarVariantIdx === '') {
       alert({ icon: 'warning', title: 'Campo requerido', message: 'Debe seleccionar una variante' });
       return;
     }
-    const cantidad = Number(addStockCantidad);
+    const cantidad = Number(retirarCantidad);
     if (!Number.isInteger(cantidad) || cantidad < 1) {
       alert({ icon: 'warning', title: 'Cantidad inválida', message: 'Debe ingresar al menos 1 unidad' });
       return;
     }
-    const variant = addStockModal.variants?.[Number(addStockVariantIdx)];
     try {
-      await addStock(addStockModal._id, { cantidad, talle: variant?.talle || '', color: variant?.color || '' });
-      setAddStockModal(null);
-      fetchData();
+      await retirarStock(retirarModal._id, { cantidad, talle: retirarVariant?.talle || '', color: retirarVariant?.color || '' });
+      setRetirarModal(null);
+      refreshProducts();
       fetchLowStock();
-      toast({ message: 'Stock actualizado' });
+      toast({ message: 'Retirado al depósito' });
     } catch (err) {
-      alert({ icon: 'error', title: 'Error', message: getApiErrorMessage(err, 'Error al agregar stock') });
+      alert({ icon: 'error', title: 'Error', message: getApiErrorMessage(err, 'Error al retirar stock') });
     }
   };
 
@@ -379,10 +306,72 @@ const Products = () => {
     }
   };
 
+  const agregarAlCarritoEscaneado = (producto) => {
+    if (producto.variants?.length > 0) {
+      setScannerOpen(false);
+      openQuickAdd(producto);
+      return;
+    }
+    const stock = Number(producto.cantidad) || 0;
+    if (stock < 1) {
+      alert({ icon: 'warning', title: 'Sin stock', message: `${producto.nombre} no tiene unidades disponibles` });
+      return;
+    }
+    const actual = cart.find((i) => i.producto === producto._id && !i.talle && !i.color);
+    if ((actual?.cantidad || 0) + 1 > stock) {
+      alert({ icon: 'warning', title: 'Stock insuficiente', message: `Solo hay ${stock} unidad(es) de ${producto.nombre}` });
+      return;
+    }
+    addItem({
+      producto: producto._id,
+      nombre: producto.nombre,
+      precio: producto.precio,
+      cantidad: 1,
+      talle: '',
+      color: '',
+    });
+    toast({ message: `Agregado: ${producto.nombre}`, duration: 1400 });
+  };
+
+  const manejarCodigoEscaneado = async (codigo) => {
+    try {
+      const { data: producto } = await getProductByCodigo(codigo);
+      setSearch('');
+      if (cart.length > 0) {
+        agregarAlCarritoEscaneado(producto);
+        return;
+      }
+      openQuickAdd(producto);
+    } catch (err) {
+      if (err.response?.status === 404) {
+        if (user?.rol !== 'admin') {
+          toast({
+            message: `No existe un producto con el código "${codigo}". Comunicate con el dueño del negocio para que lo cargue al depósito.`,
+            duration: 3200,
+          });
+          return;
+        }
+        const crear = await confirm({
+          icon: 'info',
+          title: 'Código no encontrado',
+          message: `No existe un producto con el código "${codigo}". ¿Querés crearlo en el depósito?`,
+          confirmText: 'Ir a Depósito',
+        });
+        if (crear) {
+          navigate('/deposito', { state: { crear: true } });
+        }
+        return;
+      }
+      toast({ message: getApiErrorMessage(err, 'Error al buscar el código') });
+    }
+  };
+
+  useLector(manejarCodigoEscaneado, !returnModal && !retirarModal && !quickAdd);
+
   const getReturnMotivo = () => returnMotivo === 'Otro' ? returnOtroMotivo.trim() : returnMotivo.trim();
 
   const confirmReturn = async () => {
-    if (returnSaving) return;
+    if (returnSaving || !returnModal) return;
     const motivoFinal = getReturnMotivo();
     if (!motivoFinal) {
       alert({ icon: 'warning', title: 'Campo requerido', message: 'Debe ingresar un motivo' });
@@ -438,7 +427,7 @@ const Products = () => {
         });
       }
       setReturnModal(null);
-      fetchData();
+      refreshProducts();
       fetchLowStock();
       toast({ message: exchangeTarget ? 'Cambio registrado' : 'Devolución registrada' });
     } catch (err) {
@@ -451,13 +440,8 @@ const Products = () => {
   const filteredExchange = allProducts.filter(
     (p) =>
       p._id !== returnModal?._id &&
-      p.nombre.toLowerCase().includes(exchangeSearch.toLowerCase())
+      (p.nombre || '').toLowerCase().includes(exchangeSearch.toLowerCase())
   );
-
-  const openCreate = () => {
-    setEditing(null);
-    setShowForm(true);
-  };
 
   const renderVariantSelect = (variants, value, onChange, label = 'Variante') => {
     if (!variants?.length) return null;
@@ -473,19 +457,12 @@ const Products = () => {
     );
   };
 
-  const metodos = [
-    { key: 'efectivo', label: 'Efectivo', activeCls: 'bg-ios-green/15 text-ios-green border-ios-green/30' },
-    { key: 'transferencia', label: 'Transferencia', activeCls: 'bg-ios-tint/15 text-ios-tint border-ios-tint/30' },
-    { key: 'tarjeta', label: 'Tarjeta', activeCls: 'bg-ios-purple/15 text-ios-purple border-ios-purple/30' },
-  ];
-
-  const handleDropdownAction = (action) => {
+  const handleDropdownAction = async (action) => {
     const p = dropdown.product;
     setDropdown({ product: null, x: 0, y: 0 });
     if (action === 'carrito') openQuickAdd(p);
-    else if (action === 'stock') openAddStock(p);
+    else if (action === 'retirar') openRetirar(p);
     else if (action === 'cambio') openReturn(p);
-    else if (action === 'editar') handleEdit(p);
     else if (action === 'eliminar') handleDelete(p._id);
   };
 
@@ -494,7 +471,7 @@ const Products = () => {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-5">
         <h1 className="text-[28px] font-bold text-ios-label tracking-tight">Productos</h1>
         <div className="flex items-center gap-2.5 w-full sm:w-auto">
-          <IosButton variant="tinted" onClick={openCart} className="flex-1 sm:flex-none relative">
+          <IosButton variant="tinted" onClick={openCart} className="md:hidden flex-1 sm:flex-none relative">
             <IconCart className="w-[18px] h-[18px]" />
             Carrito
             {cart.length > 0 && (
@@ -503,12 +480,6 @@ const Products = () => {
               </span>
             )}
           </IosButton>
-          {user?.rol === 'admin' && (
-            <IosButton variant="primary" onClick={openCreate} className="flex-1 sm:flex-none">
-              <IconPlus className="w-4 h-4" />
-              Nuevo Producto
-            </IosButton>
-          )}
         </div>
       </div>
 
@@ -516,8 +487,15 @@ const Products = () => {
         <IosSearch
           value={search}
           onChange={setSearch}
-          placeholder="Buscar por nombre o categoría..."
+          placeholder="Buscar por nombre, categoría o código..."
           className="w-full md:w-96"
+        />
+        <ScannerButton
+          onClick={() => {
+            setScannerContinuo(false);
+            setScannerOpen(true);
+          }}
+          title="Escanear producto"
         />
         {lowStock.length > 0 && (
           <div className="relative shrink-0">
@@ -543,6 +521,9 @@ const Products = () => {
                       {item.talle && <span className="shrink-0 text-ios-tertiary">· {item.talle}</span>}
                       {item.color && <span className="shrink-0 text-ios-tertiary">· {item.color}</span>}
                       <span className="ml-auto shrink-0 text-ios-orange/70 font-semibold">{item.cantidad} uds.</span>
+                      {item.deposito > 0 && (
+                        <span className="shrink-0 text-ios-tertiary">Dep: {item.deposito}</span>
+                      )}
                     </div>
                   ))}
                   {bajos.length > 0 && agotados.length > 0 && (
@@ -555,6 +536,9 @@ const Products = () => {
                       {item.talle && <span className="shrink-0 text-ios-red/60">· {item.talle}</span>}
                       {item.color && <span className="shrink-0 text-ios-red/60">· {item.color}</span>}
                       <span className="ml-auto shrink-0 font-semibold">AGOTADO</span>
+                      {item.deposito > 0 && (
+                        <span className="shrink-0 text-ios-tertiary">Dep: {item.deposito}</span>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -563,25 +547,6 @@ const Products = () => {
           </div>
         )}
       </div>
-
-      <IosModal
-        open={showForm}
-        onClose={() => { setShowForm(false); setEditing(null); }}
-        maxWidth="max-w-2xl"
-      >
-        <h2 className="text-[17px] font-semibold text-ios-label mb-4">
-          {editing ? 'Editar Producto' : 'Nuevo Producto'}
-        </h2>
-        <ProductForm
-          initial={editing}
-          onSubmit={handleSubmit}
-          onCancel={() => {
-            setShowForm(false);
-            setEditing(null);
-          }}
-          isSubmitting={isSubmitting}
-        />
-      </IosModal>
 
       <IosModal
         open={!!quickAdd}
@@ -612,17 +577,34 @@ const Products = () => {
         </div>
       </IosModal>
 
-      <IosModal
-        open={showCart}
-        onClose={() => setShowCart(false)}
-        title={`Carrito (${cart.length} productos)`}
-        cancelText="Seguir comprando"
-        confirmText="Confirmar Venta"
-        confirmVariant="tinted"
-        onConfirm={confirmSale}
-        confirmDisabled={sellSaving}
-        maxWidth="max-w-2xl"
-      >
+      <div className="md:hidden">
+        <IosModal
+          open={showCartModal}
+          onClose={closeCart}
+          title={`Carrito (${cart.length} productos)`}
+          cancelText="Seguir comprando"
+          confirmText="Confirmar Venta"
+          confirmVariant="tinted"
+          onConfirm={confirmSale}
+          confirmDisabled={sellSaving}
+          maxWidth="max-w-2xl"
+        >
+        <div className="flex items-center justify-between gap-3 mb-3">
+          <p className="text-xs text-ios-tertiary">
+            Escaneá productos para agregarlos al carrito
+          </p>
+          <button
+            type="button"
+            onClick={() => {
+              setScannerContinuo(true);
+              setScannerOpen(true);
+            }}
+            className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-ios-control bg-ios-surface2 text-ios-secondary text-xs font-medium hover:bg-ios-surface3 transition-colors"
+          >
+            <IconCamera className="w-3.5 h-3.5" />
+            Escanear
+          </button>
+        </div>
         <div className="space-y-2 mb-4">
           {cart.map((item, idx) => (
             <div key={idx} className="flex flex-col sm:flex-row sm:items-center gap-3 bg-ios-surface rounded-2xl p-3 border border-ios-separator/30">
@@ -757,49 +739,44 @@ const Products = () => {
           </div>
         </div>
       </IosModal>
+      </div>
+
+      <ScannerModal
+        open={scannerOpen}
+        continuo={scannerContinuo}
+        onClose={() => setScannerOpen(false)}
+        onLeer={manejarCodigoEscaneado}
+        titulo={scannerContinuo ? 'Escanear para agregar al carrito' : 'Escanear producto'}
+      />
 
       <IosModal
-        open={showTicketModal}
-        onClose={() => setShowTicketModal(false)}
-        title="Venta registrada"
-        cancelText="Cerrar"
-        showCancel
-        confirmText="Imprimir ticket"
-        onConfirm={handlePrintTicket}
-        maxWidth="max-w-md"
-      >
-        <div className="flex flex-col items-center gap-4">
-          <div className="w-full overflow-x-auto py-1">
-            <div className="ticket-paper">
-              {lastSale ? <Ticket sale={lastSale} /> : <p className="text-center">Cargando…</p>}
-            </div>
-          </div>
-          <p className="text-xs text-ios-tertiary text-center leading-relaxed">
-            Imprimí el ticket para entregar al cliente. También podés reimprimirlo desde la sección Ventas.
-          </p>
-        </div>
-      </IosModal>
-
-      <IosModal
-        open={!!addStockModal}
-        onClose={() => setAddStockModal(null)}
-        title="Agregar Stock"
+        open={!!retirarModal}
+        onClose={() => setRetirarModal(null)}
+        title="Retirar a depósito"
         cancelText="Cancelar"
-        confirmText="Confirmar Ingreso"
-        onConfirm={confirmAddStock}
+        confirmText="Retirar"
+        confirmVariant="tinted"
+        onConfirm={confirmRetirar}
       >
-        <p className="text-ios-secondary text-sm mb-4">
-          <span className="text-ios-label font-semibold">{addStockModal?.nombre}</span> — Stock actual: {addStockModal?.cantidad}
+        <p className="text-ios-secondary text-sm mb-1">
+          <span className="text-ios-label font-semibold">{retirarModal?.nombre}</span>
+        </p>
+        <p className="text-xs text-ios-tertiary mb-4">
+          En salón: <span className="text-ios-label font-semibold">{retirarDisponible ?? '—'}</span>
+          {' · '}En depósito:{' '}
+          <span className="text-ios-label font-semibold">
+            {retirarVariants.length > 0 ? (retirarVariant?.deposito ?? '—') : (retirarModal?.deposito ?? 0)}
+          </span>
         </p>
         <div className="space-y-4">
-          {renderVariantSelect(addStockModal?.variants, addStockVariantIdx, setAddStockVariantIdx)}
-          <IosField label="¿Cuántas unidades entraron?">
+          {renderVariantSelect(retirarVariants, retirarVariantIdx, setRetirarVariantIdx)}
+          <IosField label="Unidades a retirar" hint={`Disponible en salón: ${retirarDisponible ?? '—'}`}>
             <IosInput
               type="text" inputMode="numeric"
-              value={addStockCantidad}
+              value={retirarCantidad}
               onChange={(e) => {
                 const v = e.target.value;
-                if (v === '' || /^\d+$/.test(v)) setAddStockCantidad(v);
+                if (v === '' || /^\d+$/.test(v)) setRetirarCantidad(v);
               }}
             />
           </IosField>
@@ -960,20 +937,25 @@ const Products = () => {
                     style={{ animationDelay: `${i * 20}ms` }}
                     onClick={() => setExpandedId(expandedId === p._id ? null : p._id)}
                   >
-                    <td className="px-5 py-3.5 font-semibold text-ios-label">{p.nombre}</td>
+                    <td className="px-5 py-3.5 font-semibold text-ios-label">
+                      {p.nombre}
+                      {p.codigo && (
+                        <span className="block text-[11px] font-normal text-ios-tertiary mt-0.5">Código: {p.codigo}</span>
+                      )}
+                    </td>
                     <td className="px-4 py-3.5">
                       {expandedId === p._id ? (
                         <div className="text-xs leading-relaxed space-y-0.5 animate-slideDown">
                           {p.colores?.length > 0
                             ? p.colores.map((color) => {
-                                const vars = p.variants.filter((v) => v.color === color);
+                                const vars = (p.variants || []).filter((v) => v.color === color);
                                 return (
                                   <div key={color}>
                                     <span className="font-semibold text-ios-secondary">{color}: </span>
                                     {vars.length > 0
                                       ? vars.map((v, i) => (
                                           <span key={i} className="text-ios-tertiary">
-                                            {v.talle}({v.cantidad}){i < vars.length - 1 ? ' · ' : ''}
+                                            {v.talle}({v.cantidad}){v.deposito ? ` dep:${v.deposito}` : ''}{i < vars.length - 1 ? ' · ' : ''}
                                           </span>
                                         ))
                                       : <span className="text-ios-tertiary">—</span>}
@@ -983,7 +965,7 @@ const Products = () => {
                             : p.variants?.length > 0
                               ? p.variants.map((v, i) => (
                                   <span key={i} className="text-ios-tertiary">
-                                    {variantShortLabel(v)}:{v.cantidad}{i < p.variants.length - 1 ? ', ' : ''}
+                                    {variantShortLabel(v)}:{v.cantidad}{v.deposito ? ` (dep ${v.deposito})` : ''}{i < p.variants.length - 1 ? ', ' : ''}
                                   </span>
                                 ))
                               : <span className="text-ios-tertiary">—</span>}
@@ -994,7 +976,7 @@ const Products = () => {
                           {p.colores?.length > 0 ? (
                             <span className="text-ios-tertiary">
                               {p.colores.slice(0, 3).map((c, i) => {
-                                const count = p.variants.filter((v) => v.color === c).length;
+                                const count = (p.variants || []).filter((v) => v.color === c).length;
                                 return (
                                   <span key={c}>
                                     {i > 0 && <span className="text-ios-separator"> · </span>}
@@ -1023,6 +1005,7 @@ const Products = () => {
                         )}
                         {p.cantidad}
                       </span>
+                      <span className="block text-[11px] text-ios-tertiary mt-0.5">Dep: {depositoTotal(p)}</span>
                     </td>
                     <td className="px-4 py-3.5 text-ios-tertiary">{p.categoria}</td>
                     <td className="px-4 py-3.5 text-ios-tertiary">{p.proveedor || '—'}</td>
@@ -1068,10 +1051,16 @@ const Products = () => {
                       {p.categoria}
                       {p.proveedor ? ` · ${p.proveedor}` : ''}
                     </p>
+                    {p.codigo && (
+                      <p className="text-[11px] text-ios-tertiary mt-0.5">Código: {p.codigo}</p>
+                    )}
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
                     <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${(p.stockMinimo != null && p.cantidad <= p.stockMinimo) ? 'bg-ios-red/15 text-ios-red' : 'bg-ios-surface2 text-ios-secondary'}`}>
                       {p.cantidad}
+                    </span>
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-violet-500/15 text-violet-300">
+                      Dep {depositoTotal(p)}
                     </span>
                     <button
                       onClick={(e) => {
@@ -1117,7 +1106,7 @@ const Products = () => {
                               {vars.length > 0
                                 ? vars.map((v, i) => (
                                     <span key={i} className="text-ios-tertiary">
-                                      {v.talle}({v.cantidad}){i < vars.length - 1 ? ' · ' : ''}
+                                      {v.talle}({v.cantidad}){v.deposito ? ` dep:${v.deposito}` : ''}{i < vars.length - 1 ? ' · ' : ''}
                                     </span>
                                   ))
                                 : <span className="text-ios-tertiary">—</span>}
@@ -1127,7 +1116,7 @@ const Products = () => {
                       : p.variants?.length > 0
                         ? p.variants.map((v, i) => (
                             <span key={i} className="text-ios-tertiary">
-                              {variantShortLabel(v)}:{v.cantidad}{i < p.variants.length - 1 ? ', ' : ''}
+                              {variantShortLabel(v)}:{v.cantidad}{v.deposito ? ` (dep ${v.deposito})` : ''}{i < p.variants.length - 1 ? ', ' : ''}
                             </span>
                           ))
                         : <span className="text-ios-tertiary">—</span>}
@@ -1147,29 +1136,20 @@ const Products = () => {
             className="fixed z-40 w-48 bg-ios-surface/95 backdrop-blur-2xl border border-white/10 rounded-2xl shadow-ios-alert p-1.5 animate-ios-modal"
             style={{ left: dropdown.x, top: dropdown.y }}
           >
-            {user?.rol === 'admin' && (
-              <button
-                onClick={() => handleDropdownAction('editar')}
-                className="flex items-center gap-2.5 w-full px-3.5 py-2.5 text-sm text-ios-tint hover:bg-ios-hover/5 rounded-xl transition-colors font-medium"
-              >
-                <IconPencil className="w-4 h-4" />
-                Editar
-              </button>
-            )}
             <button
               onClick={() => handleDropdownAction('carrito')}
               className="flex items-center gap-2.5 w-full px-3.5 py-2.5 text-sm text-ios-orange hover:bg-ios-hover/5 rounded-xl transition-colors font-medium"
             >
               <IconCart className="w-4 h-4" />
-              vender
+              Vender
             </button>
             {user?.rol === 'admin' && (
               <button
-                onClick={() => handleDropdownAction('stock')}
-                className="flex items-center gap-2.5 w-full px-3.5 py-2.5 text-sm text-ios-tint hover:bg-ios-hover/5 rounded-xl transition-colors font-medium"
+                onClick={() => handleDropdownAction('retirar')}
+                className="flex items-center gap-2.5 w-full px-3.5 py-2.5 text-sm text-amber-400 hover:bg-ios-hover/5 rounded-xl transition-colors font-medium"
               >
-                <IconList className="w-4 h-4" />
-                Agregar Stock
+                <IconArrowUp className="w-4 h-4" />
+                Retirar a depósito
               </button>
             )}
             <button

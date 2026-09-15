@@ -240,6 +240,37 @@ html {
   opacity: 0.75;
 }
 
+.ticket-body .ticket-item-cod {
+  opacity: 0.75;
+}
+
+.ticket-body .ticket-codes {
+  text-align: center;
+  margin-top: 6px;
+}
+
+.ticket-body .ticket-qr {
+  margin: 0;
+}
+
+.ticket-body .ticket-qr img {
+  width: 110px;
+  height: 110px;
+  display: block;
+  margin: 0 auto;
+}
+
+.ticket-body .ticket-barcode {
+  margin: 5px 0 0;
+}
+
+.ticket-body .ticket-barcode img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+  margin: 0 auto;
+}
+
 .ticket-body .ticket-item-line {
   display: flex;
   justify-content: space-between;
