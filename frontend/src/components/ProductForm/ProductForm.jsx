@@ -1,6 +1,9 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import IosButton from '../ui/IosButton';
-import { IconPlus, IconX } from '../ui/icons';
+import { IconPlus, IconX, IconPrint } from '../ui/icons';
+import { getSiguienteCodigo } from '../../api/products';
+import { getApiErrorMessage } from '../../utils/apiError';
+import { printLabel } from '../../utils/printLabel';
 
 const stockPorColor = (colores, variants) => {
   if (!colores || colores.length === 0) return null;
@@ -8,7 +11,7 @@ const stockPorColor = (colores, variants) => {
     color: c,
     stock: variants
       .filter((v) => v.color === c)
-      .reduce((s, v) => s + (Number(v.cantidad) || 0), 0),
+      .reduce((s, v) => s + (Number(v.deposito) || 0), 0),
   }));
 };
 
@@ -28,10 +31,44 @@ const ProductForm = ({ initial, onSubmit, onCancel, isSubmitting: externalSubmit
       : [],
     categoria: initial?.categoria || '',
     proveedor: initial?.proveedor || '',
+    codigo: initial?.codigo || '',
+    deposito: initial?.deposito ?? '',
     stockMinimo: initial?.stockMinimo ?? 2,
   });
   const [newColor, setNewColor] = useState('');
   const [errores, setErrores] = useState({});
+  const [generandoCodigo, setGenerandoCodigo] = useState(false);
+
+  useEffect(() => {
+    if (initial) return undefined;
+    let cancelado = false;
+    setGenerandoCodigo(true);
+    getSiguienteCodigo()
+      .then(({ data }) => {
+        if (cancelado) return;
+        setForm((f) => ({ ...f, codigo: data.codigo }));
+        setErrores((e) => ({ ...e, codigo: undefined }));
+      })
+      .catch((err) => {
+        if (cancelado) return;
+        setErrores((e) => ({ ...e, codigo: getApiErrorMessage(err, 'No se pudo generar el código') }));
+      })
+      .finally(() => {
+        if (!cancelado) setGenerandoCodigo(false);
+      });
+    return () => {
+      cancelado = true;
+    };
+  }, [initial]);
+
+  const imprimirEtiqueta = async () => {
+    const ok = await printLabel({
+      nombre: form.nombre,
+      precio: Number(form.precio) || 0,
+      codigo: form.codigo.trim(),
+    });
+    if (!ok) setErrores((e) => ({ ...e, codigo: 'No se pudo generar la etiqueta' }));
+  };
 
   const groups = useMemo(() => {
     const map = {};
@@ -69,7 +106,7 @@ const ProductForm = ({ initial, onSubmit, onCancel, isSubmitting: externalSubmit
   const addVariantToColor = (color) => {
     setForm({
       ...form,
-      variants: [...form.variants, { talle: '', color, cantidad: '' }],
+      variants: [...form.variants, { talle: '', color, cantidad: 0, deposito: '' }],
     });
   };
 
@@ -84,7 +121,7 @@ const ProductForm = ({ initial, onSubmit, onCancel, isSubmitting: externalSubmit
   };
 
   const totalCantidad = form.variants.reduce(
-    (sum, v) => sum + (Number(v.cantidad) || 0),
+    (sum, v) => sum + (Number(v.deposito) || 0),
     0
   );
 
@@ -104,17 +141,20 @@ const ProductForm = ({ initial, onSubmit, onCancel, isSubmitting: externalSubmit
     e.preventDefault();
     if (!validate()) return;
     const variantsValidos = form.variants
-      .filter((v) => v.talle.trim())
+      .filter((v) => (v.talle || '').trim())
       .map((v) => ({
-        talle: v.talle.trim(),
+        talle: (v.talle || '').trim(),
         color: v.color,
         cantidad: Number(v.cantidad) || 0,
+        deposito: Number(v.deposito) || 0,
       }));
     onSubmit({
       ...form,
+      codigo: form.codigo.trim(),
       precio: Number(form.precio),
       colores: form.colores,
       variants: variantsValidos,
+      deposito: Number(form.deposito) || 0,
       stockMinimo: Number(form.stockMinimo),
     });
   };
@@ -223,7 +263,9 @@ const ProductForm = ({ initial, onSubmit, onCancel, isSubmitting: externalSubmit
 
       {form.colores.length > 0 && (
         <div>
-          <label className={`${labelCls} mb-2`}>Variantes por color</label>
+          <label className={`${labelCls} mb-2`}>
+            Variantes por color (stock en depósito)
+          </label>
           {errText('variants')}
           <div className="space-y-3">
             {form.colores.map((color) => {
@@ -251,9 +293,9 @@ const ProductForm = ({ initial, onSubmit, onCancel, isSubmitting: externalSubmit
                         <input
                           type="number"
                           min="0"
-                          placeholder="Cantidad"
-                          value={form.variants[i].cantidad}
-                          onChange={(e) => updateVariant(i, 'cantidad', e.target.value)}
+                          placeholder="Cant. depósito"
+                          value={form.variants[i].deposito}
+                          onChange={(e) => updateVariant(i, 'deposito', e.target.value)}
                           className="flex-1 sm:flex-none w-24 px-3 py-2 bg-ios-surface rounded-ios-card text-ios-label placeholder:text-ios-tertiary focus:outline-none focus:ring-2 focus:ring-ios-tint/40 transition-all text-sm"
                         />
                         <button
@@ -280,11 +322,11 @@ const ProductForm = ({ initial, onSubmit, onCancel, isSubmitting: externalSubmit
 
           <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 mt-3 text-xs">
             <span className="text-ios-secondary">
-              Total: <span className="text-ios-label font-semibold">{totalCantidad}</span> unidades
+              Total en depósito: <span className="text-ios-label font-semibold">{totalCantidad}</span> unidades
             </span>
             {stockResumen && (
               <span className="text-ios-tertiary">
-                Por color:{' '}
+                Por color (depósito):{' '}
                 {stockResumen
                   .filter((s) => s.stock > 0)
                   .map((s) => (
@@ -301,6 +343,23 @@ const ProductForm = ({ initial, onSubmit, onCancel, isSubmitting: externalSubmit
       {form.colores.length === 0 && (
         <div className="py-4 text-center text-ios-tertiary text-xs border border-dashed border-ios-separator/60 rounded-ios-card">
           Agregue al menos un color para empezar a cargar variantes
+        </div>
+      )}
+
+      {form.colores.length === 0 && (
+        <div>
+          <label className={labelCls}>Cantidad en depósito</label>
+          <input
+            type="number"
+            min="0"
+            value={form.deposito}
+            onChange={(e) => setForm({ ...form, deposito: e.target.value })}
+            className={campoCls('deposito')}
+            placeholder="0"
+          />
+          <p className="text-ios-tertiary text-[11px] mt-1">
+            El stock entra al depósito; después lo pasás al salón cuando quieras.
+          </p>
         </div>
       )}
 
@@ -329,6 +388,35 @@ const ProductForm = ({ initial, onSubmit, onCancel, isSubmitting: externalSubmit
             placeholder="Nombre del proveedor"
           />
         </div>
+      </div>
+
+      <div>
+        <label className={labelCls}>Código interno</label>
+        <div className="flex items-center gap-2">
+          <input
+            type="text"
+            value={form.codigo}
+            readOnly
+            placeholder={generandoCodigo ? 'Generando…' : '—'}
+            className={`${campoCls('codigo')} opacity-70 cursor-default`}
+          />
+          <IosButton
+            type="button"
+            variant="tinted"
+            size="sm"
+            onClick={imprimirEtiqueta}
+            disabled={generandoCodigo || !form.codigo.trim()}
+          >
+            <IconPrint className="w-3.5 h-3.5" />
+            Etiqueta
+          </IosButton>
+        </div>
+        <p className="text-ios-tertiary text-[11px] mt-1">
+          {generandoCodigo
+            ? 'Generando código…'
+            : 'Se genera automáticamente al crear el producto y no se puede modificar.'}
+        </p>
+        {errText('codigo')}
       </div>
 
       <div className="flex justify-end gap-3 pt-2">
