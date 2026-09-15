@@ -3,11 +3,62 @@ import Product from './ProductModel.js';
 import Return from '../Return/ReturnModel.js';
 import Sale from '../Sale/SaleModel.js';
 import Supplier from '../Supplier/SupplierModel.js';
+import Counter from '../Sale/CounterModel.js';
+import StockMovement from '../StockMovement/StockMovementModel.js';
 import { guardarConTicketUnico, registrarDevolucionEnVenta } from '../Sale/ticketUtils.js';
-import { createProductSchema, updateProductSchema, exchangeSchema, addStockSchema } from './ProductSchema.js';
+import { createProductSchema, updateProductSchema, exchangeSchema, addStockSchema, movimientoStockSchema, depositoSchema } from './ProductSchema.js';
 import { enviarEvento, enviarStockBajo } from '../../services/pushService.js';
 
 const escapeRegex = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+const normalizarCodigo = (codigo) => {
+  const limpio = String(codigo || '').trim();
+  return limpio || undefined;
+};
+
+const buscarPorCodigoExacto = (codigo) =>
+  Product.findOne({ codigo: { $regex: `^${escapeRegex(codigo)}$`, $options: 'i' } });
+
+const CODIGO_INTERNO_REGEX = /^NC-\d{6}$/;
+
+const intentarCodigoProducto = async () => {
+  const counter = await Counter.findByIdAndUpdate(
+    'producto',
+    { $inc: { seq: 1 } },
+    { new: true, upsert: true, setDefaultsOnInsert: true }
+  );
+  const codigo = `NC-${String(counter.seq).padStart(6, '0')}`;
+  const repetido = await buscarPorCodigoExacto(codigo);
+  return repetido ? null : codigo;
+};
+
+const sincronizarContadorProducto = async () => {
+  const ultimo = await Product.findOne({ codigo: /^NC-\d{6}$/ })
+    .sort({ codigo: -1 })
+    .select('codigo')
+    .lean();
+  if (!ultimo) return;
+  const seq = Number(String(ultimo.codigo).slice(3));
+  if (!Number.isFinite(seq)) return;
+  await Counter.findByIdAndUpdate(
+    'producto',
+    { $max: { seq } },
+    { upsert: true, setDefaultsOnInsert: true }
+  );
+};
+
+const generarCodigoProducto = async () => {
+  for (let intento = 0; intento < 50; intento += 1) {
+    const codigo = await intentarCodigoProducto();
+    if (codigo) return codigo;
+  }
+  await sincronizarContadorProducto();
+  for (let intento = 0; intento < 50; intento += 1) {
+    const codigo = await intentarCodigoProducto();
+    if (codigo) return codigo;
+  }
+  throw new Error('No se pudo generar un código único de producto');
+};
 
 const findVariant = (product, talle, color) => {
   return product.variants.find((v) => v.talle === (talle || '') && v.color === (color || ''));
@@ -15,6 +66,29 @@ const findVariant = (product, talle, color) => {
 
 const findVariantIdx = (product, talle, color) => {
   return product.variants.findIndex((v) => v.talle === (talle || '') && v.color === (color || ''));
+};
+
+const registrarMovimiento = async ({ producto, talle, color, tipo, cantidad, empleado }, session) => {
+  await StockMovement.create(
+    [{
+      producto: producto._id,
+      productoNombre: producto.nombre,
+      talle: talle || '',
+      color: color || '',
+      tipo,
+      cantidad,
+      empleado: empleado || '',
+    }],
+    session ? { session } : undefined
+  );
+};
+
+const depositoDe = (product, talle, color) => {
+  if (product.variants?.length > 0) {
+    const idx = findVariantIdx(product, talle, color);
+    return idx === -1 ? 0 : (product.variants[idx].deposito || 0);
+  }
+  return product.deposito || 0;
 };
 
 export const getProducts = async (req, res, next) => {
@@ -27,6 +101,7 @@ export const getProducts = async (req, res, next) => {
       filter.$or = [
         { nombre: { $regex: safe, $options: 'i' } },
         { categoria: { $regex: safe, $options: 'i' } },
+        { codigo: { $regex: safe, $options: 'i' } },
       ];
     }
     if (categoria) {
@@ -36,6 +111,31 @@ export const getProducts = async (req, res, next) => {
     const products = await Product.find(filter).sort({ nombre: 1 });
 
     res.json(products);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getProductByCodigo = async (req, res, next) => {
+  try {
+    const codigo = normalizarCodigo(req.params.codigo);
+    if (!codigo) {
+      return res.status(400).json({ message: 'El código es requerido' });
+    }
+    const product = await buscarPorCodigoExacto(codigo);
+    if (!product) {
+      return res.status(404).json({ message: `No existe un producto con el código "${codigo}"` });
+    }
+    res.json(product);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const siguienteCodigo = async (req, res, next) => {
+  try {
+    const codigo = await generarCodigoProducto();
+    res.json({ codigo });
   } catch (error) {
     next(error);
   }
@@ -63,8 +163,25 @@ export const createProduct = async (req, res, next) => {
       return res.status(409).json({ message: `Ya existe un producto llamado "${data.nombre}"` });
     }
 
-    const product = await Product.create(data);
-    res.status(201).json(product);
+    const codigoSolicitado = normalizarCodigo(data.codigo);
+    let codigo;
+    if (codigoSolicitado && CODIGO_INTERNO_REGEX.test(codigoSolicitado)) {
+      const repetido = await buscarPorCodigoExacto(codigoSolicitado);
+      if (!repetido) codigo = codigoSolicitado;
+    }
+    if (!codigo) codigo = await generarCodigoProducto();
+
+    try {
+      const product = await Product.create({ ...data, codigo });
+      return res.status(201).json(product);
+    } catch (error) {
+      if (error?.code === 11000) {
+        const alternativo = await generarCodigoProducto();
+        const product = await Product.create({ ...data, codigo: alternativo });
+        return res.status(201).json(product);
+      }
+      throw error;
+    }
   } catch (error) {
     next(error);
   }
@@ -89,6 +206,17 @@ export const updateProduct = async (req, res, next) => {
       }
     }
 
+    if (data.variants) {
+      data.variants = data.variants.map((v) => {
+        const idx = findVariantIdx(product, v.talle, v.color);
+        return {
+          ...v,
+          cantidad: idx === -1 ? 0 : (product.variants[idx].cantidad || 0),
+          deposito: Number(v.deposito) || 0,
+        };
+      });
+    }
+
     Object.assign(product, data);
     await product.save();
 
@@ -99,11 +227,14 @@ export const updateProduct = async (req, res, next) => {
 };
 
 export const addStock = async (req, res, next) => {
+  const session = await mongoose.startSession();
   try {
+    session.startTransaction();
     const { cantidad, talle, color } = addStockSchema.parse(req.body);
 
-    const product = await Product.findById(req.params.id);
+    const product = await Product.findById(req.params.id).session(session);
     if (!product) {
+      await session.abortTransaction();
       return res.status(404).json({ message: 'Producto no encontrado' });
     }
 
@@ -118,11 +249,236 @@ export const addStock = async (req, res, next) => {
       product.cantidad += cantidad;
     }
 
-    await product.save();
+    await product.save({ session });
 
+    await registrarMovimiento({
+      producto: product,
+      talle,
+      color,
+      tipo: 'ajuste_salon',
+      cantidad,
+      empleado: req.user?.nombre,
+    }, session);
+
+    await session.commitTransaction();
     res.json(product);
   } catch (error) {
+    await session.abortTransaction().catch(() => {});
     next(error);
+  } finally {
+    session.endSession();
+  }
+};
+
+export const addDeposito = async (req, res, next) => {
+  const session = await mongoose.startSession();
+  try {
+    session.startTransaction();
+    const { cantidad, talle, color, modo } = depositoSchema.parse(req.body);
+
+    const product = await Product.findById(req.params.id).session(session);
+    if (!product) {
+      await session.abortTransaction();
+      return res.status(404).json({ message: 'Producto no encontrado' });
+    }
+
+    let delta;
+    if (product.variants?.length > 0) {
+      let idx = findVariantIdx(product, talle, color);
+      if (idx === -1) {
+        product.variants.push({ talle: talle || '', color: color || '', cantidad: 0, deposito: 0 });
+        idx = product.variants.length - 1;
+      }
+      const actual = product.variants[idx].deposito || 0;
+      const nuevo = modo === 'fijar' ? cantidad : actual + cantidad;
+      delta = nuevo - actual;
+      product.variants[idx].deposito = nuevo;
+    } else {
+      const actual = product.deposito || 0;
+      const nuevo = modo === 'fijar' ? cantidad : actual + cantidad;
+      delta = nuevo - actual;
+      product.deposito = nuevo;
+    }
+
+    if (delta === 0) {
+      await session.abortTransaction();
+      return res.json(product);
+    }
+
+    await product.save({ session });
+
+    await registrarMovimiento({
+      producto: product,
+      talle,
+      color,
+      tipo: modo === 'fijar' ? 'ajuste_deposito' : 'ingreso_deposito',
+      cantidad: Math.abs(delta),
+      empleado: req.user?.nombre,
+    }, session);
+
+    await session.commitTransaction();
+    res.json(product);
+  } catch (error) {
+    await session.abortTransaction().catch(() => {});
+    next(error);
+  } finally {
+    session.endSession();
+  }
+};
+
+export const reponerStock = async (req, res, next) => {
+  const session = await mongoose.startSession();
+  try {
+    session.startTransaction();
+    const { cantidad, talle, color } = movimientoStockSchema.parse(req.body);
+
+    const product = await Product.findById(req.params.id).session(session);
+    if (!product) {
+      await session.abortTransaction();
+      return res.status(404).json({ message: 'Producto no encontrado' });
+    }
+
+    const disponible = depositoDe(product, talle, color);
+    let actualizado;
+
+    if (product.variants?.length > 0) {
+      const idx = findVariantIdx(product, talle, color);
+      if (idx === -1) {
+        await session.abortTransaction();
+        return res.status(400).json({ message: `Variante no encontrada en "${product.nombre}"` });
+      }
+      if (disponible < cantidad) {
+        await session.abortTransaction();
+        return res.status(400).json({
+          message: `En depósito solo hay ${disponible} unidad(es) de "${product.nombre}".`,
+        });
+      }
+      actualizado = await Product.findOneAndUpdate(
+        {
+          _id: product._id,
+          variants: { $elemMatch: { talle: talle || '', color: color || '', deposito: { $gte: cantidad } } },
+        },
+        { $inc: { 'variants.$.deposito': -cantidad, 'variants.$.cantidad': cantidad, cantidad } },
+        { new: true, session }
+      );
+    } else {
+      if (disponible < cantidad) {
+        await session.abortTransaction();
+        return res.status(400).json({
+          message: `En depósito solo hay ${disponible} unidad(es) de "${product.nombre}".`,
+        });
+      }
+      actualizado = await Product.findOneAndUpdate(
+        { _id: product._id, deposito: { $gte: cantidad } },
+        { $inc: { deposito: -cantidad, cantidad } },
+        { new: true, session }
+      );
+    }
+
+    if (!actualizado) {
+      await session.abortTransaction();
+      return res.status(400).json({
+        message: `En depósito solo hay ${disponible} unidad(es) de "${product.nombre}".`,
+      });
+    }
+
+    await registrarMovimiento({
+      producto: actualizado,
+      talle,
+      color,
+      tipo: 'reposicion',
+      cantidad,
+      empleado: req.user?.nombre,
+    }, session);
+
+    await session.commitTransaction();
+    res.json(actualizado);
+  } catch (error) {
+    await session.abortTransaction().catch(() => {});
+    next(error);
+  } finally {
+    session.endSession();
+  }
+};
+
+export const retirarStock = async (req, res, next) => {
+  const session = await mongoose.startSession();
+  try {
+    session.startTransaction();
+    const { cantidad, talle, color } = movimientoStockSchema.parse(req.body);
+
+    const product = await Product.findById(req.params.id).session(session);
+    if (!product) {
+      await session.abortTransaction();
+      return res.status(404).json({ message: 'Producto no encontrado' });
+    }
+
+    const disponible = product.variants?.length > 0
+      ? (() => {
+          const idx = findVariantIdx(product, talle, color);
+          return idx === -1 ? 0 : (product.variants[idx].cantidad || 0);
+        })()
+      : (product.cantidad || 0);
+
+    let actualizado;
+
+    if (product.variants?.length > 0) {
+      const idx = findVariantIdx(product, talle, color);
+      if (idx === -1) {
+        await session.abortTransaction();
+        return res.status(400).json({ message: `Variante no encontrada en "${product.nombre}"` });
+      }
+      if (disponible < cantidad) {
+        await session.abortTransaction();
+        return res.status(400).json({
+          message: `En salón solo hay ${disponible} unidad(es) de "${product.nombre}".`,
+        });
+      }
+      actualizado = await Product.findOneAndUpdate(
+        {
+          _id: product._id,
+          variants: { $elemMatch: { talle: talle || '', color: color || '', cantidad: { $gte: cantidad } } },
+        },
+        { $inc: { 'variants.$.deposito': cantidad, 'variants.$.cantidad': -cantidad, cantidad: -cantidad } },
+        { new: true, session }
+      );
+    } else {
+      if (disponible < cantidad) {
+        await session.abortTransaction();
+        return res.status(400).json({
+          message: `En salón solo hay ${disponible} unidad(es) de "${product.nombre}".`,
+        });
+      }
+      actualizado = await Product.findOneAndUpdate(
+        { _id: product._id, cantidad: { $gte: cantidad } },
+        { $inc: { deposito: cantidad, cantidad: -cantidad } },
+        { new: true, session }
+      );
+    }
+
+    if (!actualizado) {
+      await session.abortTransaction();
+      return res.status(400).json({
+        message: `En salón solo hay ${disponible} unidad(es) de "${product.nombre}".`,
+      });
+    }
+
+    await registrarMovimiento({
+      producto: actualizado,
+      talle,
+      color,
+      tipo: 'retiro_deposito',
+      cantidad,
+      empleado: req.user?.nombre,
+    }, session);
+
+    await session.commitTransaction();
+    res.json(actualizado);
+  } catch (error) {
+    await session.abortTransaction().catch(() => {});
+    next(error);
+  } finally {
+    session.endSession();
   }
 };
 
@@ -160,9 +516,10 @@ export const exchangeProduct = async (req, res, next) => {
         return res.status(400).json({ message: `Variante no encontrada en "${productoCargado.nombre}" a cargar` });
       }
       if (cargarVariant.cantidad < data.cantidadCargar) {
+        const enDeposito = depositoDe(productoCargado, data.talleCargar, data.colorCargar);
         await session.abortTransaction();
         return res.status(400).json({
-          message: `Stock insuficiente de "${productoCargado.nombre}". Solo hay ${cargarVariant.cantidad} unidad(es).`,
+          message: `Stock insuficiente de "${productoCargado.nombre}". Solo hay ${cargarVariant.cantidad} unidad(es) en salón.${enDeposito > 0 ? ` Hay ${enDeposito} en depósito: reponé primero.` : ''}`,
         });
       }
     }
@@ -215,9 +572,10 @@ export const exchangeProduct = async (req, res, next) => {
       productoCargado.variants[targetIdx].cantidad -= data.cantidadCargar;
     } else {
       if (productoCargado.cantidad < data.cantidadCargar) {
+        const enDeposito = depositoDe(productoCargado, data.talleCargar, data.colorCargar);
         await session.abortTransaction();
         return res.status(400).json({
-          message: `Stock insuficiente de "${productoCargado.nombre}". Solo hay ${productoCargado.cantidad} unidad(es).`,
+          message: `Stock insuficiente de "${productoCargado.nombre}". Solo hay ${productoCargado.cantidad} unidad(es) en salón.${enDeposito > 0 ? ` Hay ${enDeposito} en depósito: reponé primero.` : ''}`,
         });
       }
       productoCargado.cantidad -= data.cantidadCargar;
@@ -309,7 +667,7 @@ export const exchangeProduct = async (req, res, next) => {
 
     let ventaDiferencia = null;
     if (diferencia > 0) {
-      const empleado = saleTicket?.empleado || data.empleado || 'Cambio';
+      const empleado = req.user.nombre;
       const metodo = data.metodoPago || saleTicket?.pagos?.[0]?.metodo || 'efectivo';
       ventaDiferencia = await Sale.create([{
         items: [{
@@ -368,7 +726,7 @@ export const exchangeProduct = async (req, res, next) => {
       ticketDiferencia: ventaDiferencia ? ventaDiferencia[0].ticketNumero : null,
     });
   } catch (error) {
-    await session.abortTransaction();
+    await session.abortTransaction().catch(() => {});
     next(error);
   } finally {
     session.endSession();
@@ -405,46 +763,6 @@ export const getDashboardStats = async (req, res, next) => {
   }
 };
 
-export const migrateVariants = async (req, res, next) => {
-  try {
-    const products = await Product.find({
-      $or: [
-        { talles: { $exists: true, $ne: [] } },
-        { colores: { $exists: true, $ne: [] } },
-      ],
-    });
-
-    let count = 0;
-    for (const product of products) {
-      const variants = [];
-
-      // Convert talles to variants
-      if (product.talles?.length > 0) {
-        for (const t of product.talles) {
-          variants.push({ talle: t.talle, color: '', cantidad: t.cantidad });
-        }
-      }
-
-      // Convert colores to variants (only if no talles existed)
-      if (!product.talles?.length && product.colores?.length > 0) {
-        for (const c of product.colores) {
-          variants.push({ talle: '', color: c.color, cantidad: c.cantidad });
-        }
-      }
-
-      product.variants = variants;
-      product.talles = undefined;
-      product.colores = undefined;
-      await product.save();
-      count++;
-    }
-
-    res.json({ message: `Migrados ${count} productos al formato variants` });
-  } catch (error) {
-    next(error);
-  }
-};
-
 export const getLowStock = async (req, res, next) => {
   try {
     const products = await Product.find();
@@ -461,6 +779,7 @@ export const getLowStock = async (req, res, next) => {
               talle: v.talle,
               color: v.color,
               cantidad: v.cantidad,
+              deposito: v.deposito || 0,
               stockMinimo,
             });
           }
@@ -472,6 +791,7 @@ export const getLowStock = async (req, res, next) => {
           talle: '',
           color: '',
           cantidad: product.cantidad,
+          deposito: product.deposito || 0,
           stockMinimo,
         });
       }
