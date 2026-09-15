@@ -1,17 +1,31 @@
-import { randomInt } from 'node:crypto';
+import crypto from 'node:crypto';
+import Sale from './SaleModel.js';
 
-export const generarTicketNumero = () => String(randomInt(100000000, 1000000000));
+const TICKET_PREFIJO = 'T-';
+const TICKET_ALFABETO = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+const TICKET_LARGO = 8;
+const TICKET_INTENTOS = 10;
+
+const generarCodigoAleatorio = () => {
+  let codigo = '';
+  for (let i = 0; i < TICKET_LARGO; i += 1) {
+    codigo += TICKET_ALFABETO[crypto.randomInt(0, TICKET_ALFABETO.length)];
+  }
+  return `${TICKET_PREFIJO}${codigo}`;
+};
+
+export const generarTicketNumero = async () => {
+  for (let intento = 0; intento < TICKET_INTENTOS; intento += 1) {
+    const codigo = generarCodigoAleatorio();
+    const existe = await Sale.exists({ ticketNumero: codigo });
+    if (!existe) return codigo;
+  }
+  throw new Error('No se pudo generar un número de ticket único');
+};
 
 export const guardarConTicketUnico = async (sale, session) => {
-  const MAX_INTENTOS = 10;
-  for (let i = 0; i < MAX_INTENTOS; i++) {
-    sale.ticketNumero = generarTicketNumero();
-    try {
-      return await sale.save({ session });
-    } catch (error) {
-      if (error.code !== 11000 || i === MAX_INTENTOS - 1) throw error;
-    }
-  }
+  sale.ticketNumero = await generarTicketNumero();
+  return await sale.save({ session });
 };
 
 export const registrarDevolucionEnVenta = (sale, { motivo, cantidad, monto }) => {
