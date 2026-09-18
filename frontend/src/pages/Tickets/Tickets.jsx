@@ -11,18 +11,7 @@ import ScannerModal from '../../components/scanner/ScannerModal';
 import { useLector } from '../../context/LectorContext';
 import { useIosAlert } from '../../components/alerts';
 import { IconTicket, IconTile, IconEye, IconPrint, IconReturn, IconRefresh } from '../../components/ui/icons';
-
-const formatDate = (date) =>
-  new Date(date).toLocaleDateString('es-AR', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-
-const formatMoney = (n) =>
-  `$${Number(n).toLocaleString('es-AR', { minimumFractionDigits: 2 })}`;
+import { formatMoney, formatDate } from '../../utils/format';
 
 const getPagos = (s) =>
   (s.pagos && s.pagos.length > 0 ? s.pagos : [{ metodo: s.metodoPago || 'efectivo', monto: s.total }]);
@@ -49,7 +38,7 @@ const getEstadoTicket = (s) => {
 
 const Tickets = () => {
   const [busqueda, setBusqueda] = useState('');
-  const [data, setData] = useState({ sales: [], total: 0 });
+  const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState('');
   const [expandedId, setExpandedId] = useState(null);
@@ -126,7 +115,7 @@ const Tickets = () => {
       .then((res) => {
         if (seq !== fetchSeqRef.current) return;
         const sales = res.data?.sales;
-        setData({ sales: Array.isArray(sales) ? sales : [], total: res.data?.total || 0 });
+        setData(Array.isArray(sales) ? sales : []);
       })
       .catch((err) => {
         if (seq !== fetchSeqRef.current) return;
@@ -160,7 +149,7 @@ const Tickets = () => {
         <div>
           <h2 className="text-[22px] font-bold text-ios-label tracking-tight">Tickets emitidos</h2>
           <p className="text-sm text-ios-tertiary mt-0.5">
-            {data.sales.length} ticket{data.sales.length === 1 ? '' : 's'} emitido{data.sales.length === 1 ? '' : 's'}
+            {data.length} ticket{data.length === 1 ? '' : 's'} emitido{data.length === 1 ? '' : 's'}
           </p>
         </div>
       </div>
@@ -203,14 +192,14 @@ const Tickets = () => {
                 </tr>
               </thead>
               <tbody>
-                {data.sales.length === 0 ? (
+                {data.length === 0 ? (
                   <tr>
                     <td colSpan={7} className="text-center py-10 text-ios-tertiary text-sm">
                       No se encontraron tickets{busqueda.trim() ? ' con ese criterio' : ''}
                     </td>
                   </tr>
                 ) : (
-                  data.sales.map((s) => {
+                  data.map((s) => {
                     const items = getItems(s);
                     return (
                       <tr
@@ -266,12 +255,12 @@ const Tickets = () => {
           </div>
 
           <div className="md:hidden space-y-2.5">
-            {data.sales.length === 0 ? (
+            {data.length === 0 ? (
               <div className="text-center py-10 text-ios-tertiary text-sm">
                 No se encontraron tickets{busqueda.trim() ? ' con ese criterio' : ''}
               </div>
             ) : (
-              data.sales.map((s) => {
+              data.map((s) => {
                 const items = getItems(s);
                 const isExpanded = expandedId === s._id;
                 return (

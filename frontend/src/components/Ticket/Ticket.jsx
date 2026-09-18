@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react';
+import { printHtml } from '../../utils/printHtml';
+import { formatMoney } from '../../utils/format';
 
 const NEGOCIO = 'Desarrollo by NexusCode';
 const NEGOCIONAME = 'NexusCode';
@@ -7,9 +9,6 @@ const pad = (n) => String(n).padStart(2, '0');
 
 const formatFecha = (d) =>
   `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
-
-const formatMoney = (n) =>
-  `$${Number(n).toLocaleString('es-AR', { minimumFractionDigits: 2 })}`;
 
 const pagoLabel = (metodo) =>
   metodo === 'efectivo' ? 'EFECTIVO' : metodo === 'transferencia' ? 'TRANSFERENCIA' : 'TARJETA';
@@ -285,7 +284,7 @@ const renderToHtml = (sale, qrDataUrl = '', barcodes = {}) => {
   return `
 <div class="ticket-body">
   <div class="text-center">
-    <p style="font-size:15px;font-weight:bold;letter-spacing:2px;">${NEGOCIO.toUpperCase()}</p>
+    <p style="font-size:15px;font-weight:bold;letter-spacing:2px;">${NEGOCIONAME.toUpperCase()}</p>
     <p style="font-size:10px;opacity:0.7;margin-top:2px;">Comprobante de venta</p>
   </div>
   ${sep()}
@@ -308,46 +307,8 @@ const renderToHtml = (sale, qrDataUrl = '', barcodes = {}) => {
 };
 
 export const printTicket = async (sale) => {
-  const win = window.open('', '_blank', 'width=400,height=600');
-  if (!win) return false;
-
-  win.document.write('<!doctype html><title>Ticket</title><p style="font-family:monospace;padding:16px;">Generando ticket…</p>');
-
   const { qrDataUrl, barcodes } = await generarImagenesTicket(sale);
-  if (win.closed) return false;
-
-  win.document.open();
-  win.document.write(buildPrintHtml(sale, qrDataUrl, barcodes));
-  win.document.close();
-  win.focus();
-
-  const esperarImagenes = () =>
-    Promise.all(
-      Array.from(win.document.images || []).map((img) =>
-        img.complete
-          ? Promise.resolve()
-          : new Promise((resolve) => {
-              img.addEventListener('load', resolve, { once: true });
-              img.addEventListener('error', resolve, { once: true });
-            })
-      )
-    );
-
-  const imprimir = () => {
-    win.focus();
-    win.onafterprint = () => win.close();
-    win.print();
-  };
-
-  if (win.document.readyState === 'complete') {
-    await esperarImagenes();
-    setTimeout(imprimir, 50);
-  } else {
-    win.addEventListener('load', () => {
-      esperarImagenes().then(() => setTimeout(imprimir, 50));
-    }, { once: true });
-  }
-
+  await printHtml(buildPrintHtml(sale, qrDataUrl, barcodes));
   return true;
 };
 
