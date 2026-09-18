@@ -11,7 +11,8 @@
     "migrate:money": "node scripts/migrate-money.js",
     "migrate:money:apply": "node scripts/migrate-money.js --apply",
     "migrate:tickets": "node scripts/migrate-tickets.js",
-    "migrate:tickets:apply": "node scripts/migrate-tickets.js --apply"
+    "migrate:tickets:apply": "node scripts/migrate-tickets.js --apply",
+    "test": "node --test \"tests/*.test.js\""
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
