@@ -118,6 +118,14 @@ export const describirError = (err) => {
     };
   }
 
+  if (err?.code === 112 || err?.codeName === 'WriteConflict') {
+    return {
+      titulo: 'Operación en conflicto con otra simultánea',
+      motivo: 'Dos operaciones intentaron modificar el mismo documento a la vez.',
+      queRevisar: 'Reintentá la operación; si se repite seguido, revisá el flujo de ventas concurrentes.',
+    };
+  }
+
   if (contiene(mensajeOriginal, 'transaction numbers are only allowed')) {
     return {
       titulo: 'La base de datos no soporta transacciones',

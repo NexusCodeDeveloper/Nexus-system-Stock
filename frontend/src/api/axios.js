@@ -1,11 +1,10 @@
 import axios from 'axios';
 import { getItem, removeItem } from '../utils/storage';
 import { reportarError } from '../utils/errorReporter';
-
-const baseURL = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:5000/api' : '/api');
+import { API_BASE_URL } from '../utils/apiBase';
 
 const api = axios.create({
-  baseURL,
+  baseURL: API_BASE_URL,
   timeout: 30000,
 });
 
@@ -23,7 +22,7 @@ api.interceptors.response.use(
     const url = error.config?.url || '';
     const status = error.response?.status;
 
-    if (!url.includes('/errors') && (!error.response || status >= 500)) {
+    if (!error.response || status >= 500) {
       const metodo = (error.config?.method || 'get').toUpperCase();
       reportarError(error, {
         lugar: `axios ${metodo} ${url}`,

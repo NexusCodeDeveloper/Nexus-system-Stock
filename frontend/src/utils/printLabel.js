@@ -1,4 +1,5 @@
-const formatMoney = (n) => `$${Number(n).toLocaleString('es-AR', { minimumFractionDigits: 2 })}`;
+import { printHtml } from './printHtml';
+import { formatMoney } from './format';
 
 const escapeHtml = (str) =>
   String(str ?? '').replace(/[&<>"']/g, (c) => ({
@@ -106,11 +107,7 @@ export const printLabel = async (producto, opciones = {}) => {
   .etiqueta:last-child { page-break-after: auto; break-after: auto; }`;
   }
 
-  const win = window.open('', '_blank', 'width=420,height=640');
-  if (!win) return false;
-
-  win.document.open();
-  win.document.write(`<!DOCTYPE html>
+  await printHtml(`<!DOCTYPE html>
 <html>
 <head>
 <meta charset="utf-8" />
@@ -143,11 +140,5 @@ ${paginasCss}
 ${cuerpo}
 </body>
 </html>`);
-  win.document.close();
-  win.focus();
-  win.onafterprint = () => win.close();
-  setTimeout(() => {
-    win.print();
-  }, 150);
   return true;
 };

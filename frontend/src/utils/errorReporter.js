@@ -1,6 +1,6 @@
 import { getItem } from './storage';
+import { API_BASE_URL } from './apiBase';
 
-const API_URL = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:5000/api' : '/api');
 const REPORTAR = import.meta.env.VITE_ERROR_REPORTING !== 'false';
 const VENTANA_DEDUPE_MS = 10000;
 const MAX_POR_SESION = 20;
@@ -12,7 +12,8 @@ const usuarioActual = () => {
   try {
     const token = getItem('token');
     if (!token) return null;
-    const payload = JSON.parse(atob(token.split('.')[1]));
+    const base64 = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+    const payload = JSON.parse(atob(base64));
     return payload.email || payload.nombre || null;
   } catch {
     return null;
@@ -29,6 +30,10 @@ export const reportarError = (error, contexto = {}) => {
 
   if (ahora - (ultimos.get(firma) || 0) < VENTANA_DEDUPE_MS) return;
   ultimos.set(firma, ahora);
+  if (ultimos.size > 100) {
+    const primera = ultimos.keys().next().value;
+    ultimos.delete(primera);
+  }
   if (enviados >= MAX_POR_SESION) return;
   enviados++;
 
@@ -38,7 +43,7 @@ export const reportarError = (error, contexto = {}) => {
 
   const payload = {
     mensaje: mensaje.slice(0, 1000),
-    stack: stack.slice(0, 8000),
+    stack: stack.slice(0, 4000),
     lugar: String(contexto.lugar || '').slice(0, 500),
     componente: String(contexto.componente || '').slice(0, 500),
     ruta: `${window.location.pathname}${window.location.search}`.slice(0, 300),
@@ -51,7 +56,7 @@ export const reportarError = (error, contexto = {}) => {
   };
 
   try {
-    const url = `${API_URL}/errors`;
+    const url = `${API_BASE_URL}/errors`;
     const body = JSON.stringify(payload);
     if (navigator.sendBeacon) {
       const enviado = navigator.sendBeacon(url, new Blob([body], { type: 'application/json' }));
