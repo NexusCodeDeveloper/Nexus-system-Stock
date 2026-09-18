@@ -20,7 +20,7 @@ const PushPermissionBanner = () => {
     getPushEstado()
       .then((e) => {
         if (!activo) return;
-        if (!e.soportado || e.suscrito || e.permiso === 'granted') {
+        if (!e.soportado || e.suscrito) {
           setEstado('oculto');
           return;
         }
@@ -54,8 +54,10 @@ const PushPermissionBanner = () => {
       const res = await activarPush();
       if (res.ok) {
         setEstado('oculto');
-      } else if (res.motivo === 'denied' || res.motivo === 'default') {
+      } else if (res.motivo === 'denied') {
         setEstado('denegado');
+      } else {
+        setEstado('oculto');
       }
     } catch {
       setEstado('oculto');

@@ -1,10 +1,9 @@
-import { createContext, useCallback, useContext, useEffect, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { getNotifications, markVistasAdmin as apiMarkVistasAdmin } from '../api/notifications';
 import { useAuth } from './AuthContext';
 import { escucharPush } from '../services/pushManager';
 
 const POLL_MS = 30000;
-const MAX_COMPLETADAS = 3;
 
 const NotificationContext = createContext(null);
 
@@ -12,6 +11,7 @@ export const NotificationProvider = ({ children }) => {
   const { user } = useAuth();
   const [pendientes, setPendientes] = useState([]);
   const [nuevasCompletadas, setNuevasCompletadas] = useState([]);
+  const checkSeqRef = useRef(0);
 
   const check = useCallback(async () => {
     if (!user) {
@@ -19,9 +19,11 @@ export const NotificationProvider = ({ children }) => {
       setNuevasCompletadas([]);
       return;
     }
+    const seq = ++checkSeqRef.current;
     try {
       const res = await getNotifications();
-      const all = res.data;
+      if (seq !== checkSeqRef.current) return;
+      const all = Array.isArray(res.data) ? res.data : [];
       setPendientes(all.filter((n) => n.estado === 'pendiente'));
       if (user.rol === 'admin') {
         setNuevasCompletadas(
@@ -32,7 +34,6 @@ export const NotificationProvider = ({ children }) => {
               titulo: n.titulo,
               realizadoNombre: n.realizadoNombre || n.realizadoPor?.nombre || '',
             }))
-            .slice(0, MAX_COMPLETADAS)
         );
       } else {
         setNuevasCompletadas([]);
@@ -64,16 +65,19 @@ export const NotificationProvider = ({ children }) => {
     return off;
   }, [check, user]);
 
+  const value = useMemo(
+    () => ({
+      pendientes,
+      pendingCount: pendientes.length,
+      refresh: check,
+      nuevasCompletadas,
+      markVistasAdmin,
+    }),
+    [pendientes, check, nuevasCompletadas, markVistasAdmin]
+  );
+
   return (
-    <NotificationContext.Provider
-      value={{
-        pendientes,
-        pendingCount: pendientes.length,
-        refresh: check,
-        nuevasCompletadas,
-        markVistasAdmin,
-      }}
-    >
+    <NotificationContext.Provider value={value}>
       {children}
     </NotificationContext.Provider>
   );

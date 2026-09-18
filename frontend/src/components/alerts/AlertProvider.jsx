@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import IosAlert from './IosAlert';
 import Toast from './Toast';
 
@@ -94,15 +94,19 @@ const AlertProvider = ({ children }) => {
     [pushAlert]
   );
 
-  const value = { show, confirm, toast, alert: show };
+  const value = useMemo(() => ({ show, confirm, toast, alert: show }), [show, confirm, toast]);
 
   return (
     <AlertContext.Provider value={value}>
       {children}
 
-      {toasts.map((t) => (
-        <Toast key={t.id} toast={t} />
-      ))}
+      {toasts.length > 0 && (
+        <div className="fixed top-4 inset-x-0 z-[95] flex flex-col items-center gap-2 px-4 pointer-events-none">
+          {toasts.map((t) => (
+            <Toast key={t.id} toast={t} />
+          ))}
+        </div>
+      )}
 
       {active && <IosAlert alert={active} onClose={() => resolveNone(active)} />}
     </AlertContext.Provider>

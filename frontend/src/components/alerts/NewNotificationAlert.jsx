@@ -24,12 +24,17 @@ const NewNotificationAlert = () => {
                   : `${nuevasCompletadas.length} tareas realizadas`}
               </p>
               <div className="mt-1 space-y-1">
-                {nuevasCompletadas.map((nc) => (
+                {nuevasCompletadas.slice(0, 3).map((nc) => (
                   <p key={nc.id} className="text-[12px] text-ios-secondary leading-snug">
                     <span className="text-ios-green font-semibold">"{nc.titulo}"</span>
                     {nc.realizadoNombre ? ` · ${nc.realizadoNombre}` : ''}
                   </p>
                 ))}
+                {nuevasCompletadas.length > 3 && (
+                  <p className="text-[11px] text-ios-tertiary">
+                    +{nuevasCompletadas.length - 3} más
+                  </p>
+                )}
               </div>
             </div>
             <button

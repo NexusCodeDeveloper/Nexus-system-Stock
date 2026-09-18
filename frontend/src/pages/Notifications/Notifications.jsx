@@ -16,6 +16,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useNotifications } from '../../context/NotificationContext';
 import { useIosAlert } from '../../components/alerts';
 import { IconBell, IconPlus, IconPencil, IconTrash, IconCheck, IconRefresh, IconChevronRight } from '../../components/ui/icons';
+import { formatDate } from '../../utils/format';
 
 const EstadoBadge = ({ estado }) =>
   estado === 'realizado' ? (
@@ -28,17 +29,6 @@ const EstadoBadge = ({ estado }) =>
       Pendiente
     </span>
   );
-
-const formatDate = (date) =>
-  date
-    ? new Date(date).toLocaleDateString('es-AR', {
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-      })
-    : '';
 
 const Notifications = () => {
   const { user } = useAuth();
@@ -55,8 +45,8 @@ const Notifications = () => {
   const [form, setForm] = useState({ titulo: '', descripcion: '' });
 
   const [completeTarget, setCompleteTarget] = useState(null);
-  const [completeName, setCompleteName] = useState('');
   const [comment, setComment] = useState('');
+  const [savingComplete, setSavingComplete] = useState(false);
 
   const isAdmin = user?.rol === 'admin';
 
@@ -66,7 +56,7 @@ const Notifications = () => {
 
   useEffect(() => {
     if (isAdmin) markVistasAdmin();
-  }, [isAdmin]);
+  }, [isAdmin, markVistasAdmin]);
 
   const fetchNotifications = async () => {
     setError('');
@@ -145,23 +135,14 @@ const Notifications = () => {
   };
 
   const handleComplete = async () => {
-    if (!completeTarget) return;
-    if (!completeName.trim()) {
-      alert({
-        icon: 'warning',
-        title: 'Campo requerido',
-        message: 'Debe indicar quién realizó la tarea',
-      });
-      return;
-    }
+    if (!completeTarget || savingComplete) return;
+    setSavingComplete(true);
     try {
       await completeNotification(completeTarget._id, {
-        realizadoNombre: completeName.trim(),
         comentario: comment.trim(),
       });
       toast({ message: 'Aviso marcado como realizado' });
       setCompleteTarget(null);
-      setCompleteName('');
       setComment('');
       fetchNotifications();
       refresh();
@@ -171,6 +152,8 @@ const Notifications = () => {
         title: 'Error',
         message: getApiErrorMessage(err, 'Error al marcar el aviso'),
       });
+    } finally {
+      setSavingComplete(false);
     }
   };
 
@@ -198,7 +181,6 @@ const Notifications = () => {
 
   const openComplete = (n) => {
     setDetail(null);
-    setCompleteName('');
     setComment('');
     setCompleteTarget(n);
   };
@@ -355,14 +337,13 @@ const Notifications = () => {
         title={completeTarget ? `Marcar "${completeTarget.titulo}" como realizado` : ''}
         confirmText="Confirmar"
         onConfirm={handleComplete}
+        confirmDisabled={savingComplete}
       >
         <div className="space-y-4">
-          <IosField label="¿Quién realizó la tarea?" required>
-            <IosInput
-              value={completeName}
-              onChange={(e) => setCompleteName(e.target.value)}
-              placeholder="Nombre del empleado"
-            />
+          <IosField label="Realizado por">
+            <div className="px-3.5 py-2.5 bg-ios-surface2 rounded-ios-control text-ios-secondary text-sm truncate">
+              {user?.nombre || '—'}
+            </div>
           </IosField>
           <IosField label="Comentario (opcional)" hint="Contanos cómo quedó el trabajo">
             <IosTextArea
