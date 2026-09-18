@@ -6,17 +6,27 @@ const isDev = process.env.NODE_ENV !== 'production';
 
 const estaVacio = (obj) => !obj || Object.keys(obj).length === 0;
 
+const esErrorDeBase = (err) => [
+  'MongoNetworkError',
+  'MongoServerSelectionError',
+  'MongoTimeoutError',
+  'MongooseServerSelectionError',
+  'MongoNotConnectedError',
+].includes(err.name) || err.name === 'MongooseError' && /buffering timed out/i.test(err.message || '');
+
+const esWriteConflict = (err) => err?.code === 112 || err?.codeName === 'WriteConflict';
+
 export const errorHandler = (err, req, res, next) => {
   if (res.headersSent) return next(err);
 
   const esZod = err instanceof ZodError;
   const status = err.statusCode
-    || (esZod || err.name === 'ValidationError' || err.name === 'CastError' ? 400 : err.code === 11000 ? 409 : 500);
+    || (esZod || err.name === 'ValidationError' || err.name === 'CastError' ? 400 : err.code === 11000 ? 409 : esWriteConflict(err) ? 409 : esErrorDeBase(err) ? 503 : 500);
 
   const descripcion = describirError(err);
-  const datos = estaVacio(req.body) && estaVacio(req.query) && estaVacio(req.params)
-    ? undefined
-    : { body: req.body, query: req.query, params: req.params };
+  const datos = isDev && !estaVacio(req.body) && !estaVacio(req.query) && !estaVacio(req.params)
+    ? { body: req.body, query: req.query, params: req.params }
+    : undefined;
 
   const meta = {
     motivo: descripcion.motivo,
@@ -53,11 +63,19 @@ export const errorHandler = (err, req, res, next) => {
   }
 
   if (err.name === 'CastError') {
-    return res.status(400).json({ message: descripcion.titulo });
+    return res.status(400).json({ message: isDev ? descripcion.titulo : 'Datos inválidos' });
   }
 
   if (err.code === 11000) {
     return res.status(409).json({ message: 'El valor ya existe en la base de datos' });
+  }
+
+  if (esWriteConflict(err)) {
+    return res.status(409).json({ message: 'La operación se cruzó con otra en simultáneo. Reintentá en unos segundos.' });
+  }
+
+  if (status === 503) {
+    return res.status(503).json({ message: 'Servicio no disponible. Intente de nuevo en unos minutos.' });
   }
 
   res.status(status).json({

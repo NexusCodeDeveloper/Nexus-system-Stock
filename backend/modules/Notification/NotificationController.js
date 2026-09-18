@@ -75,20 +75,27 @@ export const deleteNotification = async (req, res, next) => {
 export const completeNotification = async (req, res, next) => {
   try {
     const data = completeNotificationSchema.parse(req.body);
-    const notification = await Notification.findById(req.params.id);
+    const notification = await Notification.findOneAndUpdate(
+      { _id: req.params.id, estado: { $ne: 'realizado' } },
+      {
+        $set: {
+          estado: 'realizado',
+          comentario: data.comentario || '',
+          realizadoNombre: req.user.nombre,
+          realizadoPor: req.user.id,
+          realizadoEn: new Date(),
+          nuevaParaAdmin: req.user.rol === 'admin' ? false : true,
+        },
+      },
+      { new: true }
+    );
     if (!notification) {
-      return res.status(404).json({ message: 'Aviso no encontrado' });
-    }
-    if (notification.estado === 'realizado') {
+      const existe = await Notification.exists({ _id: req.params.id });
+      if (!existe) {
+        return res.status(404).json({ message: 'Aviso no encontrado' });
+      }
       return res.status(400).json({ message: 'Este aviso ya fue marcado como realizado' });
     }
-    notification.estado = 'realizado';
-    notification.comentario = data.comentario || '';
-    notification.realizadoNombre = req.user.nombre;
-    notification.realizadoPor = req.user.id;
-    notification.realizadoEn = new Date();
-    notification.nuevaParaAdmin = req.user.rol === 'admin' ? false : true;
-    await notification.save();
     const populated = await populateUsers(
       Notification.findById(notification._id)
     );

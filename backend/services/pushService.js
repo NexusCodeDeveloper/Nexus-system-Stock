@@ -46,8 +46,11 @@ export const registrarSuscripcion = async ({ endpoint, keys }, user) => {
   );
 };
 
-export const eliminarSuscripcion = async (endpoint) => {
-  await PushSubscription.deleteOne({ endpoint });
+export const eliminarSuscripcion = async (endpoint, userId) => {
+  const filtro = userId
+    ? { endpoint, $or: [{ userId }, { userId: null }, { userId: { $exists: false } }] }
+    : { endpoint };
+  await PushSubscription.deleteOne(filtro);
 };
 
 const construirFiltro = (para) => {
@@ -93,7 +96,17 @@ export const enviarEvento = async ({ tipo, titulo, mensaje, url = '/', para = 't
       const r = resultados[i];
       if (r.status === 'rejected') {
         const code = r.reason?.statusCode;
-        if (code === 404 || code === 410) eliminar.push(s._id);
+        if (code === 404 || code === 410) {
+          eliminar.push(s._id);
+        } else {
+          logger.warn('No se pudo enviar una notificación push', {
+            motivo: r.reason?.message || 'Error desconocido',
+            codigo: code,
+            destino: String(s.endpoint || '').slice(0, 80),
+            origen: 'backend',
+            lugar: 'pushService.js',
+          });
+        }
       }
     });
     if (eliminar.length > 0) {

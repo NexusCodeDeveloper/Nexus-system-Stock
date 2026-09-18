@@ -46,6 +46,21 @@ if (process.env.JWT_SECRET.length < 32 || process.env.JWT_SECRET.includes('cambi
   process.exit(1);
 }
 
+if (process.env.NODE_ENV === 'production') {
+  const clavesEjemplo = [
+    process.env.ADMIN_PASSWORD === 'nexus2026',
+    process.env.EMPLEADO_PASSWORD === 'empleado123',
+  ];
+  if (clavesEjemplo.some(Boolean)) {
+    logger.error('Las contraseñas de ejemplo no se pueden usar en producción', {
+      motivo: 'ADMIN_PASSWORD o EMPLEADO_PASSWORD conservan los valores de backend/.env.example.',
+      queRevisar: 'Definí contraseñas propias y seguras en las variables de entorno del servidor.',
+      origen: 'backend',
+    });
+    process.exit(1);
+  }
+}
+
 const app = express();
 const isDev = process.env.NODE_ENV !== 'production';
 const PORT = process.env.PORT || 5000;
@@ -71,25 +86,25 @@ const rateLimitBase = {
 
 const authLimiter = rateLimit({
   ...rateLimitBase,
-  max: 30,
+  limit: 30,
   message: { message: 'Demasiados intentos. Intente de nuevo en 15 minutos.' },
 });
 
 const globalLimiter = rateLimit({
   ...rateLimitBase,
-  max: 1500,
+  limit: 1500,
   message: { message: 'Demasiadas peticiones. Intente de nuevo en unos minutos.' },
 });
 
 const writeLimiter = rateLimit({
   ...rateLimitBase,
-  max: 300,
+  limit: 300,
   message: { message: 'Demasiadas operaciones. Intente de nuevo en unos minutos.' },
 });
 
 const errorLimiter = rateLimit({
   windowMs: 60 * 1000,
-  max: 30,
+  limit: 30,
   standardHeaders: true,
   legacyHeaders: false,
   message: { message: 'Demasiados reportes de error. Intente más tarde.' },
@@ -116,14 +131,14 @@ app.use('/api/cash-withdrawals', CashWithdrawalRoutes);
 app.use('/api/push', PushRoutes);
 app.use('/api/errors', errorLimiter, ErrorReportRoutes);
 
-app.use('/api/*', (req, res) => {
+app.use('/api', (req, res) => {
   res.status(404).json({ message: 'Ruta no encontrada' });
 });
 
 if (!isDev) {
   const frontendDist = path.resolve(__dirname, '..', 'frontend', 'dist');
   app.use(express.static(frontendDist));
-  app.get('*', (req, res) => {
+  app.use((req, res) => {
     res.sendFile(path.join(frontendDist, 'index.html'), (error) => {
       if (!error || res.headersSent) return;
       res.status(404).json({ message: 'Frontend no compilado' });
@@ -163,7 +178,11 @@ const seedUsers = async () => {
   }
 };
 
+let cerrando = false;
+
 const cerrarConError = (mensaje, error) => {
+  if (cerrando) return;
+  cerrando = true;
   const d = describirError(error);
   logger.error(mensaje, {
     motivo: d.titulo,

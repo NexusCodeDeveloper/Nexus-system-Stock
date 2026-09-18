@@ -1,4 +1,3 @@
-import PushSubscription from './PushModel.js';
 import { registrarSuscripcion, eliminarSuscripcion } from '../../services/pushService.js';
 
 export const subscribe = async (req, res, next) => {
@@ -20,11 +19,9 @@ export const unsubscribe = async (req, res, next) => {
     if (!endpoint) {
       return res.status(400).json({ message: 'Endpoint requerido' });
     }
-    await eliminarSuscripcion(endpoint);
+    await eliminarSuscripcion(endpoint, req.user.id);
     res.json({ ok: true });
   } catch (error) {
     next(error);
   }
 };
-
-export default { subscribe, unsubscribe, PushSubscription };
