@@ -8,6 +8,7 @@ import {
 import LoadingSpinner from '../../components/common/LoadingSpinner';
 import { useAuth } from '../../context/AuthContext';
 import { useIosAlert, IconAlert } from '../../components/alerts';
+import { getApiErrorMessage } from '../../utils/apiError';
 import IosButton from '../../components/ui/IosButton';
 import IosModal from '../../components/ui/IosModal';
 import { IosField, IosInput } from '../../components/ui/IosForm';
@@ -33,17 +34,18 @@ const Suppliers = () => {
     setError('');
     try {
       const res = await getSuppliers();
-      setSuppliers(res.data);
+      setSuppliers(Array.isArray(res.data) ? res.data : []);
     } catch (err) {
-      setError(err.response?.data?.message || 'Error al cargar proveedores');
+      setError(getApiErrorMessage(err, 'Error al cargar proveedores'));
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchSuppliers();
-  }, []);
+    if (user?.rol === 'admin') fetchSuppliers();
+    else setLoading(false);
+  }, [user?.rol]);
 
   const resetForm = () => {
     setForm({ nombre: '', telefono: '', email: '', direccion: '' });
@@ -78,7 +80,7 @@ const Suppliers = () => {
       fetchSuppliers();
       toast({ message: 'Proveedor guardado' });
     } catch (err) {
-      alert({ icon: 'error', title: 'Error', message: err.response?.data?.message || 'Error al guardar proveedor' });
+      alert({ icon: 'error', title: 'Error', message: getApiErrorMessage(err, 'Error al guardar proveedor') });
     } finally {
       setSaving(false);
     }
@@ -109,7 +111,7 @@ const Suppliers = () => {
       fetchSuppliers();
       toast({ message: 'Proveedor eliminado' });
     } catch (err) {
-      alert({ icon: 'error', title: 'Error', message: err.response?.data?.message || 'Error al eliminar proveedor' });
+      alert({ icon: 'error', title: 'Error', message: getApiErrorMessage(err, 'Error al eliminar proveedor') });
     }
   };
 

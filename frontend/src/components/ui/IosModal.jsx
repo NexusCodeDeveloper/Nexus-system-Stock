@@ -1,8 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import IosButton from './IosButton';
 import { IconX } from './icons';
 
 const isMobileViewport = () => window.matchMedia('(max-width: 767px)').matches;
+
+const modalStack = [];
 
 const IosModal = ({
   open,
@@ -20,6 +22,9 @@ const IosModal = ({
   maxWidth = 'max-w-lg',
 }) => {
   const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && isMobileViewport());
+  const dialogRef = useRef(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
 
   useEffect(() => {
     const mq = window.matchMedia('(max-width: 767px)');
@@ -29,19 +34,51 @@ const IosModal = ({
   }, []);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open) return undefined;
+    const entrada = { onClose: () => onCloseRef.current?.() };
+    modalStack.push(entrada);
+    document.body.style.overflow = 'hidden';
     const onKey = (e) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key !== 'Escape') return;
+      if (modalStack[modalStack.length - 1] !== entrada) return;
+      e.stopPropagation();
+      onCloseRef.current?.();
     };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [open, onClose]);
+    window.addEventListener('keydown', onKey, true);
+    return () => {
+      window.removeEventListener('keydown', onKey, true);
+      const idx = modalStack.indexOf(entrada);
+      if (idx !== -1) modalStack.splice(idx, 1);
+      if (modalStack.length === 0) document.body.style.overflow = '';
+    };
+  }, [open]);
 
   useEffect(() => {
-    if (open) document.body.style.overflow = 'hidden';
-    else document.body.style.overflow = '';
-    return () => { document.body.style.overflow = ''; };
+    if (!open) return undefined;
+    const previo = document.activeElement;
+    const node = dialogRef.current;
+    if (node && !node.contains(document.activeElement)) node.focus();
+    return () => {
+      if (previo instanceof HTMLElement && document.contains(previo)) previo.focus();
+    };
   }, [open]);
+
+  const atraparFoco = (e) => {
+    if (e.key !== 'Tab' || !dialogRef.current) return;
+    const focusables = dialogRef.current.querySelectorAll(
+      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+    );
+    if (focusables.length === 0) return;
+    const primero = focusables[0];
+    const ultimo = focusables[focusables.length - 1];
+    if (e.shiftKey && document.activeElement === primero) {
+      e.preventDefault();
+      ultimo.focus();
+    } else if (!e.shiftKey && document.activeElement === ultimo) {
+      e.preventDefault();
+      primero.focus();
+    }
+  };
 
   if (!open) return null;
 
@@ -52,7 +89,15 @@ const IosModal = ({
       {isMobile ? (
         /* Mobile: bottom sheet */
         <div className="absolute inset-x-0 bottom-0 flex justify-center">
-          <div className="w-full bg-ios-surface/95 backdrop-blur-2xl shadow-ios-sheet rounded-t-[28px] overflow-hidden max-h-[92dvh] flex flex-col animate-ios-sheet-up">
+          <div
+            ref={dialogRef}
+            role="dialog"
+            aria-modal="true"
+            aria-label={title || 'Diálogo'}
+            tabIndex={-1}
+            onKeyDown={atraparFoco}
+            className="w-full bg-ios-surface/95 backdrop-blur-2xl shadow-ios-sheet rounded-t-[28px] overflow-hidden max-h-[92dvh] flex flex-col animate-ios-sheet-up focus:outline-none"
+          >
             <div className="flex justify-center pt-2.5 pb-1 shrink-0">
               <div className="w-9 h-[5px] rounded-full bg-ios-surface3" />
             </div>
@@ -92,7 +137,15 @@ const IosModal = ({
       ) : (
         /* Desktop centered modal */
         <div className="absolute inset-0 flex items-center justify-center p-6">
-          <div className={`w-full ${maxWidth} bg-ios-surface rounded-ios-alert shadow-ios-alert overflow-hidden animate-ios-centered max-h-[90vh] flex flex-col border border-white/[0.07]`}>
+          <div
+            ref={dialogRef}
+            role="dialog"
+            aria-modal="true"
+            aria-label={title || 'Diálogo'}
+            tabIndex={-1}
+            onKeyDown={atraparFoco}
+            className={`w-full ${maxWidth} bg-ios-surface rounded-ios-alert shadow-ios-alert overflow-hidden animate-ios-centered max-h-[90vh] flex flex-col border border-white/[0.07] focus:outline-none`}
+          >
             {title && (
               <div className="px-6 pt-5 pb-1 shrink-0 relative">
                 <h2 className="text-[17px] font-semibold text-ios-label leading-snug">{title}</h2>

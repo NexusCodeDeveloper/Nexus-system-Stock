@@ -15,8 +15,11 @@ export const AuthProvider = ({ children }) => {
   const { toast } = useIosAlert();
 
   const userRef = useRef(user);
-  userRef.current = user;
   const avisoRef = useRef(0);
+
+  useEffect(() => {
+    userRef.current = user;
+  }, [user]);
 
   const clearSession = useCallback(() => {
     removeItem('token');

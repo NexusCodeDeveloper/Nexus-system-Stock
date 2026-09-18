@@ -18,7 +18,7 @@ const Spinner = () => (
 const WelcomeOverlay = () => {
   const [visible, setVisible] = useState(() => {
     try {
-      if (localStorage.getItem('welcome-overlay-seen')) return false;
+      if (sessionStorage.getItem('welcome-overlay-seen')) return false;
     } catch {
       /* ignore */
     }
@@ -30,7 +30,7 @@ const WelcomeOverlay = () => {
   useEffect(() => {
     if (!visible) return;
     try {
-      localStorage.setItem('welcome-overlay-seen', '1');
+      sessionStorage.setItem('welcome-overlay-seen', '1');
     } catch {
       /* ignore */
     }

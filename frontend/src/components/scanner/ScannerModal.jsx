@@ -77,6 +77,7 @@ const ScannerModal = ({ open, onClose, onLeer, continuo = false, titulo = 'Escan
     setError('');
     setListo(false);
     setLinterna(false);
+    ultimoRef.current = { codigo: '', ts: 0 };
 
     const iniciar = async () => {
       if (!window.isSecureContext) {

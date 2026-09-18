@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { loginUser } from '../../api/auth';
 import { useAuth } from '../../context/AuthContext';
 import { getApiErrorMessage } from '../../utils/apiError';
@@ -11,18 +11,24 @@ const LoginModal = () => {
   const [loading, setLoading] = useState(false);
   const [showPw, setShowPw] = useState(false);
   const { login } = useAuth();
+  const mountedRef = useRef(true);
+
+  useEffect(() => () => {
+    mountedRef.current = false;
+  }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (loading) return;
     setError('');
     setLoading(true);
     try {
       const res = await loginUser({ ...form, email: form.email.trim() });
       login(res.data);
     } catch (err) {
-      setError(getApiErrorMessage(err, 'Error al iniciar sesión'));
+      if (mountedRef.current) setError(getApiErrorMessage(err, 'Error al iniciar sesión'));
     } finally {
-      setLoading(false);    
+      if (mountedRef.current) setLoading(false);
     }
   };
 

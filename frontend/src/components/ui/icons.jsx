@@ -19,28 +19,19 @@ export const IconChart = (p) => <Icon {...p} d="M12 8c-1.657 0-3 .895-3 2s1.343 
 export const IconUsers = (p) => <Icon {...p} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />;
 export const IconReturn = (p) => <Icon {...p} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />;
 export const IconLogout = (p) => <Icon {...p} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />;
-export const IconMail = (p) => <Icon {...p} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />;
 export const IconCheck = (p) => <Icon {...p} d="M5 13l4 4L19 7" />;
 export const IconRefresh = (p) => <Icon {...p} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />;
-export const IconList = (p) => <Icon {...p} d="M4 6h16M4 12h16M4 18h16" />;
 export const IconHistory = (p) => <Icon {...p} d="M3 3v5h5M3.05 13A9 9 0 106 5.3L3 8m0-5h5" />;
-export const IconClock = (p) => <Icon {...p} d="M12 8v4l2.5 2.5M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />;
-export const IconPhone = (p) => <Icon {...p} d="M5 4h4l2 5-2.5 1.5a11 11 0 005 5L15 13l5 2v4a2 2 0 01-2 2A16 16 0 013 6a2 2 0 012-2z" />;
-export const IconMenu = (p) => <Icon {...p} d="M4 7h16M4 12h16M4 17h16" />;
 export const IconArrowUp = (p) => <Icon {...p} d="M7 14l5-5 5 5" />;
-export const IconPerson = (p) => <Icon {...p} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />;
-export const IconMinus = (p) => <Icon {...p} d="M5 12h14" />;
 export const IconSun = (p) => <Icon {...p} d="M12 17a5 5 0 100-10 5 5 0 000 10zm0-15v2m0 16v2M3.34 3.34l1.41 1.41m14.84 14.84l1.41 1.41M1 12h2m18 0h2M3.34 20.66l1.41-1.41M19.25 4.75l1.41-1.41" />;
 export const IconMoon = (p) => <Icon {...p} d="M21 12.79A9 9 0 1111.21 3a7 7 0 009.79 9.79z" />;
 export const IconCash = (p) => <Icon {...p} d="M4 7h16a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V9a2 2 0 012-2zm2 1a1 1 0 00-1 1 1 1 0 001 1 1 1 0 001-1 1 1 0 00-1-1zm8 3a2 2 0 11-4 0 2 2 0 014 0zm6 2a1 1 0 00-2 0 1 1 0 002 0z" />;
 export const IconBank = (p) => <Icon {...p} d="M3 21h18M4 21V10m4 11V10m4 11V10m4 11V10m5-4L12 2 3 10z" />;
 export const IconCard = (p) => <Icon {...p} d="M3 5h18a1 1 0 011 1v12a1 1 0 01-1 1H3a1 1 0 01-1-1V6a1 1 0 011-1zm-1 5h20M6 16h4" />;
-export const IconLock = (p) => <Icon {...p} d="M12 15v3m-6-9h12v11a1 1 0 01-1 1H7a1 1 0 01-1-1V9zm2 0V7a4 4 0 118 0v2" />;
 export const IconBell = (p) => <Icon {...p} d="M18 8a6 6 0 10-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 01-3.4 0" />;
 export const IconTicket = (p) => <Icon {...p} d="M4 6a1 1 0 011-1h14a1 1 0 011 1v3a2 2 0 000 6v3a1 1 0 01-1 1H5a1 1 0 01-1-1v-3a2 2 0 000-6V6zm4 3h8M8 12h8M8 15h4" />;
 export const IconPrint = (p) => <Icon {...p} d="M6 9V2h12v7M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2M6 14h12v8H6z" />;
 export const IconCamera = (p) => <Icon {...p} d="M4 7h3l2-2h6l2 2h3a1 1 0 011 1v11a1 1 0 01-1 1H4a1 1 0 01-1-1V8a1 1 0 011-1zm8 3a4 4 0 100 8 4 4 0 000-8z" />;
-export const IconBarcode = (p) => <Icon {...p} d="M4 5v14M7 5v14M10 5v10M13 5v14M16 5v10M19 5v14" />;
 
 export const IconWarehouse = (p) => <Icon {...p} d="M3 21h18M5 21V8l7-5 7 5v13M9 21v-6h6v6M9 11h6" />;
 
