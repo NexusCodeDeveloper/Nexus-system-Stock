@@ -5,10 +5,7 @@ import Sale from '../Sale/SaleModel.js';
 import { registrarDevolucionEnVenta, anularDevolucionEnVenta } from '../Sale/ticketUtils.js';
 import { createReturnSchema } from './ReturnSchema.js';
 import { enviarEvento } from '../../services/pushService.js';
-
-const findVariantIdx = (product, talle, color) => {
-  return product.variants.findIndex((v) => v.talle === (talle || '') && v.color === (color || ''));
-};
+import { findVariantIdx } from '../../utils/variantes.js';
 
 export const createReturn = async (req, res, next) => {
   const session = await mongoose.startSession();
@@ -37,7 +34,8 @@ export const createReturn = async (req, res, next) => {
     let pendiente = data.cantidad;
     let saleConsumida = null;
     let montoTotalDevuelto = 0;
-    let sales;
+    const sales = [];
+
     if (data.sale) {
       const targetSale = await Sale.findById(data.sale).session(session);
       if (!targetSale) {
@@ -61,26 +59,18 @@ export const createReturn = async (req, res, next) => {
         await session.abortTransaction();
         return res.status(400).json({ message: `Solo hay ${match.cantidad} unidad(es) de este producto en el ticket` });
       }
-      sales = [targetSale];
-    } else {
-      sales = await Sale.find({
-        $or: [
-          { producto: data.producto },
-          { items: { $elemMatch: { producto: data.producto, talle: data.talle || '', color: data.color || '' } } },
-        ],
-        estado: { $ne: 'devuelta' },
-      }).sort({ createdAt: -1 }).session(session);
+      sales.push(targetSale);
     }
+
+    const esLineaDevuelta = (i) => i.producto?.toString() === data.producto
+      && (i.talle || '') === (data.talle || '')
+      && (i.color || '') === (data.color || '');
 
     for (const sale of sales) {
       if (pendiente <= 0) break;
       saleConsumida = sale._id;
 
-      const match = sale.items?.find(
-        (i) => i.producto?.toString() === data.producto
-          && (i.talle || '') === (data.talle || '')
-          && (i.color || '') === (data.color || '')
-      );
+      const match = sale.items?.find(esLineaDevuelta);
       const saleCantidad = match?.cantidad ?? sale.cantidad ?? 0;
       const precioUnit = match?.precio ?? sale.precio ?? 0;
       const factorDescuento = 1 - (sale.descuento || 0) / 100;
@@ -89,21 +79,21 @@ export const createReturn = async (req, res, next) => {
         pendiente -= saleCantidad;
         const montoDevuelto = Math.round(precioUnit * saleCantidad * factorDescuento * 100) / 100;
         montoTotalDevuelto = Math.round((montoTotalDevuelto + montoDevuelto) * 100) / 100;
-        if (sale.items && sale.items.length > 1) {
-          sale.items = sale.items.filter((i) => i.producto?.toString() !== data.producto);
+        const restantes = (sale.items || []).filter((i) => !esLineaDevuelta(i));
+        if (restantes.length > 0) {
+          sale.items = restantes;
           const primerItem = sale.items[0];
           sale.producto = primerItem.producto;
           sale.cantidad = primerItem.cantidad;
           sale.precio = primerItem.precio;
           sale.talle = primerItem.talle || '';
           sale.total = Math.round(sale.items.reduce((s, i) => s + i.subtotal, 0) * (1 - (sale.descuento || 0) / 100) * 100) / 100;
-          registrarDevolucionEnVenta(sale, { motivo: data.motivo, cantidad: saleCantidad, monto: montoDevuelto });
         } else {
           sale.total = 0;
           sale.pagos = [];
           sale.estado = 'devuelta';
-          registrarDevolucionEnVenta(sale, { motivo: data.motivo, cantidad: saleCantidad, monto: montoDevuelto });
         }
+        registrarDevolucionEnVenta(sale, { motivo: data.motivo, cantidad: saleCantidad, monto: montoDevuelto });
         await sale.save({ session });
       } else {
         if (match) {
@@ -124,7 +114,7 @@ export const createReturn = async (req, res, next) => {
       }
     }
 
-    if (pendiente > 0) {
+    if (data.sale && pendiente > 0) {
       await session.abortTransaction();
       return res.status(400).json({
         message: `Solo se pueden devolver ${data.cantidad - pendiente} unidad(es): no hay más vendidas de este producto`,
@@ -173,14 +163,20 @@ export const deleteReturn = async (req, res, next) => {
       return res.status(404).json({ message: 'Devolución no encontrada' });
     }
 
+    const mismoProducto = returnRecord.productoCargar
+      && String(returnRecord.productoCargar) === String(returnRecord.producto);
+
     const product = await Product.findById(returnRecord.producto).session(session);
     if (product) {
       if (product.variants?.length > 0) {
         const idx = findVariantIdx(product, returnRecord.talle, returnRecord.color);
-        if (idx !== -1) {
-          product.variants[idx].cantidad -= returnRecord.cantidad;
-          if (product.variants[idx].cantidad < 0) product.variants[idx].cantidad = 0;
+        if (idx === -1) {
+          await session.abortTransaction();
+          return res.status(409).json({
+            message: `La variante "${[returnRecord.talle, returnRecord.color].filter(Boolean).join(' / ') || 'sin variante'}" ya no existe en "${product.nombre}". Revisá el stock antes de eliminar la devolución.`,
+          });
         }
+        product.variants[idx].cantidad = Math.max(0, product.variants[idx].cantidad - returnRecord.cantidad);
       } else {
         product.cantidad = Math.max(0, product.cantidad - returnRecord.cantidad);
       }
@@ -188,11 +184,19 @@ export const deleteReturn = async (req, res, next) => {
     }
 
     if (returnRecord.productoCargar) {
-      const productoCargado = await Product.findById(returnRecord.productoCargar).session(session);
+      const productoCargado = mismoProducto
+        ? product
+        : await Product.findById(returnRecord.productoCargar).session(session);
       if (productoCargado) {
         if (productoCargado.variants?.length > 0) {
           const idx = findVariantIdx(productoCargado, returnRecord.talleCargar, returnRecord.colorCargar);
-          if (idx !== -1) {
+          if (idx === -1) {
+            productoCargado.variants.push({
+              talle: returnRecord.talleCargar || '',
+              color: returnRecord.colorCargar || '',
+              cantidad: returnRecord.cantidadCargar,
+            });
+          } else {
             productoCargado.variants[idx].cantidad += returnRecord.cantidadCargar;
           }
         } else {
@@ -207,7 +211,9 @@ export const deleteReturn = async (req, res, next) => {
       if (sale) {
         const eraDevuelta = sale.estado === 'devuelta';
         if (!eraDevuelta) {
-          const match = sale.items?.find((i) => i.producto?.toString() === returnRecord.producto.toString());
+          const match = sale.items?.find((i) => i.producto?.toString() === returnRecord.producto.toString()
+            && (i.talle || '') === (returnRecord.talle || '')
+            && (i.color || '') === (returnRecord.color || ''));
           if (match) {
             match.cantidad += returnRecord.cantidad;
             match.subtotal = Math.round(match.precio * match.cantidad * 100) / 100;
@@ -261,10 +267,12 @@ export const deleteReturn = async (req, res, next) => {
 
 export const getReturns = async (req, res, next) => {
   try {
+    const limite = Math.min(Math.max(Number(req.query.limit) || 500, 1), 2000);
     const returns = await Return.find()
       .populate('producto', 'nombre categoria')
       .populate('sale', 'ticketNumero total empleado')
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 })
+      .limit(limite);
 
     res.json(returns);
   } catch (error) {

@@ -42,5 +42,6 @@ const stockMovementSchema = new mongoose.Schema(
 );
 
 stockMovementSchema.index({ createdAt: -1 });
+stockMovementSchema.index({ tipo: 1, createdAt: -1 });
 
 export default mongoose.model('StockMovement', stockMovementSchema);

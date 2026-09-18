@@ -8,6 +8,7 @@ import StockMovement from '../StockMovement/StockMovementModel.js';
 import { guardarConTicketUnico, registrarDevolucionEnVenta } from '../Sale/ticketUtils.js';
 import { createProductSchema, updateProductSchema, exchangeSchema, addStockSchema, movimientoStockSchema, depositoSchema } from './ProductSchema.js';
 import { enviarEvento, enviarStockBajo } from '../../services/pushService.js';
+import { findVariant, findVariantIdx, depositoDe } from '../../utils/variantes.js';
 
 const escapeRegex = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -60,14 +61,6 @@ const generarCodigoProducto = async () => {
   throw new Error('No se pudo generar un código único de producto');
 };
 
-const findVariant = (product, talle, color) => {
-  return product.variants.find((v) => v.talle === (talle || '') && v.color === (color || ''));
-};
-
-const findVariantIdx = (product, talle, color) => {
-  return product.variants.findIndex((v) => v.talle === (talle || '') && v.color === (color || ''));
-};
-
 const registrarMovimiento = async ({ producto, talle, color, tipo, cantidad, empleado }, session) => {
   await StockMovement.create(
     [{
@@ -81,14 +74,6 @@ const registrarMovimiento = async ({ producto, talle, color, tipo, cantidad, emp
     }],
     session ? { session } : undefined
   );
-};
-
-const depositoDe = (product, talle, color) => {
-  if (product.variants?.length > 0) {
-    const idx = findVariantIdx(product, talle, color);
-    return idx === -1 ? 0 : (product.variants[idx].deposito || 0);
-  }
-  return product.deposito || 0;
 };
 
 export const getProducts = async (req, res, next) => {
@@ -108,7 +93,8 @@ export const getProducts = async (req, res, next) => {
       filter.categoria = { $regex: escapeRegex(categoria), $options: 'i' };
     }
 
-    const products = await Product.find(filter).sort({ nombre: 1 });
+    const limite = Math.min(Math.max(Number(req.query.limit) || 1000, 1), 2000);
+    const products = await Product.find(filter).sort({ nombre: 1 }).limit(limite);
 
     res.json(products);
   } catch (error) {
@@ -188,11 +174,14 @@ export const createProduct = async (req, res, next) => {
 };
 
 export const updateProduct = async (req, res, next) => {
+  const session = await mongoose.startSession();
   try {
+    session.startTransaction();
     const data = updateProductSchema.parse(req.body);
-    const product = await Product.findById(req.params.id);
+    const product = await Product.findById(req.params.id).session(session);
 
     if (!product) {
+      await session.abortTransaction();
       return res.status(404).json({ message: 'Producto no encontrado' });
     }
 
@@ -200,29 +189,98 @@ export const updateProduct = async (req, res, next) => {
       const existing = await Product.findOne({
         nombre: { $regex: `^${escapeRegex(data.nombre)}$`, $options: 'i' },
         _id: { $ne: product._id },
-      });
+      }).session(session);
       if (existing) {
+        await session.abortTransaction();
         return res.status(409).json({ message: `Ya existe un producto llamado "${data.nombre}"` });
       }
     }
 
+    const movimientos = [];
+    const variantesPrevias = (product.variants || []).map((v) => ({
+      talle: v.talle || '',
+      color: v.color || '',
+      cantidad: v.cantidad || 0,
+      deposito: v.deposito || 0,
+    }));
+
     if (data.variants) {
-      data.variants = data.variants.map((v) => {
-        const idx = findVariantIdx(product, v.talle, v.color);
-        return {
-          ...v,
-          cantidad: idx === -1 ? 0 : (product.variants[idx].cantidad || 0),
-          deposito: Number(v.deposito) || 0,
-        };
-      });
+      const faltantes = variantesPrevias.filter(
+        (prev) =>
+          (prev.cantidad > 0 || prev.deposito > 0) &&
+          !data.variants.some(
+            (v) => (v.talle || '') === prev.talle && (v.color || '') === prev.color
+          )
+      );
+      if (faltantes.length > 0) {
+        const detalle = faltantes
+          .map((v) => `${[v.talle, v.color].filter(Boolean).join(' / ') || 'Base'} (salón ${v.cantidad} · dep ${v.deposito})`)
+          .join(', ');
+        await session.abortTransaction();
+        return res.status(409).json({
+          message: `No se pueden quitar ni renombrar variantes con stock: ${detalle}. Pasá o ajustá el stock primero.`,
+        });
+      }
+
+      if (data.variants.length > 0) {
+        if (variantesPrevias.length === 0 && (product.deposito || 0) > 0) {
+          await session.abortTransaction();
+          return res.status(409).json({
+            message: `"${product.nombre}" tiene ${product.deposito} unidad(es) en depósito sin variante. Pasá ese stock a una variante antes de agregar colores.`,
+          });
+        }
+
+        data.variants = data.variants.map((v) => {
+          const idx = findVariantIdx(product, v.talle, v.color);
+          const depositoNuevo = Number(v.deposito) || 0;
+          if (idx === -1) {
+            if (depositoNuevo > 0) {
+              movimientos.push({ talle: v.talle || '', color: v.color || '', tipo: 'ingreso_deposito', cantidad: depositoNuevo });
+            }
+            return { ...v, cantidad: 0, deposito: depositoNuevo };
+          }
+          const prev = product.variants[idx];
+          const delta = depositoNuevo - (prev.deposito || 0);
+          if (delta !== 0) {
+            movimientos.push({ talle: v.talle || '', color: v.color || '', tipo: 'ajuste_deposito', cantidad: Math.abs(delta) });
+          }
+          return { ...v, cantidad: prev.cantidad || 0, deposito: depositoNuevo };
+        });
+      } else {
+        const depositoPrevio = variantesPrevias.length > 0
+          ? variantesPrevias.reduce((s, v) => s + v.deposito, 0)
+          : (product.deposito || 0);
+        const depositoNuevo = Number(data.deposito) || 0;
+        if (depositoPrevio !== depositoNuevo) {
+          movimientos.push({ talle: '', color: '', tipo: 'ajuste_deposito', cantidad: Math.abs(depositoNuevo - depositoPrevio) });
+        }
+        data.variants = [];
+      }
+    } else if (data.deposito != null && variantesPrevias.length === 0) {
+      const delta = (Number(data.deposito) || 0) - (product.deposito || 0);
+      if (delta !== 0) {
+        movimientos.push({ talle: '', color: '', tipo: 'ajuste_deposito', cantidad: Math.abs(delta) });
+      }
     }
 
     Object.assign(product, data);
-    await product.save();
+    await product.save({ session });
 
+    for (const movimiento of movimientos) {
+      await registrarMovimiento({
+        producto: product,
+        ...movimiento,
+        empleado: req.user?.nombre,
+      }, session);
+    }
+
+    await session.commitTransaction();
     res.json(product);
   } catch (error) {
+    await session.abortTransaction().catch(() => {});
     next(error);
+  } finally {
+    session.endSession();
   }
 };
 
@@ -488,17 +546,24 @@ export const exchangeProduct = async (req, res, next) => {
     session.startTransaction();
     const data = exchangeSchema.parse(req.body);
 
+    const mismoProducto = String(data.productoDevolver) === String(data.productoCargar);
     const productoDevuelto = await Product.findById(data.productoDevolver).session(session);
     if (!productoDevuelto) {
       await session.abortTransaction();
       return res.status(404).json({ message: 'Producto a devolver no encontrado' });
     }
 
-    const productoCargado = await Product.findById(data.productoCargar).session(session);
+    const productoCargado = mismoProducto
+      ? productoDevuelto
+      : await Product.findById(data.productoCargar).session(session);
     if (!productoCargado) {
       await session.abortTransaction();
       return res.status(404).json({ message: 'Producto a cargar no encontrado' });
     }
+
+    const mismaVariante = mismoProducto
+      && (data.talleDevolver || '') === (data.talleCargar || '')
+      && (data.colorDevolver || '') === (data.colorCargar || '');
 
     // Validate variants
     if (productoDevuelto.variants?.length > 0) {
@@ -515,11 +580,21 @@ export const exchangeProduct = async (req, res, next) => {
         await session.abortTransaction();
         return res.status(400).json({ message: `Variante no encontrada en "${productoCargado.nombre}" a cargar` });
       }
-      if (cargarVariant.cantidad < data.cantidadCargar) {
+      const stockDisponible = cargarVariant.cantidad + (mismaVariante ? data.cantidadDevolver : 0);
+      if (stockDisponible < data.cantidadCargar) {
         const enDeposito = depositoDe(productoCargado, data.talleCargar, data.colorCargar);
         await session.abortTransaction();
         return res.status(400).json({
           message: `Stock insuficiente de "${productoCargado.nombre}". Solo hay ${cargarVariant.cantidad} unidad(es) en salón.${enDeposito > 0 ? ` Hay ${enDeposito} en depósito: reponé primero.` : ''}`,
+        });
+      }
+    } else {
+      const stockDisponible = productoCargado.cantidad + (mismoProducto ? data.cantidadDevolver : 0);
+      if (stockDisponible < data.cantidadCargar) {
+        const enDeposito = depositoDe(productoCargado, data.talleCargar, data.colorCargar);
+        await session.abortTransaction();
+        return res.status(400).json({
+          message: `Stock insuficiente de "${productoCargado.nombre}". Solo hay ${productoCargado.cantidad} unidad(es) en salón.${enDeposito > 0 ? ` Hay ${enDeposito} en depósito: reponé primero.` : ''}`,
         });
       }
     }
@@ -571,21 +646,20 @@ export const exchangeProduct = async (req, res, next) => {
       const targetIdx = idx === -1 ? productoCargado.variants.length - 1 : idx;
       productoCargado.variants[targetIdx].cantidad -= data.cantidadCargar;
     } else {
-      if (productoCargado.cantidad < data.cantidadCargar) {
-        const enDeposito = depositoDe(productoCargado, data.talleCargar, data.colorCargar);
-        await session.abortTransaction();
-        return res.status(400).json({
-          message: `Stock insuficiente de "${productoCargado.nombre}". Solo hay ${productoCargado.cantidad} unidad(es) en salón.${enDeposito > 0 ? ` Hay ${enDeposito} en depósito: reponé primero.` : ''}`,
-        });
-      }
       productoCargado.cantidad -= data.cantidadCargar;
     }
 
     await productoDevuelto.save({ session });
-    await productoCargado.save({ session });
+    if (productoCargado !== productoDevuelto) {
+      await productoCargado.save({ session });
+    }
+
+    const esLineaDevuelta = (i) => i.producto?.toString() === data.productoDevolver
+      && (i.talle || '') === (data.talleDevolver || '')
+      && (i.color || '') === (data.colorDevolver || '');
 
     const precioDevuelto = saleTicket
-      ? (saleTicket.items?.find((i) => i.producto?.toString() === data.productoDevolver)?.precio ?? productoDevuelto.precio)
+      ? (saleTicket.items?.find(esLineaDevuelta)?.precio ?? productoDevuelto.precio)
       : productoDevuelto.precio;
     const factorDescuentoTicket = 1 - (saleTicket?.descuento || 0) / 100;
     const devolverValor = Math.round(precioDevuelto * data.cantidadDevolver * factorDescuentoTicket * 100) / 100;
@@ -595,28 +669,13 @@ export const exchangeProduct = async (req, res, next) => {
     let pendiente = data.cantidadDevolver;
     let saleConsumida = null;
     let montoTotalDevuelto = 0;
-    let sales;
-    if (saleTicket) {
-      sales = [saleTicket];
-    } else {
-      sales = await Sale.find({
-        $or: [
-          { producto: data.productoDevolver },
-          { items: { $elemMatch: { producto: data.productoDevolver, talle: data.talleDevolver || '', color: data.colorDevolver || '' } } },
-        ],
-        estado: { $ne: 'devuelta' },
-      }).sort({ createdAt: -1 }).session(session);
-    }
+    const sales = saleTicket ? [saleTicket] : [];
 
     for (const sale of sales) {
       if (pendiente <= 0) break;
       saleConsumida = sale._id;
 
-      const match = sale.items?.find(
-        (i) => i.producto?.toString() === data.productoDevolver
-          && (i.talle || '') === (data.talleDevolver || '')
-          && (i.color || '') === (data.colorDevolver || '')
-      );
+      const match = sale.items?.find(esLineaDevuelta);
       const saleCantidad = match?.cantidad ?? sale.cantidad ?? 0;
       const precioUnit = match?.precio ?? sale.precio ?? 0;
       const factorDescuento = 1 - (sale.descuento || 0) / 100;
@@ -625,21 +684,21 @@ export const exchangeProduct = async (req, res, next) => {
         pendiente -= saleCantidad;
         const montoDevuelto = Math.round(precioUnit * saleCantidad * factorDescuento * 100) / 100;
         montoTotalDevuelto = Math.round((montoTotalDevuelto + montoDevuelto) * 100) / 100;
-        if (sale.items && sale.items.length > 1) {
-          sale.items = sale.items.filter((i) => i.producto?.toString() !== data.productoDevolver);
+        const restantes = (sale.items || []).filter((i) => !esLineaDevuelta(i));
+        if (restantes.length > 0) {
+          sale.items = restantes;
           const primerItem = sale.items[0];
           sale.producto = primerItem.producto;
           sale.cantidad = primerItem.cantidad;
           sale.precio = primerItem.precio;
           sale.talle = primerItem.talle || '';
           sale.total = Math.round(sale.items.reduce((s, i) => s + i.subtotal, 0) * (1 - (sale.descuento || 0) / 100) * 100) / 100;
-          registrarDevolucionEnVenta(sale, { motivo: data.motivo, cantidad: saleCantidad, monto: montoDevuelto });
         } else {
           sale.total = 0;
           sale.pagos = [];
           sale.estado = 'devuelta';
-          registrarDevolucionEnVenta(sale, { motivo: data.motivo, cantidad: saleCantidad, monto: montoDevuelto });
         }
+        registrarDevolucionEnVenta(sale, { motivo: data.motivo, cantidad: saleCantidad, monto: montoDevuelto });
         await sale.save({ session });
       } else {
         if (match) {
@@ -658,7 +717,7 @@ export const exchangeProduct = async (req, res, next) => {
       }
     }
 
-    if (pendiente > 0) {
+    if (saleTicket && pendiente > 0) {
       await session.abortTransaction();
       return res.status(400).json({
         message: `Solo se pueden devolver ${data.cantidadDevolver - pendiente} unidad(es): no hay más vendidas de este producto para cubrir el cambio`,

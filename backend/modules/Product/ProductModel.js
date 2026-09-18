@@ -67,7 +67,6 @@ productSchema.pre('save', function (next) {
   if (this.variants?.length > 0) {
     this.cantidad = this.variants.reduce((sum, v) => sum + v.cantidad, 0);
   }
-  this.talles = undefined;
   next();
 });
 

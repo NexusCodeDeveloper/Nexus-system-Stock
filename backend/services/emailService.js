@@ -96,6 +96,7 @@ const buildItemsVenta = (ventas) => {
   if (!ventas || ventas.length === 0) return [];
   const items = [];
   for (const s of ventas) {
+    if (s.estado === 'devuelta') continue;
     for (const item of getItemsDeVenta(s)) {
       items.push({
         nombre: item.producto?.nombre || 'Producto eliminado',

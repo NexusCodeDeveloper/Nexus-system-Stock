@@ -1,9 +1,6 @@
 import { z } from 'zod';
-import { Types } from 'mongoose';
 
-const objectId = z.string().refine((val) => Types.ObjectId.isValid(val), {
-  message: 'ID de producto inválido',
-});
+const objectId = z.string().regex(/^[0-9a-fA-F]{24}$/, 'ID de producto inválido');
 
 const pagoSchema = z.object({
   metodo: z.enum(['efectivo', 'transferencia', 'tarjeta']),

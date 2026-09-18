@@ -8,60 +8,11 @@ import { createSaleSchema } from './SaleSchema.js';
 import { generarTicketNumero, guardarConTicketUnico } from './ticketUtils.js';
 import { enviarCierreDeCaja, enviarMailTest, verificarMail } from '../../services/emailService.js';
 import { enviarEvento, enviarStockBajo } from '../../services/pushService.js';
-import { aCentavos } from '../../utils/money.js';
+import { parseDate, getRange, startOfDayDate } from '../../utils/fechas.js';
+import { findVariantIdx, extraDeposito } from '../../utils/variantes.js';
 import logger from '../../utils/logger.js';
 
 const escapeRegex = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-
-const extraDeposito = (product, talle, color) => {
-  const disponible = product.variants?.length > 0
-    ? (product.variants.find((v) => v.talle === (talle || '') && v.color === (color || ''))?.deposito || 0)
-    : (product.deposito || 0);
-  return disponible > 0 ? ` Hay ${disponible} en depósito: reponé primero.` : '';
-};
-
-const parseDate = (str, offset = 0) => {
-  if (!str) return null;
-  const match = String(str).match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (!match) return null;
-  const y = Number(match[1]);
-  const m = Number(match[2]);
-  const d = Number(match[3]);
-  if (m < 1 || m > 12 || d < 1 || d > 31) return null;
-  const dt = new Date(Date.UTC(y, m - 1, d));
-  if (dt.getUTCFullYear() !== y || dt.getUTCMonth() !== m - 1 || dt.getUTCDate() !== d) return null;
-  return new Date(dt.getTime() + Number(offset) * 60000);
-};
-
-const getRange = (start, end, offset = 0) => {
-  const off = Number.isFinite(Number(offset)) ? Number(offset) : 0;
-  const from = parseDate(start, off);
-  const to = parseDate(end, off);
-  if (start && !from) {
-    const err = new Error('Fecha inválida');
-    err.statusCode = 400;
-    throw err;
-  }
-  if (end && !to) {
-    const err = new Error('Fecha inválida');
-    err.statusCode = 400;
-    throw err;
-  }
-  return {
-    $gte: from || new Date(0),
-    $lt: to ? new Date(to.getTime() + 86400000) : new Date(8640000000000000),
-  };
-};
-
-const clientTodayDate = (offset = 0) => {
-  const local = new Date(Date.now() - Number(offset) * 60000);
-  return { y: local.getUTCFullYear(), m: local.getUTCMonth() + 1, d: local.getUTCDate() };
-};
-
-const startOfDayDate = (offset = 0) => {
-  const { y, m, d } = clientTodayDate(offset);
-  return new Date(Date.UTC(y, m - 1, d) + Number(offset) * 60000);
-};
 
 const getItems = (sale) => {
   return (sale.items && sale.items.length > 0)
@@ -77,10 +28,6 @@ const getUnidadesNetas = (sale) => {
   return Math.max(0, total - (sale.cantidadDevuelta || 0));
 };
 
-const findVariantIdx = (product, talle, color) => {
-  return product.variants.findIndex((v) => v.talle === (talle || '') && v.color === (color || ''));
-};
-
 export const createSale = async (req, res, next) => {
   const session = await mongoose.startSession();
   try {
@@ -89,8 +36,12 @@ export const createSale = async (req, res, next) => {
 
     const items = [];
     const productosVendidos = [];
+    const idsProductos = data.items.map((item) => item.producto);
+    const productos = await Product.find({ _id: { $in: idsProductos } }).session(session);
+    const productosPorId = new Map(productos.map((p) => [p._id.toString(), p]));
+
     for (const item of data.items) {
-      const product = await Product.findById(item.producto).session(session);
+      const product = productosPorId.get(String(item.producto));
       if (!product) {
         await session.abortTransaction();
         return res.status(404).json({ message: `Producto ${item.producto} no encontrado` });
@@ -194,27 +145,37 @@ export const deleteSale = async (req, res, next) => {
 
     const items = getItems(sale);
 
-    const returnCount = await Return.countDocuments({ sale: sale._id }).session(session);
+    const returnCount = await Return.countDocuments({
+      $or: [{ sale: sale._id }, { ventaDiferenciaId: sale._id }],
+    }).session(session);
     if (returnCount > 0) {
       await session.abortTransaction();
-      return res.status(400).json({ message: 'No se puede eliminar la venta porque tiene devoluciones asociadas' });
+      return res.status(400).json({ message: 'No se puede eliminar la venta porque tiene devoluciones o cambios asociados' });
     }
 
+    const idsProductos = items.map((item) => item.producto).filter(Boolean);
+    const productos = await Product.find({ _id: { $in: idsProductos } }).session(session);
+    const productosPorId = new Map(productos.map((p) => [p._id.toString(), p]));
+    const modificados = new Map();
+
     for (const item of items) {
-      const product = await Product.findById(item.producto).session(session);
-      if (product) {
-        if (product.variants?.length > 0) {
-          const idx = findVariantIdx(product, item.talle, item.color);
-          if (idx === -1) {
-            product.variants.push({ talle: item.talle || '', color: item.color || '', cantidad: item.cantidad });
-          } else {
-            product.variants[idx].cantidad += item.cantidad;
-          }
+      const product = item.producto ? productosPorId.get(String(item.producto)) : null;
+      if (!product) continue;
+      if (product.variants?.length > 0) {
+        const idx = findVariantIdx(product, item.talle, item.color);
+        if (idx === -1) {
+          product.variants.push({ talle: item.talle || '', color: item.color || '', cantidad: item.cantidad });
         } else {
-          product.cantidad += item.cantidad;
+          product.variants[idx].cantidad += item.cantidad;
         }
-        await product.save({ session });
+      } else {
+        product.cantidad += item.cantidad;
       }
+      modificados.set(product._id.toString(), product);
+    }
+
+    for (const product of modificados.values()) {
+      await product.save({ session });
     }
 
     await Sale.findByIdAndDelete(req.params.id).session(session);
@@ -301,7 +262,8 @@ export const getMostSold = async (req, res, next) => {
       const devueltoLegacy = esLegacy ? (sale.cantidadDevuelta || 0) : 0;
       const items = getItems(sale);
       for (const item of items) {
-        const pid = item.producto?.toString() || item.producto;
+        if (!item.producto) continue;
+        const pid = String(item.producto);
         if (!productMap[pid]) productMap[pid] = { totalVendido: 0, ingresos: 0 };
         const cantEfectiva = Math.max(0, (item.cantidad || 0) - devueltoLegacy);
         if (cantEfectiva === 0) continue;
@@ -433,42 +395,35 @@ export const getDailyClose = async (req, res, next) => {
       return acc;
     }, {});
 
-    const buildClose = () =>
-      DailyClose.findOneAndUpdate(
-        { fecha: fechaDate, turno },
-        {
-          fecha: fechaDate,
-          turno,
-          desdeAt,
-          hastaAt,
-          cerradoPor,
-          total: aCentavos(total),
-          cantidad,
-          efectivo: { total: aCentavos(porMetodo.efectivo?.total || 0), cantidad: porMetodo.efectivo?.cantidad || 0 },
-          transferencia: { total: aCentavos(porMetodo.transferencia?.total || 0), cantidad: porMetodo.transferencia?.cantidad || 0 },
-          tarjeta: { total: aCentavos(porMetodo.tarjeta?.total || 0), cantidad: porMetodo.tarjeta?.cantidad || 0 },
-          retiros: retiros.map((r) => ({
-            monto: aCentavos(r.monto),
-            motivo: r.motivo,
-            realizadoPor: r.realizadoPor,
-            fecha: r.createdAt,
-          })),
-          totalRetiros: aCentavos(totalRetiros),
-          cerradoAt: new Date(),
-        },
-        { upsert: true, new: true }
-      );
+    const closeData = {
+      fecha: fechaDate,
+      turno,
+      desdeAt,
+      hastaAt,
+      cerradoPor,
+      total,
+      cantidad,
+      efectivo: { total: porMetodo.efectivo?.total || 0, cantidad: porMetodo.efectivo?.cantidad || 0 },
+      transferencia: { total: porMetodo.transferencia?.total || 0, cantidad: porMetodo.transferencia?.cantidad || 0 },
+      tarjeta: { total: porMetodo.tarjeta?.total || 0, cantidad: porMetodo.tarjeta?.cantidad || 0 },
+      retiros: retiros.map((r) => ({
+        monto: r.monto,
+        motivo: r.motivo,
+        realizadoPor: r.realizadoPor,
+        fecha: r.createdAt,
+      })),
+      totalRetiros,
+      cerradoAt: new Date(),
+    };
 
     let close;
     try {
-      close = await buildClose();
+      close = await DailyClose.create(closeData);
     } catch (error) {
       if (error.code === 11000) {
-        close = await DailyClose.findOne({ fecha: fechaDate, turno });
-        if (!close) throw error;
-      } else {
-        throw error;
+        return res.status(400).json({ message: 'Ese turno ya fue cerrado por otra operación simultánea' });
       }
+      throw error;
     }
 
     let totalDia = null;
@@ -680,7 +635,8 @@ export const resendCloseMail = async (req, res, next) => {
 
 export const mailTest = async (req, res, next) => {
   try {
-    const offset = Number(req.query.offset) || new Date().getTimezoneOffset();
+    const offsetRaw = Number(req.query.offset);
+    const offset = Number.isFinite(offsetRaw) ? offsetRaw : new Date().getTimezoneOffset();
     const datos = await enviarMailTest({ offset });
     res.json({ message: 'Mail de prueba enviado', asunto: datos.subject });
   } catch (error) {
@@ -738,7 +694,17 @@ export const runMigration = async (req, res, next) => {
 };
 
 export const ensureTicketNumbers = async () => {
-  const cursor = Sale.find({ ticketNumero: { $exists: false } }).cursor();
+  const sinTicket = {
+    $or: [
+      { ticketNumero: { $exists: false } },
+      { ticketNumero: null },
+      { ticketNumero: '' },
+    ],
+  };
+  const pendientes = await Sale.countDocuments(sinTicket);
+  if (pendientes === 0) return 0;
+
+  const cursor = Sale.find(sinTicket).cursor();
   let count = 0;
 
   for await (const sale of cursor) {

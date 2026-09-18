@@ -1,14 +1,11 @@
 import { z } from 'zod';
-import { Types } from 'mongoose';
 
-const objectId = z.string().refine((val) => Types.ObjectId.isValid(val), {
-  message: 'ID inválido',
-});
+const objectId = z.string().regex(/^[0-9a-fA-F]{24}$/, 'ID inválido');
 
 const variantSchema = z.object({
   talle: z.string().optional().default(''),
   color: z.string().optional().default(''),
-  cantidad: z.number().int().min(0, 'La cantidad no puede ser negativa'),
+  cantidad: z.number().int().min(0, 'La cantidad no puede ser negativa').optional().default(0),
   deposito: z.number().int().min(0, 'La cantidad no puede ser negativa').optional().default(0),
 });
 
@@ -20,6 +17,39 @@ const codigoSchema = z.preprocess(
     .regex(/^NC-\d{6}$/, 'El código debe tener el formato NC-000001')
     .optional()
 );
+
+const claveVariante = (v) => `${(v.talle || '').trim().toLowerCase()}|${(v.color || '').trim().toLowerCase()}`;
+
+const validarVariantesUnicas = (data, ctx) => {
+  const vistas = new Set();
+  for (const v of data.variants ?? []) {
+    const clave = claveVariante(v);
+    if (vistas.has(clave)) {
+      const label = [v.talle, v.color].filter(Boolean).join(' / ') || 'Base';
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `La variante "${label}" está repetida`,
+        path: ['variants'],
+      });
+      return;
+    }
+    vistas.add(clave);
+  }
+};
+
+const validarColoresDeVariantes = (data, ctx) => {
+  if (data.colores && data.colores.length > 0) {
+    for (const v of data.variants ?? []) {
+      if (v.color && !data.colores.includes(v.color)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `El color "${v.color}" no está en la lista de colores del producto`,
+          path: ['variants'],
+        });
+      }
+    }
+  }
+};
 
 export const createProductSchema = z.object({
   nombre: z.string().min(1, 'El nombre del producto es obligatorio'),
@@ -33,17 +63,8 @@ export const createProductSchema = z.object({
   codigo: codigoSchema,
   stockMinimo: z.number().int().min(0).optional().default(2),
 }).superRefine((data, ctx) => {
-  if (data.colores && data.colores.length > 0) {
-    for (const v of data.variants ?? []) {
-      if (v.color && !data.colores.includes(v.color)) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: `El color "${v.color}" no está en la lista de colores del producto`,
-          path: ['variants'],
-        });
-      }
-    }
-  }
+  validarColoresDeVariantes(data, ctx);
+  validarVariantesUnicas(data, ctx);
 });
 
 export const exchangeSchema = z.object({
@@ -91,15 +112,6 @@ export const updateProductSchema = z.object({
   proveedor: z.string().optional(),
   stockMinimo: z.number().int().min(0).optional(),
 }).superRefine((data, ctx) => {
-  if (data.colores && data.colores.length > 0) {
-    for (const v of data.variants ?? []) {
-      if (v.color && !data.colores.includes(v.color)) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: `El color "${v.color}" no está en la lista de colores del producto`,
-          path: ['variants'],
-        });
-      }
-    }
-  }
+  validarColoresDeVariantes(data, ctx);
+  validarVariantesUnicas(data, ctx);
 });
