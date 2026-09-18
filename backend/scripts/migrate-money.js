@@ -80,6 +80,7 @@ const run = async () => {
     const muestras = [];
 
     for (const doc of docs) {
+      if (doc._moneyCentsV1) continue;
       const upd = transform(doc);
       const keys = cambiosDe(doc, upd);
       if (keys.length === 0) continue;
@@ -87,7 +88,7 @@ const run = async () => {
       if (muestras.length < 2) {
         muestras.push({ antes: pick(doc, keys), despues: pick(upd, keys) });
       }
-      if (APPLY) await coll.updateOne({ _id: doc._id }, { $set: upd });
+      if (APPLY) await coll.updateOne({ _id: doc._id }, { $set: { ...upd, _moneyCentsV1: true } });
     }
 
     resumen[name] = { total: docs.length, convertidos };

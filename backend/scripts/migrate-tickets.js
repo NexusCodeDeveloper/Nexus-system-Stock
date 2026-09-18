@@ -3,12 +3,12 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import '../config/env.js';
-import Sale from '../modules/Sale/SaleModel.js';
 import { generarTicketNumero } from '../modules/Sale/ticketUtils.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const MARKER_ID = 'tickets-aleatorios-v1';
 const APPLY = process.argv.includes('--apply');
+const TICKET_VALIDO = /^T-[A-Z0-9]{8}$/;
 
 const backup = async (db) => {
   const stamp = new Date().toISOString().replace(/[:.]/g, '-');
@@ -33,11 +33,27 @@ const run = async () => {
 
   if (APPLY) await backup(db);
 
-  const sales = await Sale.find({}).sort({ createdAt: 1 }).select('_id ticketNumero');
+  const sales = await db
+    .collection('sales')
+    .find({ _ticketAleatorioV1: { $ne: true } })
+    .sort({ createdAt: 1 })
+    .project({ ticketNumero: 1 })
+    .toArray();
   let regenerados = 0;
+  let yaValidos = 0;
   const muestras = [];
 
   for (const sale of sales) {
+    if (TICKET_VALIDO.test(sale.ticketNumero || '')) {
+      yaValidos += 1;
+      if (APPLY) {
+        await db.collection('sales').updateOne(
+          { _id: sale._id },
+          { $set: { _ticketAleatorioV1: true } }
+        );
+      }
+      continue;
+    }
     const nuevo = await generarTicketNumero();
     regenerados += 1;
     if (muestras.length < 3) {
@@ -48,12 +64,14 @@ const run = async () => {
       });
     }
     if (APPLY) {
-      sale.ticketNumero = nuevo;
-      await sale.save();
+      await db.collection('sales').updateOne(
+        { _id: sale._id },
+        { $set: { ticketNumero: nuevo, _ticketAleatorioV1: true } }
+      );
     }
   }
 
-  console.log(`\nVentas encontradas: ${sales.length} · regeneradas: ${regenerados}`);
+  console.log(`\nVentas encontradas: ${sales.length} · regeneradas: ${regenerados} · ya válidas (solo marcadas): ${yaValidos}`);
   if (muestras.length > 0) {
     console.log('Ejemplos:');
     console.log(JSON.stringify(muestras, null, 2));
