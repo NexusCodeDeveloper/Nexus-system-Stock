@@ -4,8 +4,7 @@ import IosToggle from '../ui/IosToggle';
 import { IosField, IosInput, IosSelect } from '../ui/IosForm';
 import { IconX } from '../ui/icons';
 import { useIosAlert } from '../alerts';
-
-const formatMoney = (n) => `$${Number(n).toLocaleString('es-AR', { minimumFractionDigits: 2 })}`;
+import { formatMoney } from '../../utils/format';
 
 const CartPanel = () => {
   const { confirm } = useIosAlert();
@@ -16,7 +15,6 @@ const CartPanel = () => {
     clearCart,
     metodos,
     sellEmpleado,
-    setSellEmpleado,
     sellDescuento,
     setSellDescuento,
     sellMetodoPago,
@@ -83,13 +81,13 @@ const CartPanel = () => {
                 value={item.cantidad}
                 onChange={(e) => {
                   const v = e.target.value;
-                  if (v === '' || /^\d+$/.test(v)) updateCartItem(idx, 'cantidad', v === '' ? 1 : Math.max(1, Number(v)));
+                  if (v === '' || /^\d+$/.test(v)) updateCartItem(idx, 'cantidad', v);
                 }}
                 className="w-14 px-2 py-1 text-center bg-ios-surface2 rounded-lg text-ios-label text-sm [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
               />
               <span className="text-[11px] text-ios-tertiary">{formatMoney(item.precio)}</span>
               <span className="text-sm font-semibold text-ios-label tabular-nums">
-                {formatMoney(item.precio * item.cantidad)}
+                {formatMoney(item.precio * (Number(item.cantidad) || 0))}
               </span>
             </div>
           </div>
@@ -99,12 +97,9 @@ const CartPanel = () => {
       <div className="border-t border-ios-separator/40 px-4 py-3 space-y-3 shrink-0">
         <div className="grid grid-cols-2 gap-2">
           <IosField label="Empleado">
-            <IosInput
-              type="text"
-              value={sellEmpleado}
-              onChange={(e) => setSellEmpleado(e.target.value)}
-              placeholder="Nombre"
-            />
+            <div className="px-3.5 py-2.5 bg-ios-surface2 rounded-ios-control text-ios-secondary text-sm truncate">
+              {sellEmpleado || '—'}
+            </div>
           </IosField>
           <IosField label="Descuento">
             <IosInput

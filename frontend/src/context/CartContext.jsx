@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { createSale } from '../api/sales';
 import { useAuth } from './AuthContext';
 import { useIosAlert } from '../components/alerts';
@@ -31,11 +31,11 @@ export const CartProvider = ({ children }) => {
   const [showTicketModal, setShowTicketModal] = useState(false);
   const [saleVersion, setSaleVersion] = useState(0);
 
-  const cartTotal = cart.reduce((s, i) => s + i.precio * i.cantidad, 0);
+  const cartTotal = Math.round(cart.reduce((s, i) => s + i.precio * (Number(i.cantidad) || 0), 0) * 100) / 100;
   const descuentoNum = sellDescuento === '' ? 0 : Number(sellDescuento);
-  const finalTotal = cartTotal * (1 - descuentoNum / 100);
+  const finalTotal = Math.round(cartTotal * (1 - descuentoNum / 100) * 100) / 100;
   const sellMonto2Num = sellMonto2 === '' ? 0 : Number(sellMonto2);
-  const sellMonto1 = sellSplit ? finalTotal - sellMonto2Num : finalTotal;
+  const sellMonto1 = sellSplit ? Math.round((finalTotal - sellMonto2Num) * 100) / 100 : finalTotal;
 
   const resetSell = useCallback(() => {
     setSellEmpleado(user?.nombre || '');
@@ -60,7 +60,7 @@ export const CartProvider = ({ children }) => {
       );
       if (idx === -1) return [...prev, item];
       const copia = [...prev];
-      copia[idx] = { ...copia[idx], cantidad: copia[idx].cantidad + (Number(item.cantidad) || 1) };
+      copia[idx] = { ...copia[idx], cantidad: Number(copia[idx].cantidad || 0) + (Number(item.cantidad) || 1) };
       return copia;
     });
   }, []);
@@ -87,26 +87,30 @@ export const CartProvider = ({ children }) => {
 
   const closeCart = useCallback(() => setShowCartModal(false), []);
 
-  const setMetodoPago = (key) => {
+  const setMetodoPago = useCallback((key) => {
     setSellMetodoPago(key);
-    if (sellSplit && sellMetodo2 === key) {
-      setSellMetodo2(METODOS_PAGO.find((m) => m.key !== key)?.key || '');
-    }
-  };
+    setSellMetodo2((prev) => (sellSplit && prev === key
+      ? METODOS_PAGO.find((m) => m.key !== key)?.key || ''
+      : prev));
+  }, [sellSplit]);
 
-  const toggleSplit = () => {
-    const next = !sellSplit;
-    setSellSplit(next);
-    setSellMonto2('');
-    if (next && sellMetodo2 === sellMetodoPago) {
-      setSellMetodo2(METODOS_PAGO.find((m) => m.key !== sellMetodoPago)?.key || '');
-    }
-  };
+  const toggleSplit = useCallback(() => {
+    setSellSplit((prev) => {
+      const next = !prev;
+      if (next) {
+        setSellMonto2('');
+        setSellMetodo2((m) => (m === sellMetodoPago ? METODOS_PAGO.find((x) => x.key !== sellMetodoPago)?.key || '' : m));
+      } else {
+        setSellMonto2('');
+      }
+      return next;
+    });
+  }, [sellMetodoPago]);
 
-  const confirmSale = async () => {
+  const confirmSale = useCallback(async () => {
     if (sellSaving) return;
     if (!sellEmpleado.trim()) {
-      alert({ icon: 'warning', title: 'Campo requerido', message: 'Debe ingresar el nombre del empleado' });
+      alert({ icon: 'warning', title: 'Campo requerido', message: 'No se pudo identificar al usuario de la sesión' });
       return;
     }
     if (descuentoNum < 0 || descuentoNum > 100) {
@@ -117,11 +121,15 @@ export const CartProvider = ({ children }) => {
       alert({ icon: 'warning', title: 'Método repetido', message: 'El segundo método de pago debe ser distinto del primero' });
       return;
     }
-    if (sellSplit && (!Number.isFinite(sellMonto2Num) || sellMonto2Num > finalTotal + 0.01)) {
-      alert({ icon: 'warning', title: 'Montos incorrectos', message: 'El segundo monto no puede superar el total' });
+    if (sellSplit && (!Number.isFinite(sellMonto2Num) || sellMonto2Num <= 0 || sellMonto2Num > finalTotal + 0.01)) {
+      alert({ icon: 'warning', title: 'Montos incorrectos', message: 'El segundo monto debe ser mayor a $0 y no puede superar el total' });
       return;
     }
-    if (cart.some((i) => !Number.isFinite(i.precio) || i.precio <= 0 || !Number.isInteger(i.cantidad) || i.cantidad < 1)) {
+    if (sellSplit && sellMonto1 <= 0) {
+      alert({ icon: 'warning', title: 'Montos incorrectos', message: 'El primer monto debe ser mayor a $0' });
+      return;
+    }
+    if (cart.some((i) => !Number.isFinite(i.precio) || i.precio <= 0 || !Number.isInteger(Number(i.cantidad)) || Number(i.cantidad) < 1)) {
       alert({ icon: 'warning', title: 'Carrito inválido', message: 'Verifique cantidades y precios del carrito' });
       return;
     }
@@ -134,8 +142,7 @@ export const CartProvider = ({ children }) => {
           ]
         : [{ metodo: sellMetodoPago, monto: Math.round(finalTotal * 100) / 100 }];
       const res = await createSale({
-        items: cart.map((i) => ({ producto: i.producto, cantidad: i.cantidad, talle: i.talle, color: i.color || '' })),
-        empleado: sellEmpleado.trim(),
+        items: cart.map((i) => ({ producto: i.producto, cantidad: Number(i.cantidad), talle: i.talle, color: i.color || '' })),
         pagos,
         descuento: descuentoNum,
       });
@@ -150,16 +157,16 @@ export const CartProvider = ({ children }) => {
     } finally {
       setSellSaving(false);
     }
-  };
+  }, [sellSaving, sellEmpleado, descuentoNum, sellSplit, sellMetodo2, sellMetodoPago, sellMonto2Num, finalTotal, sellMonto1, cart, alert, toast]);
 
-  const handlePrintTicket = async () => {
+  const handlePrintTicket = useCallback(async () => {
     if (!lastSale) return;
     const ok = await printTicket(lastSale);
     if (ok) setShowTicketModal(false);
     else toast({ message: 'Habilitá las ventanas emergentes para imprimir' });
-  };
+  }, [lastSale, toast]);
 
-  const value = {
+  const value = useMemo(() => ({
     cart,
     addItem,
     removeFromCart,
@@ -170,7 +177,6 @@ export const CartProvider = ({ children }) => {
     closeCart,
     metodos: METODOS_PAGO,
     sellEmpleado,
-    setSellEmpleado,
     sellDescuento,
     setSellDescuento,
     sellMetodoPago,
@@ -187,7 +193,11 @@ export const CartProvider = ({ children }) => {
     sellMonto1,
     confirmSale,
     saleVersion,
-  };
+  }), [
+    cart, addItem, removeFromCart, updateCartItem, clearCart, showCartModal, openCart, closeCart,
+    sellEmpleado, sellDescuento, sellMetodoPago, setMetodoPago, sellSplit, toggleSplit,
+    sellMetodo2, sellMonto2, sellSaving, descuentoNum, finalTotal, sellMonto1, confirmSale, saleVersion,
+  ]);
 
   return (
     <CartContext.Provider value={value}>

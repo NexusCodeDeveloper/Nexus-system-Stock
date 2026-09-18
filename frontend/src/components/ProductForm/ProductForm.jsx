@@ -133,6 +133,9 @@ const ProductForm = ({ initial, onSubmit, onCancel, isSubmitting: externalSubmit
     if (form.stockMinimo === '' || Number(form.stockMinimo) < 0) errs.stockMinimo = 'El stock mínimo no puede ser negativo';
     if (form.colores.length === 0 && form.variants.length > 0) errs.colores = 'Agregue al menos un color';
     if (form.colores.length > 0 && form.variants.length === 0) errs.variants = 'Agregue al menos una variante con talle y cantidad';
+    else if (form.colores.length > 0 && form.variants.some((v) => !(v.talle || '').trim())) {
+      errs.variants = 'Cada variante debe tener un talle';
+    }
     setErrores(errs);
     return Object.keys(errs).length === 0;
   };
@@ -145,7 +148,6 @@ const ProductForm = ({ initial, onSubmit, onCancel, isSubmitting: externalSubmit
       .map((v) => ({
         talle: (v.talle || '').trim(),
         color: v.color,
-        cantidad: Number(v.cantidad) || 0,
         deposito: Number(v.deposito) || 0,
       }));
     onSubmit({

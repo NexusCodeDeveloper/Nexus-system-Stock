@@ -4,16 +4,17 @@ import {
   getProducts,
   getProductByCodigo,
   deleteProduct,
-  exchangeProduct,
   retirarStock,
   getLowStock,
 } from '../../api/products';
-import { createReturn } from '../../api/returns';
+import { getSales as getTickets } from '../../api/sales';
 import { getApiErrorMessage } from '../../utils/apiError';
+import { formatMoney, formatDate } from '../../utils/format';
 import { escucharPush } from '../../services/pushManager';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
 import ScannerButton from '../../components/scanner/ScannerButton';
 import ScannerModal from '../../components/scanner/ScannerModal';
+import ReturnForm from '../../components/ReturnForm/ReturnForm';
 import { useAuth } from '../../context/AuthContext';
 import { useLector } from '../../context/LectorContext';
 import { useCart } from '../../context/CartContext';
@@ -23,7 +24,7 @@ import IosModal from '../../components/ui/IosModal';
 import IosSearch from '../../components/ui/IosSearch';
 import IosToggle from '../../components/ui/IosToggle';
 import { IosField, IosInput, IosSelect } from '../../components/ui/IosForm';
-import { IconCart, IconArrowUp, IconChevronDown, IconTrash, IconX, IconBox, IconCamera } from '../../components/ui/icons';
+import { IconCart, IconArrowUp, IconChevronDown, IconTrash, IconX, IconBox, IconCamera, IconReturn, IconRefresh } from '../../components/ui/icons';
 
 const variantLabel = (v) => {
   const parts = [];
@@ -42,6 +43,7 @@ const variantShortLabel = (v) => {
 
 const depositoTotal = (p) =>
   p.variants?.length > 0 ? p.variants.reduce((s, v) => s + (v.deposito || 0), 0) : (p.deposito || 0);
+
 const Products = () => {
   const navigate = useNavigate();
   const [products, setProducts] = useState([]);
@@ -50,6 +52,8 @@ const Products = () => {
   const [dropdown, setDropdown] = useState({ product: null, x: 0, y: 0 });
   const dropdownRef = useRef(null);
   const anchorRef = useRef(null);
+  const fetchSeqRef = useRef(0);
+  const returnSeqRef = useRef(0);
 
   useLayoutEffect(() => {
     if (!dropdown.product) return;
@@ -73,17 +77,13 @@ const Products = () => {
   }, [dropdown.product]);
 
   const [error, setError] = useState('');
-  const [returnModal, setReturnModal] = useState(null);
-  const [returnCantidad, setReturnCantidad] = useState('1');
-  const [returnVariantIdx, setReturnVariantIdx] = useState('');
-  const [returnMotivo, setReturnMotivo] = useState('');
-  const [returnOtroMotivo, setReturnOtroMotivo] = useState('');
-  const [returnSaving, setReturnSaving] = useState(false);
-  const [exchangeActivo, setExchangeActivo] = useState(false);
-  const [exchangeSearch, setExchangeSearch] = useState('');
-  const [exchangeTarget, setExchangeTarget] = useState(null);
-  const [exchangeCantidad, setExchangeCantidad] = useState('1');
-  const [exchangeVariantIdx, setExchangeVariantIdx] = useState('');
+  const [returnPicker, setReturnPicker] = useState(null);
+  const [returnTickets, setReturnTickets] = useState([]);
+  const [returnTicketsLoading, setReturnTicketsLoading] = useState(false);
+  const [returnTicketsError, setReturnTicketsError] = useState('');
+  const [returnEsCambio, setReturnEsCambio] = useState(false);
+  const [returnSale, setReturnSale] = useState(null);
+  const [returnCodigo, setReturnCodigo] = useState('');
 
   const [scannerOpen, setScannerOpen] = useState(false);
   const [scannerContinuo, setScannerContinuo] = useState(false);
@@ -94,6 +94,7 @@ const Products = () => {
   const [retirarModal, setRetirarModal] = useState(null);
   const [retirarCantidad, setRetirarCantidad] = useState('1');
   const [retirarVariantIdx, setRetirarVariantIdx] = useState('');
+  const [retirarSaving, setRetirarSaving] = useState(false);
 
   const { user } = useAuth();
   const { show: alert, confirm, toast } = useIosAlert();
@@ -107,7 +108,6 @@ const Products = () => {
     closeCart,
     metodos,
     sellEmpleado,
-    setSellEmpleado,
     sellDescuento,
     setSellDescuento,
     sellMetodoPago,
@@ -128,7 +128,7 @@ const Products = () => {
 
   const [lowStock, setLowStock] = useState([]);
   const [lowStockOpen, setLowStockOpen] = useState(false);
-  const [allProducts, setAllProducts] = useState([]);
+  const [lowStockError, setLowStockError] = useState('');
 
   const [expandedId, setExpandedId] = useState(null);
 
@@ -136,35 +136,30 @@ const Products = () => {
   const bajos = lowStock.filter((i) => i.cantidad > 0);
 
   const fetchData = async () => {
+    const seq = ++fetchSeqRef.current;
     setLoading(true);
     setError('');
     try {
       const prodRes = await getProducts({ search });
-      setProducts(prodRes.data);
-      if (!search) setAllProducts(prodRes.data);
+      if (seq !== fetchSeqRef.current) return;
+      setProducts(Array.isArray(prodRes.data) ? prodRes.data : []);
     } catch (err) {
+      if (seq !== fetchSeqRef.current) return;
       setError(getApiErrorMessage(err, 'Error al cargar productos'));
     } finally {
-      setLoading(false);
+      if (seq === fetchSeqRef.current) setLoading(false);
     }
   };
 
-  const fetchAllProducts = () => {
-    getProducts({})
-      .then((res) => setAllProducts(res.data))
-      .catch(() => {});
-  };
-
-  const refreshProducts = () => {
-    fetchData();
-    fetchAllProducts();
-  };
-
   const fetchLowStock = () => {
+    setLowStockError('');
     getLowStock()
-      .then((res) => setLowStock(res.data))
-      .catch(() => {});
+      .then((res) => setLowStock(Array.isArray(res.data) ? res.data : []))
+      .catch((err) => setLowStockError(getApiErrorMessage(err, 'Error al cargar stock bajo')));
   };
+
+  const fetchDataRef = useRef(fetchData);
+  fetchDataRef.current = fetchData;
 
   useEffect(() => {
     const t = setTimeout(fetchData, search ? 300 : 0);
@@ -177,7 +172,10 @@ const Products = () => {
 
   useEffect(() => {
     const off = escucharPush((payload) => {
-      if (payload?.tipo === 'stock') fetchLowStock();
+      if (['stock', 'venta', 'devolucion'].includes(payload?.tipo)) {
+        fetchLowStock();
+        fetchDataRef.current();
+      }
     });
     return off;
   }, []);
@@ -186,7 +184,7 @@ const Products = () => {
   useEffect(() => {
     if (saleVersion === saleVersionRef.current) return;
     saleVersionRef.current = saleVersion;
-    refreshProducts();
+    fetchData();
     fetchLowStock();
   }, [saleVersion]);
 
@@ -201,7 +199,7 @@ const Products = () => {
     if (!confirmed) return;
     try {
       await deleteProduct(id);
-      refreshProducts();
+      fetchData();
       fetchLowStock();
       toast({ message: 'Producto eliminado' });
     } catch (err) {
@@ -233,7 +231,7 @@ const Products = () => {
     const enCarrito = cart.find(
       (i) => i.producto === quickAdd._id && i.talle === talle && i.color === color
     );
-    if ((enCarrito?.cantidad || 0) + cantidad > stockDisponible) {
+    if (Number(enCarrito?.cantidad || 0) + cantidad > stockDisponible) {
       alert({ icon: 'warning', title: 'Stock insuficiente', message: `Solo hay ${stockDisponible} unidad(es) disponible(s)` });
       return;
     }
@@ -262,7 +260,7 @@ const Products = () => {
     : (retirarModal?.cantidad || 0);
 
   const confirmRetirar = async () => {
-    if (!retirarModal) return;
+    if (!retirarModal || retirarSaving) return;
     if (retirarVariants.length > 0 && retirarVariantIdx === '') {
       alert({ icon: 'warning', title: 'Campo requerido', message: 'Debe seleccionar una variante' });
       return;
@@ -272,38 +270,50 @@ const Products = () => {
       alert({ icon: 'warning', title: 'Cantidad inválida', message: 'Debe ingresar al menos 1 unidad' });
       return;
     }
+    if (retirarDisponible != null && cantidad > retirarDisponible) {
+      alert({ icon: 'warning', title: 'Stock insuficiente', message: `Solo hay ${retirarDisponible} unidad(es) en salón` });
+      return;
+    }
+    setRetirarSaving(true);
     try {
       await retirarStock(retirarModal._id, { cantidad, talle: retirarVariant?.talle || '', color: retirarVariant?.color || '' });
       setRetirarModal(null);
-      refreshProducts();
+      fetchData();
       fetchLowStock();
       toast({ message: 'Retirado al depósito' });
     } catch (err) {
       alert({ icon: 'error', title: 'Error', message: getApiErrorMessage(err, 'Error al retirar stock') });
+    } finally {
+      setRetirarSaving(false);
     }
   };
 
-  const openReturn = (product) => {
-    setReturnModal(product);
-    setReturnCantidad('1');
-    setReturnVariantIdx('');
-    setReturnMotivo('');
-    setReturnOtroMotivo('');
-    setExchangeActivo(false);
-    setExchangeSearch('');
-    setExchangeTarget(null);
-    setExchangeCantidad('1');
-    setExchangeVariantIdx('');
+  const openReturn = (product, esCambio) => {
+    setReturnPicker({ producto: product, esCambio });
+    setReturnTickets([]);
+    setReturnTicketsError('');
+    setReturnTicketsLoading(true);
+    const seq = ++returnSeqRef.current;
+    getTickets({ codigo: product.codigo, offset: new Date().getTimezoneOffset() })
+      .then((res) => {
+        if (seq !== returnSeqRef.current) return;
+        const sales = res.data?.sales;
+        setReturnTickets(Array.isArray(sales) ? sales.filter((s) => s.estado !== 'devuelta') : []);
+      })
+      .catch((err) => {
+        if (seq !== returnSeqRef.current) return;
+        setReturnTicketsError(getApiErrorMessage(err, 'Error al buscar tickets'));
+      })
+      .finally(() => {
+        if (seq === returnSeqRef.current) setReturnTicketsLoading(false);
+      });
   };
 
-  const toggleExchange = (value) => {
-    setExchangeActivo(value);
-    if (!value) {
-      setExchangeTarget(null);
-      setExchangeCantidad('1');
-      setExchangeVariantIdx('');
-      setExchangeSearch('');
-    }
+  const elegirTicket = (sale) => {
+    setReturnEsCambio(!!returnPicker?.esCambio);
+    setReturnCodigo(returnPicker?.producto?.codigo || '');
+    setReturnSale(sale);
+    setReturnPicker(null);
   };
 
   const agregarAlCarritoEscaneado = (producto) => {
@@ -318,7 +328,7 @@ const Products = () => {
       return;
     }
     const actual = cart.find((i) => i.producto === producto._id && !i.talle && !i.color);
-    if ((actual?.cantidad || 0) + 1 > stock) {
+    if (Number(actual?.cantidad || 0) + 1 > stock) {
       alert({ icon: 'warning', title: 'Stock insuficiente', message: `Solo hay ${stock} unidad(es) de ${producto.nombre}` });
       return;
     }
@@ -366,82 +376,7 @@ const Products = () => {
     }
   };
 
-  useLector(manejarCodigoEscaneado, !returnModal && !retirarModal && !quickAdd);
-
-  const getReturnMotivo = () => returnMotivo === 'Otro' ? returnOtroMotivo.trim() : returnMotivo.trim();
-
-  const confirmReturn = async () => {
-    if (returnSaving || !returnModal) return;
-    const motivoFinal = getReturnMotivo();
-    if (!motivoFinal) {
-      alert({ icon: 'warning', title: 'Campo requerido', message: 'Debe ingresar un motivo' });
-      return;
-    }
-    if (exchangeActivo && !exchangeTarget) {
-      alert({ icon: 'warning', title: 'Falta el producto', message: 'Debe elegir el producto por el que se cambia' });
-      return;
-    }
-    const cantidadDevolver = Number(returnCantidad);
-    if (!Number.isInteger(cantidadDevolver) || cantidadDevolver < 1) {
-      alert({ icon: 'warning', title: 'Cantidad inválida', message: 'Debe devolver al menos 1 unidad' });
-      return;
-    }
-    if (exchangeTarget) {
-      const cantidadCargar = Number(exchangeCantidad);
-      if (!Number.isInteger(cantidadCargar) || cantidadCargar < 1) {
-        alert({ icon: 'warning', title: 'Cantidad inválida', message: 'Debe cargar al menos 1 unidad' });
-        return;
-      }
-    }
-    if (returnModal.variants?.length > 0 && returnVariantIdx === '') {
-      alert({ icon: 'warning', title: 'Campo requerido', message: 'Debe seleccionar la variante a devolver' });
-      return;
-    }
-    if (exchangeTarget?.variants?.length > 0 && exchangeVariantIdx === '') {
-      alert({ icon: 'warning', title: 'Campo requerido', message: 'Debe seleccionar la variante del producto nuevo' });
-      return;
-    }
-    const retVariant = returnModal.variants?.[Number(returnVariantIdx)];
-    const excVariant = exchangeTarget?.variants?.[Number(exchangeVariantIdx)];
-    setReturnSaving(true);
-    try {
-      if (exchangeTarget) {
-        await exchangeProduct({
-          productoDevolver: returnModal._id,
-          cantidadDevolver: cantidadDevolver,
-          talleDevolver: retVariant?.talle || '',
-          colorDevolver: retVariant?.color || '',
-          productoCargar: exchangeTarget._id,
-          cantidadCargar: Number(exchangeCantidad),
-          talleCargar: excVariant?.talle || '',
-          colorCargar: excVariant?.color || '',
-          motivo: motivoFinal,
-        });
-      } else {
-        await createReturn({
-          producto: returnModal._id,
-          cantidad: cantidadDevolver,
-          talle: retVariant?.talle || '',
-          color: retVariant?.color || '',
-          motivo: motivoFinal,
-        });
-      }
-      setReturnModal(null);
-      refreshProducts();
-      fetchLowStock();
-      toast({ message: exchangeTarget ? 'Cambio registrado' : 'Devolución registrada' });
-    } catch (err) {
-      alert({ icon: 'error', title: 'Error', message: getApiErrorMessage(err, 'Error al registrar') });
-    } finally {
-      setReturnSaving(false);
-    }
-  };
-
-  const filteredExchange = allProducts.filter(
-    (p) =>
-      p._id !== returnModal?._id &&
-      (p.nombre || '').toLowerCase().includes(exchangeSearch.toLowerCase())
-  );
+  useLector(manejarCodigoEscaneado, !returnPicker && !returnSale && !retirarModal && !quickAdd);
 
   const renderVariantSelect = (variants, value, onChange, label = 'Variante') => {
     if (!variants?.length) return null;
@@ -462,7 +397,8 @@ const Products = () => {
     setDropdown({ product: null, x: 0, y: 0 });
     if (action === 'carrito') openQuickAdd(p);
     else if (action === 'retirar') openRetirar(p);
-    else if (action === 'cambio') openReturn(p);
+    else if (action === 'devolver') openReturn(p, false);
+    else if (action === 'cambiar') openReturn(p, true);
     else if (action === 'eliminar') handleDelete(p._id);
   };
 
@@ -497,6 +433,9 @@ const Products = () => {
           }}
           title="Escanear producto"
         />
+        {lowStockError && (
+          <span className="text-xs text-ios-tertiary" title={lowStockError}>Alerta de stock no disponible</span>
+        )}
         {lowStock.length > 0 && (
           <div className="relative shrink-0">
             <button
@@ -570,7 +509,7 @@ const Products = () => {
           </IosField>
           <IosField label="Precio unitario">
             <div className="px-3.5 py-2.5 bg-ios-surface2 rounded-ios-control text-ios-label text-sm font-medium">
-              ${Number(quickAdd?.precio || 0).toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+              {formatMoney(quickAdd?.precio)}
             </div>
           </IosField>
           {renderVariantSelect(quickAdd?.variants, qaVariantIdx, setQaVariantIdx)}
@@ -632,16 +571,16 @@ const Products = () => {
                   value={item.cantidad}
                   onChange={(e) => {
                     const v = e.target.value;
-                    if (v === '' || /^\d+$/.test(v)) updateCartItem(idx, 'cantidad', v === '' ? 1 : Math.max(1, Number(v)));
+                    if (v === '' || /^\d+$/.test(v)) updateCartItem(idx, 'cantidad', v);
                   }}
                   className="w-16 px-2 py-1.5 text-center bg-ios-surface2 rounded-lg text-ios-label text-sm [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                 />
                 <span className="text-ios-tertiary">×</span>
                 <span className="w-24 px-2 py-1.5 text-right text-ios-label text-sm font-medium">
-                  ${(item.precio).toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                  {formatMoney(item.precio)}
                 </span>
                 <span className="text-ios-tertiary text-xs font-medium w-20 text-right">
-                  ${(item.precio * item.cantidad).toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                  {formatMoney(item.precio * (Number(item.cantidad) || 0))}
                 </span>
                 <button
                   onClick={() => removeFromCart(idx)}
@@ -657,11 +596,9 @@ const Products = () => {
         <div className="border-t border-ios-separator/40 pt-4 space-y-3 mb-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <IosField label="Empleado">
-              <IosInput
-                type="text" value={sellEmpleado}
-                onChange={(e) => setSellEmpleado(e.target.value)}
-                placeholder="Nombre"
-              />
+              <div className="px-3.5 py-2.5 bg-ios-surface2 rounded-ios-control text-ios-secondary text-sm truncate">
+                {sellEmpleado || '—'}
+              </div>
             </IosField>
             <IosField label="Descuento">
               <IosInput
@@ -699,14 +636,14 @@ const Products = () => {
                 <span className="text-sm text-ios-secondary font-medium">Dividir pago</span>
               </label>
               <span className="text-sm text-ios-tertiary">
-                Monto: <span className="text-ios-label font-semibold">${sellMonto1.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</span>
+                Monto: <span className="text-ios-label font-semibold">{formatMoney(sellMonto1)}</span>
               </span>
             </div>
             {sellSplit && (
               <div className="space-y-2 pt-3 border-t border-ios-separator/40">
                 <div className="flex items-center justify-between px-3 py-2 bg-ios-tint/10 rounded-ios-control">
                   <span className="text-sm font-semibold text-ios-tint">{metodos.find((m) => m.key === sellMetodoPago)?.label}</span>
-                  <span className="text-sm text-ios-label font-mono">${sellMonto1.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</span>
+                  <span className="text-sm text-ios-label font-mono">{formatMoney(sellMonto1)}</span>
                 </div>
                 <div className="flex gap-3 items-center">
                   <IosSelect value={sellMetodo2} onChange={(e) => setSellMetodo2(e.target.value)} className="flex-1">
@@ -735,7 +672,7 @@ const Products = () => {
             {descuentoNum > 0 && (
               <span className="text-ios-green/90 mr-3 font-medium">Desc. {descuentoNum}%</span>
             )}
-            <span className="text-ios-secondary font-semibold">Total: <span className="text-ios-label text-lg font-bold">${finalTotal.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</span></span>
+            <span className="text-ios-secondary font-semibold">Total: <span className="text-ios-label text-lg font-bold">{formatMoney(finalTotal)}</span></span>
           </div>
         </div>
       </IosModal>
@@ -784,118 +721,68 @@ const Products = () => {
       </IosModal>
 
       <IosModal
-        open={!!returnModal}
-        onClose={() => setReturnModal(null)}
-        title="Devolución / Cambio"
+        open={!!returnPicker}
+        onClose={() => setReturnPicker(null)}
+        title="Elegir ticket"
         cancelText="Cancelar"
-        confirmText={returnSaving ? 'Guardando…' : exchangeTarget ? 'Confirmar Cambio' : 'Confirmar Devolución'}
-        confirmVariant="destructiveTinted"
-        onConfirm={confirmReturn}
-        confirmDisabled={returnSaving}
-        maxWidth="max-w-xl"
+        showClose
+        maxWidth="max-w-lg"
       >
         <p className="text-ios-secondary text-sm mb-4">
-          <span className="text-ios-label font-semibold">{returnModal?.nombre}</span> — Stock actual: {returnModal?.cantidad}
+          <span className="text-ios-label font-semibold">{returnPicker?.producto?.nombre}</span>
+          {' — '}
+          {returnPicker?.esCambio
+            ? 'elegí el ticket de la venta para hacer el cambio.'
+            : 'elegí el ticket de la venta para registrar la devolución.'}
         </p>
 
-        <div className="space-y-4">
-          <IosField label="Cantidad a devolver">
-            <IosInput
-              type="text" inputMode="numeric"
-              value={returnCantidad}
-              onChange={(e) => {
-                const v = e.target.value;
-                if (v === '' || /^\d+$/.test(v)) setReturnCantidad(v);
-              }}
-            />
-          </IosField>
-
-          {renderVariantSelect(returnModal?.variants, returnVariantIdx, setReturnVariantIdx, 'Variante a devolver')}
-
-          <label className="flex items-center gap-3 cursor-pointer select-none">
-            <IosToggle checked={exchangeActivo} onChange={toggleExchange} />
-            <span className="text-sm text-ios-label font-medium">Quiero cambiarlo por otro producto</span>
-          </label>
-
-          {exchangeActivo && (
-            <>
-              <IosField label="Buscar producto nuevo">
-                <IosSearch
-                  value={exchangeSearch}
-                  onChange={setExchangeSearch}
-                  placeholder="Escribí el nombre..."
-                />
-              </IosField>
-
-              {exchangeSearch && filteredExchange.length > 0 && (
-                <div className="border border-ios-separator/40 rounded-2xl max-h-36 overflow-y-auto bg-ios-surface overflow-hidden">
-                  {filteredExchange.map((p) => (
-                    <button
-                      key={p._id}
-                      onClick={() => {
-                        setExchangeTarget(p);
-                        setExchangeSearch('');
-                        setExchangeCantidad('1');
-                        setExchangeVariantIdx('');
-                      }}
-                      className={`w-full text-left px-4 py-2.5 text-sm border-b border-ios-separator/30 last:border-0 transition-colors ${
-                        exchangeTarget?._id === p._id
-                          ? 'bg-ios-purple/10 text-ios-purple font-semibold'
-                          : 'text-ios-secondary hover:bg-ios-hover/5'
-                      }`}
-                    >
-                      {p.nombre} <span className="text-ios-tertiary">(stock: {p.cantidad})</span>
-                    </button>
-                  ))}
+        {returnTicketsLoading ? (
+          <LoadingSpinner />
+        ) : returnTicketsError ? (
+          <div className="px-4 py-3 bg-ios-red/10 border border-ios-red/25 rounded-ios-control text-ios-red text-sm font-medium">
+            {returnTicketsError}
+          </div>
+        ) : returnTickets.length === 0 ? (
+          <p className="text-ios-tertiary text-sm py-6 text-center">
+            No hay tickets activos con este producto. Buscalo desde la página Tickets.
+          </p>
+        ) : (
+          <div className="space-y-2 max-h-72 overflow-y-auto">
+            {returnTickets.map((s) => (
+              <button
+                key={s._id}
+                onClick={() => elegirTicket(s)}
+                className="w-full text-left px-4 py-3 rounded-2xl border border-ios-separator/40 hover:bg-ios-hover/5 transition-colors"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-semibold text-ios-label tabular-nums tracking-wide">{s.ticketNumero || '—'}</span>
+                  <span className="text-ios-green font-semibold tabular-nums">{formatMoney(s.total)}</span>
                 </div>
-              )}
-
-              {exchangeTarget && (
-                <div className="bg-ios-purple/10 border border-ios-purple/25 rounded-2xl p-4 space-y-4">
-                  <p className="text-sm text-ios-purple font-medium">
-                    <span className="font-semibold">Producto nuevo:</span> {exchangeTarget.nombre}
-                    <br />
-                    <span className="font-semibold">Stock disponible:</span> {exchangeTarget.cantidad}
-                  </p>
-                  {renderVariantSelect(exchangeTarget.variants, exchangeVariantIdx, setExchangeVariantIdx, 'Variante a cargar')}
-                  <IosField label="Cantidad a cargar">
-                    <IosInput
-                      type="text" inputMode="numeric"
-                      value={exchangeCantidad}
-                      onChange={(e) => {
-                        const v = e.target.value;
-                        if (v === '' || /^\d+$/.test(v)) setExchangeCantidad(v);
-                      }}
-                    />
-                  </IosField>
+                <div className="text-xs text-ios-tertiary mt-0.5">
+                  {formatDate(s.createdAt)} · {s.empleado || '—'}
                 </div>
-              )}
-            </>
-          )}
-
-          <IosField label="Motivo">
-            <IosSelect value={returnMotivo} onChange={(e) => setReturnMotivo(e.target.value)}>
-              <option value="" className="bg-ios-surface2">Seleccionar motivo</option>
-              <option value="Defectuoso" className="bg-ios-surface2">Defectuoso</option>
-              <option value="Cambio de talla" className="bg-ios-surface2">Cambio de talla</option>
-              <option value="Cambio de modelo" className="bg-ios-surface2">Cambio de modelo</option>
-              <option value="Devolución de venta" className="bg-ios-surface2">Devolución de venta</option>
-              <option value="Otro" className="bg-ios-surface2">Otro</option>
-            </IosSelect>
-          </IosField>
-
-          {returnMotivo === 'Otro' && (
-            <IosField label="Detalle del motivo">
-              <IosInput
-                type="text"
-                value={returnOtroMotivo}
-                onChange={(e) => setReturnOtroMotivo(e.target.value)}
-                placeholder="Escribí el motivo..."
-              />
-            </IosField>
-          )}
-        </div>
+              </button>
+            ))}
+          </div>
+        )}
       </IosModal>
+
+      <ReturnForm
+        sale={returnSale}
+        open={!!returnSale}
+        defaultExchange={returnEsCambio}
+        initialCodigo={returnCodigo}
+        onClose={() => {
+          setReturnSale(null);
+          setReturnCodigo('');
+          setReturnEsCambio(false);
+        }}
+        onDone={() => {
+          fetchData();
+          fetchLowStock();
+        }}
+      />
+
 
       {error && (
         <div className="mb-4 px-4 py-3 bg-ios-red/10 border border-ios-red/25 rounded-ios-control text-ios-red text-sm font-medium">
@@ -996,7 +883,7 @@ const Products = () => {
                       )}
                     </td>
                     <td className="px-4 py-3.5 text-ios-secondary">
-                      {p.precio != null ? `$${Number(p.precio).toLocaleString('es-AR', { minimumFractionDigits: 2 })}` : '—'}
+                      {p.precio != null ? formatMoney(p.precio) : '—'}
                     </td>
                     <td className="px-4 py-3.5">
                       <span className={`inline-flex items-center gap-1.5 font-medium ${(p.stockMinimo != null && p.cantidad <= p.stockMinimo) ? 'text-ios-red font-semibold' : 'text-ios-label'}`}>
@@ -1021,6 +908,9 @@ const Products = () => {
                           }
                         }}
                         className="p-2 rounded-full hover:bg-ios-hover/10 text-ios-secondary transition-colors"
+                        aria-label={`Acciones de ${p.nombre}`}
+                        aria-haspopup="menu"
+                        aria-expanded={dropdown.product?._id === p._id}
                       >
                         <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
                           <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
@@ -1084,7 +974,7 @@ const Products = () => {
                   className="w-full flex items-center justify-between mt-3 text-left"
                 >
                   <span className="text-ios-secondary font-medium">
-                    {p.precio != null ? `$${Number(p.precio).toLocaleString('es-AR', { minimumFractionDigits: 2 })}` : '—'}
+                    {p.precio != null ? formatMoney(p.precio) : '—'}
                   </span>
                   <span className="flex items-center gap-1.5 text-xs text-ios-tertiary">
                     {p.colores?.length > 0
@@ -1153,11 +1043,18 @@ const Products = () => {
               </button>
             )}
             <button
-              onClick={() => handleDropdownAction('cambio')}
+              onClick={() => handleDropdownAction('devolver')}
+              className="flex items-center gap-2.5 w-full px-3.5 py-2.5 text-sm text-ios-red hover:bg-ios-hover/5 rounded-xl transition-colors font-medium"
+            >
+              <IconReturn className="w-4 h-4" />
+              Devolver
+            </button>
+            <button
+              onClick={() => handleDropdownAction('cambiar')}
               className="flex items-center gap-2.5 w-full px-3.5 py-2.5 text-sm text-ios-purple hover:bg-ios-hover/5 rounded-xl transition-colors font-medium"
             >
-              <IconX className="w-4 h-4" />
-              Cambio
+              <IconRefresh className="w-4 h-4" />
+              Cambiar
             </button>
             {user?.rol === 'admin' && (
               <button

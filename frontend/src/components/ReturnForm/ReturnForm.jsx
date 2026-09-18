@@ -10,11 +10,9 @@ import { IosField, IosInput, IosSelect } from '../ui/IosForm';
 import ScannerButton from '../scanner/ScannerButton';
 import ScannerModal from '../scanner/ScannerModal';
 import { useLector } from '../../context/LectorContext';
+import { formatMoney } from '../../utils/format';
 
 const variantLabel = (v) => [v.talle, v.color].filter(Boolean).join(' / ') || 'Base';
-
-const formatMoney = (n) =>
-  `$${Number(n).toLocaleString('es-AR', { minimumFractionDigits: 2 })}`;
 
 const getItemId = (item) => item?.producto?._id || item?.producto;
 
@@ -77,16 +75,15 @@ const ReturnForm = ({ sale, open, onClose, onDone, defaultExchange = false, init
 
   const cantidadDevolver = Number(cantidad) || 0;
   const cantidadCargar = Number(exchangeCantidad) || 0;
-  const devolverValor = Math.round((Number(item.precio) || 0) * cantidadDevolver * 100) / 100;
+  const factorDescuentoTicket = 1 - (Number(sale?.descuento) || 0) / 100;
+  const devolverValor = Math.round((Number(item.precio) || 0) * cantidadDevolver * factorDescuentoTicket * 100) / 100;
   const cargarValor = exchangeTarget
     ? Math.round((Number(exchangeTarget.precio) || 0) * cantidadCargar * 100) / 100
     : 0;
   const diferencia = Math.round((cargarValor - devolverValor) * 100) / 100;
 
-  const filteredExchange = products.filter(
-    (p) =>
-      p._id !== getItemId(item) &&
-      (p.nombre || '').toLowerCase().includes(exchangeSearch.toLowerCase())
+  const filteredExchange = products.filter((p) =>
+    (p.nombre || '').toLowerCase().includes(exchangeSearch.toLowerCase())
   );
 
   const confirmar = async () => {
@@ -121,7 +118,11 @@ const ReturnForm = ({ sale, open, onClose, onDone, defaultExchange = false, init
         return;
       }
       const excVariant = exchangeTarget.variants?.[Number(exchangeVariantIdx)];
-      const stockDisponible = excVariant ? excVariant.cantidad : exchangeTarget.cantidad;
+      const mismaVariante = exchangeTarget._id === getItemId(item)
+        && (excVariant?.talle || '') === (item.talle || '')
+        && (excVariant?.color || '') === (item.color || '');
+      let stockDisponible = excVariant ? excVariant.cantidad : exchangeTarget.cantidad;
+      if (mismaVariante) stockDisponible += cantidadDevolver;
       if (cantidadCargar > stockDisponible) {
         alert({ icon: 'warning', title: 'Stock insuficiente', message: `Solo hay ${stockDisponible} unidad(es) de "${exchangeTarget.nombre}"` });
         return;

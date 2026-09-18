@@ -5,6 +5,7 @@ import LoadingSpinner from '../../components/common/LoadingSpinner';
 import { useAuth } from '../../context/AuthContext';
 import { useIosAlert } from '../../components/alerts';
 import { IconReturn } from '../../components/ui/icons';
+import { formatMoney, formatDate } from '../../utils/format';
 
 const Returns = () => {
   const { user } = useAuth();
@@ -21,7 +22,7 @@ const Returns = () => {
     setError('');
     try {
       const res = await getReturns();
-      setReturns(res.data);
+      setReturns(Array.isArray(res.data) ? res.data : []);
     } catch (err) {
       setError(getApiErrorMessage(err, 'Error al cargar devoluciones'));
     } finally {
@@ -51,18 +52,6 @@ const Returns = () => {
     }
   };
 
-  const formatDate = (date) =>
-    new Date(date).toLocaleDateString('es-AR', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-
-  const formatMoney = (n) =>
-    `$${Number(n).toLocaleString('es-AR', { minimumFractionDigits: 2 })}`;
-
   if (loading) return <LoadingSpinner />;
 
   return (
@@ -75,7 +64,7 @@ const Returns = () => {
         </div>
       )}
 
-      {returns.length === 0 ? (
+      {error ? null : returns.length === 0 ? (
         <div className="bg-ios-surface border border-ios-separator/30 rounded-3xl py-14 flex flex-col items-center shadow-ios-card">
           <div className="w-16 h-16 bg-ios-surface2 rounded-full flex items-center justify-center mb-4 border border-ios-separator/40">
             <IconReturn className="w-7 h-7 text-ios-tertiary" strokeWidth={1.5} />
@@ -102,7 +91,7 @@ const Returns = () => {
               <tbody>
                 {returns.map((r) => (
                   <tr key={r._id} className="border-t border-ios-separator/30 hover:bg-ios-hover/[0.03] transition-colors">
-                    <td className="px-5 py-3.5 font-semibold text-ios-label">{r.producto?.nombre}</td>
+                    <td className="px-5 py-3.5 font-semibold text-ios-label">{r.producto?.nombre || 'Producto eliminado'}</td>
                     <td className="px-4 py-3.5 text-ios-secondary">{r.producto?.categoria || '—'}</td>
                     <td className="px-4 py-3.5 text-ios-label">{r.cantidad}</td>
                     <td className="px-4 py-3.5 text-ios-secondary">{r.talle || '—'}</td>
@@ -115,7 +104,7 @@ const Returns = () => {
                       )}
                     </td>
                     <td className="px-4 py-3.5">
-                      {r.diferencia !== 0 ? (
+                      {Number.isFinite(Number(r.diferencia)) && Number(r.diferencia) !== 0 ? (
                         <span className={`font-semibold whitespace-nowrap tabular-nums ${r.diferencia > 0 ? 'text-ios-green' : 'text-amber-400'}`}>
                           {r.diferencia > 0 ? `+${formatMoney(r.diferencia)}` : `-${formatMoney(Math.abs(r.diferencia))}`}
                         </span>
@@ -145,7 +134,7 @@ const Returns = () => {
               <div key={r._id} className="bg-ios-surface border border-ios-separator/30 rounded-3xl p-4 shadow-ios-card">
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
-                      <p className="font-semibold text-ios-label">{r.producto?.nombre}</p>
+                      <p className="font-semibold text-ios-label">{r.producto?.nombre || 'Producto eliminado'}</p>
                       <p className="text-xs text-ios-tertiary mt-0.5">
                         {r.producto?.categoria || '—'}
                         {r.talle ? ` · Talle ${r.talle}` : ''}
@@ -160,7 +149,7 @@ const Returns = () => {
                       </button>
                     )}
                   </div>
-                  {r.diferencia !== 0 && (
+                  {Number.isFinite(Number(r.diferencia)) && Number(r.diferencia) !== 0 && (
                     <div className={`mt-2 inline-block px-2.5 py-1 rounded-full text-[11px] font-semibold border ${
                       r.diferencia > 0
                         ? 'bg-green-500/10 border-green-500/25 text-green-400'

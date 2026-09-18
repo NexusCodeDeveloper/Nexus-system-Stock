@@ -4,6 +4,7 @@ import { createCashWithdrawal, getCashWithdrawals, deleteCashWithdrawal, getCash
 import Ticket, { printTicket } from '../../components/Ticket/Ticket';
 import ReturnForm from '../../components/ReturnForm/ReturnForm';
 import { getApiErrorMessage } from '../../utils/apiError';
+import { formatMoney, formatDate, formatDateSafe, formatDateShort } from '../../utils/format';
 import { escucharPush } from '../../services/pushManager';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
 import { useAuth } from '../../context/AuthContext';
@@ -68,25 +69,6 @@ const periodos = [
   { key: 'semana', label: 'Semana', desde: mondayOfWeek, hasta: sundayOfWeek },
   { key: 'mes', label: 'Mes', desde: firstOfMonth, hasta: today },
 ];
-
-const formatDate = (date) =>
-  new Date(date).toLocaleDateString('es-AR', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-
-const formatDateSafe = (dateStr) => {
-  if (!dateStr) return 'hoy';
-  const d = new Date(`${dateStr}T00:00:00`);
-  if (Number.isNaN(d.getTime())) return 'hoy';
-  return d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
-};
-
-const formatMoney = (n) =>
-  `$${Number(n).toLocaleString('es-AR', { minimumFractionDigits: 2 })}`;
 
 const getPagos = (s) =>
   (s.pagos && s.pagos.length > 0 ? s.pagos : [{ metodo: s.metodoPago || 'efectivo', monto: s.total }]);
@@ -219,22 +201,23 @@ const Sales = () => {
 
   const [closeForm, setCloseForm] = useState(null);
   const [closeFecha, setCloseFecha] = useState(today);
-  const [closeNombre, setCloseNombre] = useState('');
   const [closeSaving, setCloseSaving] = useState(false);
 
   const ventasSeqRef = useRef(0);
   const cierresSeqRef = useRef(0);
+  const retirosSeqRef = useRef(0);
+  const efectivoSeqRef = useRef(0);
 
   const [withdrawalOpen, setWithdrawalOpen] = useState(false);
   const [withdrawalMonto, setWithdrawalMonto] = useState('');
   const [withdrawalMotivo, setWithdrawalMotivo] = useState('');
-  const [withdrawalQuien, setWithdrawalQuien] = useState('');
   const [withdrawalSaving, setWithdrawalSaving] = useState(false);
   const [withdrawals, setWithdrawals] = useState([]);
   const [withdrawalsTotal, setWithdrawalsTotal] = useState(0);
   const [withdrawalsLoading, setWithdrawalsLoading] = useState(false);
   const [withdrawalsError, setWithdrawalsError] = useState('');
   const [efectivoDisponible, setEfectivoDisponible] = useState(null);
+  const [efectivoError, setEfectivoError] = useState('');
 
   const fetchData = () => {
     const seq = ++ventasSeqRef.current;
@@ -323,16 +306,10 @@ const Sales = () => {
   const openCloseForm = (turno) => {
     setCloseForm(turno);
     setCloseFecha(today());
-    setCloseNombre('');
   };
 
   const doDailyClose = async () => {
     if (closeSaving) return;
-    const nombre = closeNombre.trim();
-    if (!nombre) {
-      alert({ icon: 'warning', title: 'Campo requerido', message: 'Debe indicar quién cierra el turno' });
-      return;
-    }
     const turno = closeForm;
     const hoy = today();
 
@@ -353,7 +330,7 @@ const Sales = () => {
 
     setCloseSaving(true);
     try {
-      const params = { offset: new Date().getTimezoneOffset(), turno, cerradoPor: nombre };
+      const params = { offset: new Date().getTimezoneOffset(), turno };
       if (closeFecha !== hoy && closeFecha) params.fecha = closeFecha;
       const res = await getDailyClose(params);
       const d = res.data;
@@ -398,27 +375,42 @@ const Sales = () => {
     setWithdrawalOpen(true);
     setWithdrawalMonto('');
     setWithdrawalMotivo('');
-    setWithdrawalQuien(user?.nombre || '');
     fetchWithdrawals();
     fetchAvailableCash();
   };
 
   const fetchAvailableCash = () => {
+    const seq = ++efectivoSeqRef.current;
+    setEfectivoError('');
     getCashWithdrawalsAvailable({ offset: new Date().getTimezoneOffset() })
-      .then((res) => setEfectivoDisponible(Number(res.data.disponible) || 0))
-      .catch(() => setEfectivoDisponible(null));
+      .then((res) => {
+        if (seq !== efectivoSeqRef.current) return;
+        setEfectivoDisponible(Number(res.data.disponible) || 0);
+      })
+      .catch((err) => {
+        if (seq !== efectivoSeqRef.current) return;
+        setEfectivoDisponible(null);
+        setEfectivoError(getApiErrorMessage(err, 'No se pudo consultar el efectivo disponible'));
+      });
   };
 
   const fetchWithdrawals = () => {
+    const seq = ++retirosSeqRef.current;
     setWithdrawalsLoading(true);
     setWithdrawalsError('');
     getCashWithdrawals({ desde: today(), hasta: today(), offset: new Date().getTimezoneOffset() })
       .then((res) => {
+        if (seq !== retirosSeqRef.current) return;
         setWithdrawals(res.data.withdrawals || []);
         setWithdrawalsTotal(res.data.total || 0);
       })
-      .catch(() => setWithdrawalsError('No se pudieron cargar los retiros'))
-      .finally(() => setWithdrawalsLoading(false));
+      .catch((err) => {
+        if (seq !== retirosSeqRef.current) return;
+        setWithdrawalsError(getApiErrorMessage(err, 'No se pudieron cargar los retiros'));
+      })
+      .finally(() => {
+        if (seq === retirosSeqRef.current) setWithdrawalsLoading(false);
+      });
   };
 
   const confirmWithdrawal = async () => {
@@ -436,16 +428,11 @@ const Sales = () => {
       alert({ icon: 'warning', title: 'Campo requerido', message: 'Debe ingresar el motivo del retiro' });
       return;
     }
-    if (!withdrawalQuien.trim()) {
-      alert({ icon: 'warning', title: 'Campo requerido', message: 'Debe indicar quién retira el efectivo' });
-      return;
-    }
     setWithdrawalSaving(true);
     try {
       await createCashWithdrawal({
         monto: Math.round(monto * 100) / 100,
         motivo: withdrawalMotivo.trim(),
-        realizadoPor: withdrawalQuien.trim(),
         offset: new Date().getTimezoneOffset(),
       });
       setWithdrawalMonto('');
@@ -553,13 +540,6 @@ const Sales = () => {
     setDesde(p.desde());
     setHasta(p.hasta());
   };
-
-  const formatDateShort = (date) =>
-    new Date(date).toLocaleDateString('es-AR', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-    });
 
   if (loading && activeTab === 'ventas') return <LoadingSpinner />;
 
@@ -1259,13 +1239,10 @@ const Sales = () => {
               onChange={(e) => setCloseFecha(e.target.value)}
             />
           </IosField>
-          <IosField label="Quién cierra el turno" required>
-            <IosInput
-              type="text"
-              value={closeNombre}
-              onChange={(e) => setCloseNombre(e.target.value)}
-              placeholder="Nombre del empleado"
-            />
+          <IosField label="Cierra el turno">
+            <div className="px-3.5 py-2.5 bg-ios-surface2 rounded-ios-control text-ios-secondary text-sm truncate">
+              {user?.nombre || '—'}
+            </div>
           </IosField>
         </div>
       </IosModal>
@@ -1290,6 +1267,9 @@ const Sales = () => {
             <span>Efectivo disponible en caja</span>
             <span className="tabular-nums">{efectivoDisponible != null ? formatMoney(efectivoDisponible) : '—'}</span>
           </div>
+          {efectivoError && (
+            <p className="text-amber-400 text-xs">{efectivoError}</p>
+          )}
 
           <div className="bg-ios-surface rounded-2xl border border-ios-separator/30 p-4 space-y-3">
             <IosField label="Monto a retirar" required>
@@ -1312,13 +1292,10 @@ const Sales = () => {
                 placeholder="Ej: pago a proveedor, gastos menores..."
               />
             </IosField>
-            <IosField label="Quién retira" required>
-              <IosInput
-                type="text"
-                value={withdrawalQuien}
-                onChange={(e) => setWithdrawalQuien(e.target.value)}
-                placeholder="Nombre"
-              />
+            <IosField label="Retira">
+              <div className="px-3.5 py-2.5 bg-ios-surface2 rounded-ios-control text-ios-secondary text-sm truncate">
+                {user?.nombre || '—'}
+              </div>
             </IosField>
           </div>
 
