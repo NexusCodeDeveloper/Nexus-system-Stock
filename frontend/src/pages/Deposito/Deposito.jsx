@@ -4,6 +4,8 @@ import { getProducts, createProduct, updateProduct, deleteProduct, addDeposito, 
 import { getStockMovements } from '../../api/stockMovements';
 import { getApiErrorMessage } from '../../utils/apiError';
 import { printLabel } from '../../utils/printLabel';
+import { formatDate, formatMoney } from '../../utils/format';
+import { getItem, setItem } from '../../utils/storage';
 import { useAuth } from '../../context/AuthContext';
 import { useIosAlert } from '../../components/alerts';
 import IosButton from '../../components/ui/IosButton';
@@ -22,15 +24,6 @@ const depositoTotal = (p) =>
 
 const salonTotal = (p) =>
   p.variants?.length > 0 ? p.variants.reduce((s, v) => s + (v.cantidad || 0), 0) : (p.cantidad || 0);
-
-const formatDate = (date) =>
-  new Date(date).toLocaleDateString('es-AR', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
 
 const TIPOS = {
   ingreso_deposito: { label: 'Ingreso a depósito', cls: 'bg-violet-500/15 text-violet-300' },
@@ -52,6 +45,9 @@ const MEDIDAS_ETIQUETA = {
   '40x30': { ancho: 40, alto: 30 },
 };
 
+const ETIQUETA_PREFS_KEY = 'deposito-etiqueta-prefs';
+const LIMITE_PRODUCTOS = 1000;
+
 const Deposito = () => {
   const { user } = useAuth();
   const { show: alert, confirm, toast } = useIosAlert();
@@ -69,10 +65,15 @@ const Deposito = () => {
   const [dropdown, setDropdown] = useState({ product: null, x: 0, y: 0 });
   const dropdownRef = useRef(null);
   const anchorRef = useRef(null);
+  const productosSeqRef = useRef(0);
+  const movSeqRef = useRef(0);
 
   const [stockModal, setStockModal] = useState(null);
   const [modalCantidad, setModalCantidad] = useState('1');
   const [modalVariantIdx, setModalVariantIdx] = useState('');
+  const [modalNuevoTalle, setModalNuevoTalle] = useState('');
+  const [modalNuevoColor, setModalNuevoColor] = useState('');
+  const [modalFijar, setModalFijar] = useState(false);
   const [modalSaving, setModalSaving] = useState(false);
 
   const [showForm, setShowForm] = useState(false);
@@ -94,32 +95,46 @@ const Deposito = () => {
   const [movLoading, setMovLoading] = useState(false);
   const [movError, setMovError] = useState('');
   const [movTipo, setMovTipo] = useState('');
+  const [movBuscar, setMovBuscar] = useState('');
+  const [movDesde, setMovDesde] = useState('');
+  const [movHasta, setMovHasta] = useState('');
+  const [movLimit, setMovLimit] = useState(100);
+  const [pasarTodoSaving, setPasarTodoSaving] = useState(false);
 
   const fetchProductos = async () => {
+    const seq = ++productosSeqRef.current;
     setLoading(true);
     setError('');
     try {
       const res = await getProducts();
-      setProductos(res.data || []);
+      if (seq !== productosSeqRef.current) return;
+      setProductos(Array.isArray(res.data) ? res.data : []);
     } catch (err) {
+      if (seq !== productosSeqRef.current) return;
       setError(getApiErrorMessage(err, 'Error al cargar productos'));
     } finally {
-      setLoading(false);
+      if (seq === productosSeqRef.current) setLoading(false);
     }
   };
 
   const fetchMovimientos = async () => {
+    const seq = ++movSeqRef.current;
     setMovLoading(true);
     setMovError('');
     try {
-      const params = {};
+      const params = { limit: movLimit };
       if (movTipo) params.tipo = movTipo;
+      if (movBuscar.trim()) params.buscar = movBuscar.trim();
+      if (movDesde) params.desde = movDesde;
+      if (movHasta) params.hasta = movHasta;
       const res = await getStockMovements(params);
-      setMovimientos(res.data || []);
+      if (seq !== movSeqRef.current) return;
+      setMovimientos(Array.isArray(res.data) ? res.data : []);
     } catch (err) {
+      if (seq !== movSeqRef.current) return;
       setMovError(getApiErrorMessage(err, 'Error al cargar movimientos'));
     } finally {
-      setMovLoading(false);
+      if (seq === movSeqRef.current) setMovLoading(false);
     }
   };
 
@@ -155,8 +170,10 @@ const Deposito = () => {
   }, [location.state, location.pathname, navigate]);
 
   useEffect(() => {
-    if (tab === 'movimientos' && esAdmin) fetchMovimientos();
-  }, [tab, movTipo]);
+    if (tab !== 'movimientos' || !esAdmin) return undefined;
+    const timer = setTimeout(() => fetchMovimientos(), movBuscar.trim() ? 300 : 0);
+    return () => clearTimeout(timer);
+  }, [tab, movTipo, movBuscar, movDesde, movHasta, movLimit, esAdmin]);
 
   useLayoutEffect(() => {
     if (!dropdown.product) return;
@@ -211,14 +228,22 @@ const Deposito = () => {
   };
 
   const abrirEtiqueta = (p) => {
+    const prefs = (() => {
+      try {
+        return JSON.parse(getItem(ETIQUETA_PREFS_KEY) || '{}');
+      } catch {
+        return {};
+      }
+    })();
+    const medidaValida = prefs.medida === 'custom' || MEDIDAS_ETIQUETA[prefs.medida] ? prefs.medida : '60x40';
     setEtiquetaCantidad('1');
-    setEtiquetaModo('etiqueta');
-    setEtiquetaGuias(true);
-    setEtiquetaMedida('60x40');
-    setEtiquetaAncho('60');
-    setEtiquetaAlto('40');
-    setEtiquetaPrecio(true);
-    setEtiquetaQr(true);
+    setEtiquetaModo(prefs.modo === 'hoja' ? 'hoja' : 'etiqueta');
+    setEtiquetaGuias(prefs.guias !== false);
+    setEtiquetaMedida(medidaValida);
+    setEtiquetaAncho(prefs.ancho ? String(prefs.ancho) : '60');
+    setEtiquetaAlto(prefs.alto ? String(prefs.alto) : '40');
+    setEtiquetaPrecio(prefs.precio !== false);
+    setEtiquetaQr(prefs.qr !== false);
     setEtiquetaModal(p);
   };
 
@@ -258,8 +283,22 @@ const Deposito = () => {
         mostrarPrecio: etiquetaPrecio,
         mostrarQr: etiquetaQr,
       });
-      if (ok) setEtiquetaModal(null);
-      else alert({ icon: 'warning', title: 'No se pudo imprimir', message: 'Habilitá las ventanas emergentes para imprimir' });
+      if (ok) {
+        setItem(ETIQUETA_PREFS_KEY, JSON.stringify({
+          modo: etiquetaModo,
+          guias: etiquetaGuias,
+          medida: etiquetaMedida,
+          ancho,
+          alto,
+          precio: etiquetaPrecio,
+          qr: etiquetaQr,
+        }));
+        setEtiquetaModal(null);
+      } else {
+        alert({ icon: 'warning', title: 'No se pudo imprimir', message: 'Habilitá las ventanas emergentes para imprimir' });
+      }
+    } catch (err) {
+      alert({ icon: 'error', title: 'Error', message: getApiErrorMessage(err, 'No se pudo imprimir la etiqueta') });
     } finally {
       setEtiquetaSaving(false);
     }
@@ -269,34 +308,53 @@ const Deposito = () => {
     setStockModal({ producto, modo });
     setModalCantidad('1');
     setModalVariantIdx(producto.variants?.length === 1 ? '0' : '');
+    setModalNuevoTalle('');
+    setModalNuevoColor('');
+    setModalFijar(false);
   };
 
   const modalProducto = stockModal?.producto;
   const modalVariants = modalProducto?.variants || [];
   const modalVariant = modalVariants[Number(modalVariantIdx)] || null;
+  const modalEsNueva = stockModal?.modo === 'cargar' && modalVariants.length > 0 && modalVariantIdx === '__nueva__';
 
   const disponibleModal = (() => {
     if (!modalProducto) return 0;
+    if (modalEsNueva) return 0;
     return modalVariant ? (modalVariant.deposito || 0) : (modalProducto.deposito || 0);
   })();
 
   const confirmarModal = async () => {
     if (!stockModal || modalSaving) return;
+    const esFijar = stockModal.modo === 'cargar' && modalFijar;
     const cantidad = Number(modalCantidad);
-    if (!Number.isInteger(cantidad) || cantidad < 1) {
-      alert({ icon: 'warning', title: 'Cantidad inválida', message: 'Debe ser al menos 1' });
+    if (!Number.isInteger(cantidad) || cantidad < 0 || (!esFijar && cantidad < 1)) {
+      alert({
+        icon: 'warning',
+        title: 'Cantidad inválida',
+        message: esFijar ? 'Ingresá una cantidad válida (0 o más)' : 'Debe ser al menos 1',
+      });
       return;
     }
     if (modalVariants.length > 0 && modalVariantIdx === '') {
       alert({ icon: 'warning', title: 'Campo requerido', message: 'Seleccioná la variante' });
       return;
     }
+    if (modalEsNueva && !modalNuevoTalle.trim() && !modalNuevoColor.trim()) {
+      alert({ icon: 'warning', title: 'Campo requerido', message: 'Ingresá el talle o el color de la nueva variante' });
+      return;
+    }
+    if (stockModal.modo === 'reponer' && cantidad > disponibleModal) {
+      alert({ icon: 'warning', title: 'Stock insuficiente', message: `Solo hay ${disponibleModal} unidad(es) en depósito` });
+      return;
+    }
 
     const payload = {
       cantidad,
-      talle: modalVariant?.talle || '',
-      color: modalVariant?.color || '',
+      talle: modalEsNueva ? modalNuevoTalle.trim() : (modalVariant?.talle || ''),
+      color: modalEsNueva ? modalNuevoColor.trim() : (modalVariant?.color || ''),
     };
+    if (esFijar) payload.modo = 'fijar';
 
     setModalSaving(true);
     try {
@@ -305,7 +363,7 @@ const Deposito = () => {
         toast({ message: `Repuesto al salón: ${modalProducto.nombre}` });
       } else {
         await addDeposito(modalProducto._id, payload);
-        toast({ message: `Depósito actualizado: ${modalProducto.nombre}` });
+        toast({ message: esFijar ? `Depósito ajustado: ${modalProducto.nombre}` : `Depósito actualizado: ${modalProducto.nombre}` });
       }
       setStockModal(null);
       fetchProductos();
@@ -314,6 +372,72 @@ const Deposito = () => {
     } finally {
       setModalSaving(false);
     }
+  };
+
+  const pasarTodoAlSalon = async (p) => {
+    cerrarDropdown();
+    if (pasarTodoSaving) return;
+    const variantes = (p.variants || []).filter((v) => (v.deposito || 0) > 0);
+    const total = p.variants?.length > 0
+      ? variantes.reduce((s, v) => s + (v.deposito || 0), 0)
+      : (p.deposito || 0);
+    if (total <= 0) {
+      toast({ message: 'No hay stock en depósito para pasar' });
+      return;
+    }
+    const confirmed = await confirm({
+      icon: 'warning',
+      title: '¿Pasar todo al salón?',
+      message: `Se pasarán ${total} unidad(es) de "${p.nombre}" del depósito al salón.`,
+      confirmText: 'Pasar todo',
+    });
+    if (!confirmed) return;
+    setPasarTodoSaving(true);
+    try {
+      if (p.variants?.length > 0) {
+        for (const v of variantes) {
+          await reponerStock(p._id, { cantidad: v.deposito, talle: v.talle || '', color: v.color || '' });
+        }
+      } else {
+        await reponerStock(p._id, { cantidad: total, talle: '', color: '' });
+      }
+      fetchProductos();
+      toast({ message: `Pasado al salón: ${total} u.` });
+    } catch (err) {
+      alert({ icon: 'error', title: 'Error', message: getApiErrorMessage(err, 'No se pudo pasar el stock') });
+      fetchProductos();
+    } finally {
+      setPasarTodoSaving(false);
+    }
+  };
+
+  const exportarMovimientosCsv = () => {
+    if (movimientos.length === 0) {
+      toast({ message: 'No hay movimientos para exportar' });
+      return;
+    }
+    const filas = [['Producto', 'Talle', 'Color', 'Tipo', 'Cantidad', 'Empleado', 'Fecha']];
+    for (const m of movimientos) {
+      filas.push([
+        m.productoNombre || '',
+        m.talle || '',
+        m.color || '',
+        TIPOS[m.tipo]?.label || m.tipo || '',
+        m.cantidad,
+        m.empleado || '',
+        m.createdAt ? new Date(m.createdAt).toISOString() : '',
+      ]);
+    }
+    const csv = filas
+      .map((f) => f.map((c) => `"${String(c ?? '').replace(/"/g, '""')}"`).join(','))
+      .join('\n');
+    const blob = new Blob([`\ufeff${csv}`], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `movimientos-deposito-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   const filtrados = productos.filter((p) => {
@@ -326,6 +450,20 @@ const Deposito = () => {
       (p.codigo || '').toLowerCase().includes(term)
     );
   });
+
+  const valorDeposito = filtrados.reduce((s, p) => s + depositoTotal(p) * (Number(p.precio) || 0), 0);
+  const bajosSalon = filtrados.filter((p) => salonTotal(p) <= (p.stockMinimo ?? 0)).length;
+
+  const badgeSalon = (p) => {
+    const total = salonTotal(p);
+    if (total === 0) {
+      return <span className="inline-block px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-ios-red/15 text-ios-red">Agotado</span>;
+    }
+    if (total <= (p.stockMinimo ?? 0)) {
+      return <span className="inline-block px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-amber-500/15 text-amber-400">Bajo</span>;
+    }
+    return null;
+  };
 
   const botonAcciones = (p) => (
     <button
@@ -419,6 +557,21 @@ const Deposito = () => {
             </button>
           </div>
 
+          {productos.length >= LIMITE_PRODUCTOS && (
+            <div className="mb-4 px-4 py-3 bg-amber-500/10 border border-amber-500/25 rounded-ios-control text-amber-400 text-sm font-medium">
+              Se muestran los primeros {LIMITE_PRODUCTOS} productos. Usá la búsqueda para encontrar el resto.
+            </div>
+          )}
+
+          <div className="mb-4 flex items-center gap-4 flex-wrap text-xs text-ios-tertiary">
+            <span>
+              Valor en depósito: <span className="text-ios-label font-semibold">{formatMoney(valorDeposito)}</span>
+            </span>
+            {bajosSalon > 0 && (
+              <span className="text-amber-400 font-medium">{bajosSalon} producto(s) con stock bajo o agotado en salón</span>
+            )}
+          </div>
+
           {error && (
             <div className="mb-4 px-4 py-3 bg-ios-red/10 border border-ios-red/25 rounded-ios-control text-ios-red text-sm font-medium">
               {error}
@@ -465,6 +618,7 @@ const Deposito = () => {
                               />
                             )}
                             <span className="font-semibold text-ios-label">{p.nombre}</span>
+                            {badgeSalon(p)}
                           </div>
                           <p className="text-[11px] text-ios-tertiary mt-0.5">{p.categoria || '—'}</p>
                           {expandedId === p._id && <div className="mt-2">{detalleVariantes(p)}</div>}
@@ -499,7 +653,10 @@ const Deposito = () => {
                         onClick={() => setExpandedId(expandedId === p._id ? null : p._id)}
                         className="min-w-0 flex-1 text-left"
                       >
-                        <p className="font-semibold text-ios-label">{p.nombre}</p>
+                        <p className="font-semibold text-ios-label flex items-center gap-1.5 flex-wrap">
+                          {p.nombre}
+                          {badgeSalon(p)}
+                        </p>
                         <p className="text-xs text-ios-tertiary mt-0.5">
                           {p.categoria || '—'}
                           {p.codigo ? ` · ${p.codigo}` : ''}
@@ -533,12 +690,42 @@ const Deposito = () => {
       {tab === 'movimientos' && esAdmin && (
         <>
           <div className="mb-4 flex items-center gap-3 flex-wrap">
-            <IosSelect value={movTipo} onChange={(e) => setMovTipo(e.target.value)} className="w-full sm:w-64">
+            <IosSearch
+              value={movBuscar}
+              onChange={setMovBuscar}
+              placeholder="Buscar por producto..."
+              className="w-full sm:w-72"
+            />
+            <IosSelect
+              value={movTipo}
+              onChange={(e) => { setMovTipo(e.target.value); setMovLimit(100); }}
+              className="w-full sm:w-56"
+            >
               <option value="" className="bg-ios-surface2">Todos los movimientos</option>
               {Object.entries(TIPOS).map(([key, info]) => (
                 <option key={key} value={key} className="bg-ios-surface2">{info.label}</option>
               ))}
             </IosSelect>
+            <input
+              type="date"
+              value={movDesde}
+              onChange={(e) => { setMovDesde(e.target.value); setMovLimit(100); }}
+              className="px-3.5 py-2.5 bg-ios-surface2 rounded-ios-control text-ios-label text-sm focus:outline-none focus:ring-2 focus:ring-ios-tint/40"
+              aria-label="Desde"
+            />
+            <input
+              type="date"
+              value={movHasta}
+              onChange={(e) => { setMovHasta(e.target.value); setMovLimit(100); }}
+              className="px-3.5 py-2.5 bg-ios-surface2 rounded-ios-control text-ios-label text-sm focus:outline-none focus:ring-2 focus:ring-ios-tint/40"
+              aria-label="Hasta"
+            />
+            <button
+              onClick={exportarMovimientosCsv}
+              className="ios-btn-press px-3.5 py-2 bg-ios-surface2 rounded-ios-pill text-sm text-ios-secondary font-medium hover:bg-ios-surface3 transition-colors"
+            >
+              Exportar CSV
+            </button>
           </div>
 
           {movError && (
@@ -557,30 +744,42 @@ const Deposito = () => {
               <p className="text-ios-tertiary text-sm">No hay movimientos registrados</p>
             </div>
           ) : (
-            <div className="bg-ios-surface rounded-3xl overflow-hidden shadow-ios-card border border-ios-separator/30">
-              <div className="divide-y divide-ios-separator/30">
-                {movimientos.map((m) => {
-                  const info = TIPOS[m.tipo] || { label: m.tipo, cls: 'bg-ios-surface2 text-ios-secondary' };
-                  const variante = [m.talle, m.color].filter(Boolean).join(' / ');
-                  return (
-                    <div key={m._id} className="px-5 py-3.5 flex items-center gap-3">
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-semibold text-ios-label text-sm truncate">{m.productoNombre || 'Producto'}</span>
-                          <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold ${info.cls}`}>
-                            {info.label}
-                          </span>
+            <>
+              <div className="bg-ios-surface rounded-3xl overflow-hidden shadow-ios-card border border-ios-separator/30">
+                <div className="divide-y divide-ios-separator/30">
+                  {movimientos.map((m) => {
+                    const info = TIPOS[m.tipo] || { label: m.tipo, cls: 'bg-ios-surface2 text-ios-secondary' };
+                    const variante = [m.talle, m.color].filter(Boolean).join(' / ');
+                    return (
+                      <div key={m._id} className="px-5 py-3.5 flex items-center gap-3">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-semibold text-ios-label text-sm truncate">{m.productoNombre || 'Producto'}</span>
+                            <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold ${info.cls}`}>
+                              {info.label}
+                            </span>
+                          </div>
+                          <p className="text-xs text-ios-tertiary mt-0.5">
+                            {variante ? `${variante} · ` : ''}{m.empleado || '—'} · {formatDate(m.createdAt)}
+                          </p>
                         </div>
-                        <p className="text-xs text-ios-tertiary mt-0.5">
-                          {variante ? `${variante} · ` : ''}{m.empleado || '—'} · {formatDate(m.createdAt)}
-                        </p>
+                        <span className="text-ios-label font-bold tabular-nums shrink-0">{m.cantidad} u.</span>
                       </div>
-                      <span className="text-ios-label font-bold tabular-nums shrink-0">{m.cantidad} u.</span>
-                    </div>
-                  );
-                })}
+                    );
+                  })}
+                </div>
               </div>
-            </div>
+              {movimientos.length >= movLimit && movLimit < 500 && (
+                <div className="mt-4 flex justify-center">
+                  <button
+                    onClick={() => setMovLimit((n) => Math.min(n + 100, 500))}
+                    className="ios-btn-press px-4 py-2.5 bg-ios-surface2 rounded-ios-pill text-sm text-ios-secondary font-medium hover:bg-ios-surface3 transition-colors"
+                  >
+                    Cargar más movimientos
+                  </button>
+                </div>
+              )}
+            </>
           )}
         </>
       )}
@@ -604,6 +803,17 @@ const Deposito = () => {
               <IconArrowUp className="w-4 h-4" />
               Pasar al salón
             </button>
+            {((dropdown.product?.variants?.length > 0 && dropdown.product.variants.some((v) => (v.deposito || 0) > 0))
+              || (dropdown.product?.variants?.length === 0 && (dropdown.product?.deposito || 0) > 0)) && (
+              <button
+                onClick={() => pasarTodoAlSalon(dropdown.product)}
+                disabled={pasarTodoSaving}
+                className="flex items-center gap-2.5 w-full px-3.5 py-2.5 text-sm text-ios-green hover:bg-ios-hover/5 rounded-xl transition-colors font-medium disabled:opacity-50"
+              >
+                <IconArrowUp className="w-4 h-4" />
+                Pasar todo al salón
+              </button>
+            )}
             {dropdown.product?.codigo && (
               <button
                 onClick={() => {
@@ -682,31 +892,69 @@ const Deposito = () => {
                       {variantLabel(v)} (dep: {v.deposito || 0} · salón: {v.cantidad || 0})
                     </option>
                   ))}
+                  {stockModal.modo === 'cargar' && (
+                    <option value="__nueva__" className="bg-ios-surface2">+ Nueva variante…</option>
+                  )}
                 </IosSelect>
               </IosField>
+            )}
+
+            {modalEsNueva && (
+              <div className="grid grid-cols-2 gap-3">
+                <IosField label="Talle nuevo">
+                  <IosInput
+                    type="text"
+                    value={modalNuevoTalle}
+                    onChange={(e) => setModalNuevoTalle(e.target.value)}
+                    placeholder="Ej: XL"
+                  />
+                </IosField>
+                <IosField label="Color nuevo">
+                  <IosInput
+                    type="text"
+                    value={modalNuevoColor}
+                    onChange={(e) => setModalNuevoColor(e.target.value)}
+                    placeholder="Ej: Azul"
+                  />
+                </IosField>
+              </div>
             )}
 
             <div className="rounded-2xl px-4 py-3 bg-ios-surface2 text-sm space-y-1">
               <div className="flex items-center justify-between">
                 <span className="text-ios-tertiary">En depósito</span>
                 <span className="text-ios-label font-semibold tabular-nums">
-                  {modalVariant ? (modalVariant.deposito || 0) : (modalProducto.deposito || 0)}
+                  {modalEsNueva ? 0 : modalVariant ? (modalVariant.deposito || 0) : (modalProducto.deposito || 0)}
                 </span>
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-ios-tertiary">En salón</span>
                 <span className="text-ios-label font-semibold tabular-nums">
-                  {modalVariant ? (modalVariant.cantidad || 0) : (modalProducto.cantidad || 0)}
+                  {modalEsNueva ? 0 : modalVariant ? (modalVariant.cantidad || 0) : (modalProducto.cantidad || 0)}
                 </span>
               </div>
             </div>
+
+            {stockModal.modo === 'cargar' && (
+              <label className="flex items-center justify-between gap-3 cursor-pointer select-none">
+                <span className="text-sm text-ios-secondary font-medium">
+                  Fijar cantidad (inventario)
+                  <span className="block text-[11px] text-ios-tertiary mt-0.5">
+                    Deja el depósito exactamente en la cantidad ingresada.
+                  </span>
+                </span>
+                <IosToggle checked={modalFijar} onChange={setModalFijar} />
+              </label>
+            )}
 
             <IosField
               label="Cantidad"
               hint={
                 stockModal.modo === 'reponer'
                   ? `Disponible en depósito: ${disponibleModal}`
-                  : 'Se sumará al depósito'
+                  : modalFijar
+                    ? 'Se fijará el stock del depósito'
+                    : 'Se sumará al depósito'
               }
             >
               <IosInput
@@ -719,6 +967,18 @@ const Deposito = () => {
                 }}
               />
             </IosField>
+
+            {stockModal.modo === 'cargar' && modalFijar && (
+              <p className="text-ios-tertiary text-[11px]">
+                Stock actual: {disponibleModal} → nuevo: {Number(modalCantidad) || 0}
+                {Number(modalCantidad) !== disponibleModal && (
+                  <span className={Number(modalCantidad) > disponibleModal ? 'text-ios-green' : 'text-amber-400'}>
+                    {' '}({(Number(modalCantidad) || 0) - disponibleModal > 0 ? '+' : ''}
+                    {(Number(modalCantidad) || 0) - disponibleModal})
+                  </span>
+                )}
+              </p>
+            )}
           </div>
         )}
       </IosModal>
