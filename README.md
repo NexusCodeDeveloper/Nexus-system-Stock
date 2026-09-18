@@ -32,6 +32,7 @@ npm run dev            # backend (nodemon, puerto 5000) + frontend (Vite, puerto
 | `npm run build` | Compila el frontend en `frontend/dist` |
 | `npm start` | Arranca el backend (sirve `frontend/dist` si `NODE_ENV=production`) |
 | `npm run lint` | Lint del frontend (oxlint) |
+| `npm test` | Tests del backend (node:test) |
 | `npm run migrate:money` | Dry-run de la migración de montos a centavos |
 | `npm run migrate:money:apply --prefix backend` | Aplica la migración (hace backup antes) |
 
@@ -103,19 +104,24 @@ Todo el stock entra al depósito y desde ahí se carga el salón:
 - **Nuevo Producto** (en `/deposito`, solo admin): crea el producto con su stock inicial en el
   **depósito** (por talle/color si tiene variantes).
 - **Editar** (menú de acciones en Depósito, solo admin): edita los datos del producto y su stock del
-  **depósito**. El salón no se toca desde acá.
+  **depósito**. El salón no se toca desde acá. Los ajustes de depósito quedan registrados en
+  **Movimientos** y no se pueden quitar ni renombrar variantes con stock (se rechaza con un aviso).
 - **Reponer stock** (menú de acciones del producto en Depósito, solo admin): suma mercadería nueva al
-  depósito.
+  depósito. Permite **crear una variante nueva** (talle/color) y usar **Fijar cantidad** para dejar el
+  depósito en un valor exacto (inventario físico).
 - **Pasar al salón** (menú de acciones en Depósito, admin y empleado): pasa stock del depósito al
-  salón, que es de donde descuentan las ventas.
+  salón, que es de donde descuentan las ventas. **Pasar todo al salón** pasa todas las variantes de una
+  sola vez.
 - **Eliminar** (menú de acciones en Depósito, solo admin).
 - Desde Productos, el admin puede **Retirar a depósito** (pasar stock del salón al depósito).
 - Si el salón se queda sin stock, la venta se bloquea y el aviso indica cuántas unidades hay en
   depósito. La alerta de stock bajo de Productos muestra el disponible en depósito ("Dep: N").
+- La tabla de Depósito muestra el **valorizado del depósito**, avisos de **stock bajo/agotado** en
+  salón y, si el catálogo supera los 1000 productos, un aviso para usar la búsqueda.
 - Cada movimiento queda registrado en la pestaña **Movimientos** del depósito (producto, variante,
-  cantidad, tipo, quién y cuándo).
-- Endpoints: `PUT /api/products/:id/deposito` (admin), `POST /api/products/:id/reponer`,
-  `POST /api/products/:id/retirar` (admin) y `GET /api/stock-movements` (admin).
+  cantidad, tipo, quién y cuándo), con filtros por tipo, fecha y producto, paginación y **export CSV**.
+- Endpoints: `PUT /api/products/:id/deposito` (admin), `POST /api/products/:id/reponer` (admin y
+  empleado), `POST /api/products/:id/retirar` (admin) y `GET /api/stock-movements` (admin).
 
 ## Códigos de barras y QR
 
@@ -133,6 +139,9 @@ Cada producto tiene un **código interno** único (`NC-000001`) que se genera au
 - **Tickets:** el ticket impreso incluye un QR con el número y el código de barras Code-128 de cada
   producto. En Tickets podés buscar por número de ticket o escanear el código de un producto para ver
   las ventas que lo contienen y hacer la devolución o el cambio.
+- **Devolución/cambio desde Productos:** la acción "Devolver" o "Cambiar" del menú del producto pide
+  elegir el ticket de la venta y abre el formulario de devolución completo (valida stock, muestra la
+  diferencia y el método de pago). Las devoluciones sin ticket ya no modifican ventas existentes.
 - **Número de ticket:** se genera solo, como código aleatorio único `T-XXXXXXXX` (letras y números, sin
   caracteres ambiguos). Antes de asignarlo el servidor verifica que no exista y el índice único de la
   base impide cualquier repetición. Para regenerar los tickets viejos: `npm run migrate:tickets`
@@ -163,3 +172,5 @@ Endpoints: `GET /api/products/codigo/:codigo` (buscar por código) y `GET /api/p
 ## Documentación
 
 - `docs/reporte-auditoria.md`: auditoría completa, crash original, correcciones y pendientes.
+- `docs/reporte-auditoria-2.md`: segunda auditoría (críticos de integridad, correcciones fases 1–4,
+  tests y pendientes de upgrade).
