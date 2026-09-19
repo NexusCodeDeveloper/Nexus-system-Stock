@@ -20,6 +20,7 @@ export const createSaleSchema = z.object({
   empleado: z.string().min(1, 'El nombre del empleado es requerido').optional(),
   pagos: z.array(pagoSchema).min(1).max(2),
   descuento: z.number().finite().min(0).max(100).optional().default(0),
+  offset: z.number().int().optional(),
 }).superRefine((data, ctx) => {
   const vistos = new Set();
   for (const p of data.pagos) {
@@ -32,4 +33,26 @@ export const createSaleSchema = z.object({
     }
     vistos.add(p.metodo);
   }
+});
+
+const nombreCaja = z
+  .string({ required_error: 'El nombre es obligatorio' })
+  .trim()
+  .min(2, 'El nombre es obligatorio')
+  .max(80, 'El nombre es demasiado largo');
+
+export const abrirCajaSchema = z.object({
+  nombre: nombreCaja,
+  fondoInicial: z.number().finite().min(0, 'El fondo no puede ser negativo').optional().default(0),
+  offset: z.number().int().optional(),
+});
+
+export const cerrarCajaSchema = z.object({
+  nombre: nombreCaja,
+  offset: z.number().int().optional(),
+});
+
+export const reabrirCajaSchema = z.object({
+  nombre: nombreCaja,
+  offset: z.number().int().optional(),
 });

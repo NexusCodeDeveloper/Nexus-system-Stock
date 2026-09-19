@@ -2,9 +2,12 @@ import mongoose from 'mongoose';
 import CashWithdrawal from './CashWithdrawalModel.js';
 import CashWithdrawalDay from './CashWithdrawalDayModel.js';
 import Sale from '../Sale/SaleModel.js';
+import Return from '../Return/ReturnModel.js';
 import { createCashWithdrawalSchema } from './CashWithdrawalSchema.js';
-import { getRange, startOfDayDate } from '../../utils/fechas.js';
+import { getRange } from '../../utils/fechas.js';
 import { enviarEvento } from '../../services/pushService.js';
+import { encontrarCierreDeFecha, mensajeCierre } from '../../utils/cierres.js';
+import { buscarCajaAbierta, cajaEsDeHoy, mensajeCajaAnterior } from '../../utils/caja.js';
 import logger from '../../utils/logger.js';
 
 const getEfectivoDeVenta = (sale) => {
@@ -17,29 +20,25 @@ const getEfectivoDeVenta = (sale) => {
   return metodo === 'efectivo' ? Number(sale.total) || 0 : 0;
 };
 
-const calcularRetiradoReal = async (offset = 0, session = null) => {
-  const desde = startOfDayDate(offset);
-  const hasta = new Date();
+const calcularRetiradoReal = async (desde, hasta, session = null) => {
   const query = CashWithdrawal.find({ createdAt: { $gte: desde, $lt: hasta } }).select('monto');
   if (session) query.session(session);
   const retiros = await query;
   return Math.round(retiros.reduce((sum, r) => sum + (Number(r.monto) || 0), 0) * 100) / 100;
 };
 
-const calcularEfectivoVendido = async (offset = 0, session = null) => {
-  const desde = startOfDayDate(offset);
-  const hasta = new Date();
-
+const calcularEfectivoVendido = async (desde, hasta, session = null) => {
   const query = Sale.find({ createdAt: { $gte: desde, $lt: hasta }, estado: { $ne: 'devuelta' } }).select('pagos metodoPago total estado');
   if (session) query.session(session);
   const sales = await query;
-  return Math.round(sales.reduce((sum, s) => sum + getEfectivoDeVenta(s), 0) * 100) / 100;
-};
+  const ventas = sales.reduce((sum, s) => sum + getEfectivoDeVenta(s), 0);
 
-const calcularEfectivoDisponible = async (offset = 0, session = null) => {
-  const efectivoVendido = await calcularEfectivoVendido(offset, session);
-  const retirado = await calcularRetiradoReal(offset, session);
-  return Math.max(0, Math.round((efectivoVendido - retirado) * 100) / 100);
+  const queryDevoluciones = Return.find({ createdAt: { $gte: desde, $lt: hasta }, efectivoDevuelto: { $gt: 0 } }).select('efectivoDevuelto');
+  if (session) queryDevoluciones.session(session);
+  const devoluciones = await queryDevoluciones;
+  const reintegros = devoluciones.reduce((sum, r) => sum + (Number(r.efectivoDevuelto) || 0), 0);
+
+  return Math.max(0, Math.round((ventas - reintegros) * 100) / 100);
 };
 
 const getOffset = (req) => {
@@ -49,17 +48,28 @@ const getOffset = (req) => {
 
 export const getAvailableCash = async (req, res, next) => {
   try {
-    const offset = Number.isFinite(Number(req.query.offset)) ? Number(req.query.offset) : 0;
-    const disponible = await calcularEfectivoDisponible(offset);
-    res.json({ disponible });
+    const caja = await buscarCajaAbierta();
+    if (!caja) {
+      return res.json({ disponible: 0, cajaAbierta: false });
+    }
+    const hasta = new Date();
+    const desde = caja.abiertoAt || caja.fecha;
+    const efectivoVendido = await calcularEfectivoVendido(desde, hasta);
+    const retirado = await calcularRetiradoReal(desde, hasta);
+    const disponible = Math.max(
+      0,
+      Math.round(((caja.fondoInicial || 0) + efectivoVendido - retirado) * 100) / 100
+    );
+    res.json({ disponible, cajaAbierta: true });
   } catch (error) {
     next(error);
   }
 };
 
 export const createCashWithdrawal = async (req, res, next) => {
-  const session = await mongoose.startSession();
+  let session;
   try {
+    session = await mongoose.startSession();
     const data = createCashWithdrawalSchema.parse(req.body);
     const offset = getOffset(req);
     const realizadoPor = req.user.nombre;
@@ -72,17 +82,30 @@ export const createCashWithdrawal = async (req, res, next) => {
 
     const montoRedondo = Math.round(data.monto * 100) / 100;
 
+    session.startTransaction();
+
+    const caja = await buscarCajaAbierta(session);
+    if (!caja) {
+      await session.abortTransaction();
+      return res.status(409).json({ message: 'Antes de retirar efectivo tenés que abrir la caja', code: 'SIN_CAJA' });
+    }
+    if (!cajaEsDeHoy(caja, offset)) {
+      await session.abortTransaction();
+      return res.status(409).json({ message: mensajeCajaAnterior(caja), code: 'CAJA_DIA_ANTERIOR' });
+    }
+
     await CashWithdrawalDay.findOneAndUpdate(
       { fecha: dayKey },
       { $setOnInsert: { fecha: dayKey, retirado: 0 } },
-      { upsert: true }
+      { upsert: true, session }
     );
 
-    session.startTransaction();
-
-    const efectivoVendido = await calcularEfectivoVendido(offset, session);
-    const retiradoReal = await calcularRetiradoReal(offset, session);
-    const disponible = Math.max(0, Math.round((efectivoVendido - retiradoReal) * 100) / 100);
+    const desde = caja.abiertoAt || caja.fecha;
+    const hasta = new Date();
+    const fondo = caja.fondoInicial || 0;
+    const efectivoVendido = await calcularEfectivoVendido(desde, hasta, session);
+    const retiradoReal = await calcularRetiradoReal(desde, hasta, session);
+    const disponible = Math.max(0, Math.round((fondo + efectivoVendido - retiradoReal) * 100) / 100);
     if (montoRedondo > disponible) {
       await session.abortTransaction();
       return res.status(400).json({
@@ -90,7 +113,7 @@ export const createCashWithdrawal = async (req, res, next) => {
       });
     }
 
-    const topeDelDia = Math.round((efectivoVendido - montoRedondo) * 100) / 100;
+    const topeDelDia = Math.round((fondo + efectivoVendido - montoRedondo) * 100) / 100;
     const dayRecord = await CashWithdrawalDay.findOneAndUpdate(
       { fecha: dayKey, retirado: { $lte: topeDelDia } },
       { $inc: { retirado: montoRedondo } },
@@ -119,10 +142,10 @@ export const createCashWithdrawal = async (req, res, next) => {
 
     res.status(201).json(withdrawal);
   } catch (error) {
-    await session.abortTransaction().catch(() => {});
+    await session?.abortTransaction().catch(() => {});
     next(error);
   } finally {
-    session.endSession();
+    session?.endSession();
   }
 };
 
@@ -145,13 +168,22 @@ export const getCashWithdrawals = async (req, res, next) => {
 };
 
 export const deleteCashWithdrawal = async (req, res, next) => {
-  const session = await mongoose.startSession();
+  let session;
   try {
+    session = await mongoose.startSession();
     session.startTransaction();
     const withdrawal = await CashWithdrawal.findById(req.params.id).session(session);
     if (!withdrawal) {
       await session.abortTransaction();
       return res.status(404).json({ message: 'Retiro no encontrado' });
+    }
+
+    const cierre = await encontrarCierreDeFecha(withdrawal.createdAt);
+    if (cierre) {
+      await session.abortTransaction();
+      return res.status(409).json({
+        message: `No se puede eliminar un retiro que ya forma parte de un cierre.${mensajeCierre(cierre)}`,
+      });
     }
 
     const offset = getOffset(req);
@@ -187,9 +219,9 @@ export const deleteCashWithdrawal = async (req, res, next) => {
 
     res.json({ message: 'Retiro eliminado correctamente' });
   } catch (error) {
-    await session.abortTransaction().catch(() => {});
+    await session?.abortTransaction().catch(() => {});
     next(error);
   } finally {
-    session.endSession();
+    session?.endSession();
   }
 };

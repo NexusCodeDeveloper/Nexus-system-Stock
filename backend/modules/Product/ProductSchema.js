@@ -80,6 +80,7 @@ export const exchangeSchema = z.object({
   sale: objectId.optional(),
   metodoPago: z.enum(['efectivo', 'transferencia', 'tarjeta']).optional(),
   empleado: z.string().optional(),
+  offset: z.number().int().optional(),
 });
 
 export const addStockSchema = z.object({
@@ -94,6 +95,17 @@ export const movimientoStockSchema = z.object({
   color: z.string().optional().default(''),
 });
 
+export const pasarSalonSchema = z.object({
+  items: z.array(
+    z.object({
+      producto: objectId,
+      cantidad: z.number().int().positive('La cantidad debe ser al menos 1'),
+      talle: z.string().optional().default(''),
+      color: z.string().optional().default(''),
+    })
+  ).min(1, 'Debe incluir al menos una variante'),
+});
+
 export const depositoSchema = z.object({
   cantidad: z.number().int().min(0, 'La cantidad no puede ser negativa'),
   talle: z.string().optional().default(''),
@@ -104,7 +116,6 @@ export const depositoSchema = z.object({
 export const updateProductSchema = z.object({
   nombre: z.string().min(1, 'El nombre del producto es obligatorio').optional(),
   precio: z.number().finite().positive('El precio debe ser mayor a $0').optional(),
-  cantidad: z.number().int().min(0, 'La cantidad no puede ser negativa').optional(),
   deposito: z.number().int().min(0, 'La cantidad no puede ser negativa').optional(),
   variants: z.array(variantSchema).optional(),
   colores: z.array(z.string()).optional(),

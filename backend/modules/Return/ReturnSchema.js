@@ -1,9 +1,6 @@
 import { z } from 'zod';
-import { Types } from 'mongoose';
 
-const objectId = z.string().refine((val) => Types.ObjectId.isValid(val), {
-  message: 'ID de producto inválido',
-});
+const objectId = z.string().regex(/^[0-9a-fA-F]{24}$/, 'ID de producto inválido');
 
 export const createReturnSchema = z.object({
   producto: objectId,
@@ -12,4 +9,5 @@ export const createReturnSchema = z.object({
   color: z.string().optional().default(''),
   motivo: z.string().min(1, 'El motivo es requerido'),
   sale: objectId.optional(),
+  offset: z.number().int().optional(),
 });

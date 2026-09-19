@@ -6,12 +6,38 @@ import { registrarDevolucionEnVenta, anularDevolucionEnVenta } from '../Sale/tic
 import { createReturnSchema } from './ReturnSchema.js';
 import { enviarEvento } from '../../services/pushService.js';
 import { findVariantIdx } from '../../utils/variantes.js';
+import { getItems, mismaLinea, prorratearPagos, totalEfectivoDePagos, esMismoDia } from '../../utils/ventas.js';
+import { encontrarCierreDeFecha, mensajeCierre } from '../../utils/cierres.js';
+import { buscarCajaAbierta, cajaEsDeHoy, mensajeCajaAnterior } from '../../utils/caja.js';
+
+const redondear = (n) => Math.round((Number(n) || 0) * 100) / 100;
+
+const pagosDe = (sale) =>
+  (sale?.pagos || []).map((p) => ({ metodo: p.metodo, monto: redondear(p.monto) }));
+
+const materializarItems = (sale) => {
+  if (!sale.items || sale.items.length === 0) {
+    sale.items = getItems(sale);
+  }
+  return sale.items;
+};
 
 export const createReturn = async (req, res, next) => {
-  const session = await mongoose.startSession();
+  let session;
   try {
+    session = await mongoose.startSession();
     session.startTransaction();
     const data = createReturnSchema.parse(req.body);
+
+    const caja = await buscarCajaAbierta(session);
+    if (!caja) {
+      await session.abortTransaction();
+      return res.status(409).json({ message: 'Antes de registrar una devolución tenés que abrir la caja', code: 'SIN_CAJA' });
+    }
+    if (!cajaEsDeHoy(caja, Number(data.offset) || 0)) {
+      await session.abortTransaction();
+      return res.status(409).json({ message: mensajeCajaAnterior(caja), code: 'CAJA_DIA_ANTERIOR' });
+    }
 
     const product = await Product.findById(data.producto).session(session);
     if (!product) {
@@ -34,6 +60,10 @@ export const createReturn = async (req, res, next) => {
     let pendiente = data.cantidad;
     let saleConsumida = null;
     let montoTotalDevuelto = 0;
+    let precioUnitario = product.precio || 0;
+    let descuentoAplicado = 0;
+    let pagosOriginales = [];
+    let pagosAntes = [];
     const sales = [];
 
     if (data.sale) {
@@ -46,11 +76,8 @@ export const createReturn = async (req, res, next) => {
         await session.abortTransaction();
         return res.status(400).json({ message: 'El ticket ya fue devuelto' });
       }
-      const match = targetSale.items?.find(
-        (i) => i.producto?.toString() === data.producto
-          && (i.talle || '') === (data.talle || '')
-          && (i.color || '') === (data.color || '')
-      );
+      const items = materializarItems(targetSale);
+      const match = items.find((i) => mismaLinea(i, data));
       if (!match) {
         await session.abortTransaction();
         return res.status(400).json({ message: 'El producto no forma parte de este ticket' });
@@ -62,24 +89,23 @@ export const createReturn = async (req, res, next) => {
       sales.push(targetSale);
     }
 
-    const esLineaDevuelta = (i) => i.producto?.toString() === data.producto
-      && (i.talle || '') === (data.talle || '')
-      && (i.color || '') === (data.color || '');
-
     for (const sale of sales) {
       if (pendiente <= 0) break;
       saleConsumida = sale._id;
 
-      const match = sale.items?.find(esLineaDevuelta);
+      const items = materializarItems(sale);
+      const match = items.find((i) => mismaLinea(i, data));
       const saleCantidad = match?.cantidad ?? sale.cantidad ?? 0;
       const precioUnit = match?.precio ?? sale.precio ?? 0;
       const factorDescuento = 1 - (sale.descuento || 0) / 100;
+      precioUnitario = precioUnit;
+      descuentoAplicado = sale.descuento || 0;
 
       if (saleCantidad <= pendiente) {
         pendiente -= saleCantidad;
-        const montoDevuelto = Math.round(precioUnit * saleCantidad * factorDescuento * 100) / 100;
-        montoTotalDevuelto = Math.round((montoTotalDevuelto + montoDevuelto) * 100) / 100;
-        const restantes = (sale.items || []).filter((i) => !esLineaDevuelta(i));
+        const montoDevuelto = redondear(precioUnit * saleCantidad * factorDescuento);
+        montoTotalDevuelto = redondear(montoTotalDevuelto + montoDevuelto);
+        const restantes = items.filter((i) => !mismaLinea(i, data));
         if (restantes.length > 0) {
           sale.items = restantes;
           const primerItem = sale.items[0];
@@ -87,8 +113,12 @@ export const createReturn = async (req, res, next) => {
           sale.cantidad = primerItem.cantidad;
           sale.precio = primerItem.precio;
           sale.talle = primerItem.talle || '';
-          sale.total = Math.round(sale.items.reduce((s, i) => s + i.subtotal, 0) * (1 - (sale.descuento || 0) / 100) * 100) / 100;
+          sale.total = redondear(
+            sale.items.reduce((s, i) => s + (i.subtotal ?? i.precio * i.cantidad), 0) * factorDescuento
+          );
         } else {
+          pagosOriginales = pagosDe(sale);
+          pagosAntes = pagosOriginales;
           sale.total = 0;
           sale.pagos = [];
           sale.estado = 'devuelta';
@@ -98,16 +128,18 @@ export const createReturn = async (req, res, next) => {
       } else {
         if (match) {
           match.cantidad -= pendiente;
-          match.subtotal = Math.round(match.precio * match.cantidad * 100) / 100;
+          match.subtotal = redondear(match.precio * match.cantidad);
         } else if (Number.isFinite(sale.cantidad)) {
           sale.cantidad = Math.max(1, sale.cantidad - pendiente);
         }
-        const sumSubtotales = sale.items
-          ? sale.items.reduce((s, i) => s + (i.subtotal ?? i.precio * i.cantidad), 0)
-          : (sale.cantidad - pendiente) * (sale.precio ?? 0);
-        sale.total = Math.round(sumSubtotales * (1 - (sale.descuento || 0) / 100) * 100) / 100;
-        const montoDevuelto = Math.round(precioUnit * pendiente * factorDescuento * 100) / 100;
-        montoTotalDevuelto = Math.round((montoTotalDevuelto + montoDevuelto) * 100) / 100;
+        const sumSubtotales = materializarItems(sale).reduce(
+          (s, i) => s + (i.subtotal ?? i.precio * i.cantidad),
+          0
+        );
+        sale.total = redondear(sumSubtotales * factorDescuento);
+        const montoDevuelto = redondear(precioUnit * pendiente * factorDescuento);
+        montoTotalDevuelto = redondear(montoTotalDevuelto + montoDevuelto);
+        pagosAntes = pagosDe(sale);
         registrarDevolucionEnVenta(sale, { motivo: data.motivo, cantidad: pendiente, monto: montoDevuelto });
         await sale.save({ session });
         pendiente = 0;
@@ -121,46 +153,77 @@ export const createReturn = async (req, res, next) => {
       });
     }
 
+    let montoSinTicket = 0;
+    if (!data.sale) {
+      montoSinTicket = redondear((product.precio || 0) * data.cantidad);
+      precioUnitario = product.precio || 0;
+    }
+
+    const offset = Number(data.offset) || 0;
+    let efectivoDevuelto = 0;
+    if (!data.sale) {
+      efectivoDevuelto = montoSinTicket;
+    } else if (sales.length > 0 && !esMismoDia(sales[0].createdAt, offset)) {
+      const base = pagosAntes.length > 0 ? pagosAntes : pagosOriginales;
+      efectivoDevuelto = base.length > 0
+        ? totalEfectivoDePagos(prorratearPagos(base, montoTotalDevuelto))
+        : (sales[0].metodoPago === 'efectivo' || !sales[0].metodoPago ? montoTotalDevuelto : 0);
+    }
+
     const returnRecord = await Return.create([{
       ...data,
       sale: data.sale || saleConsumida || null,
       diferencia: 0,
-      montoDevuelto: montoTotalDevuelto,
+      montoDevuelto: data.sale ? montoTotalDevuelto : montoSinTicket,
+      efectivoDevuelto,
+      precioUnitario,
+      descuentoAplicado,
+      pagosOriginales,
     }], { session });
 
-    await session.commitTransaction();
+    const populated = await Return.findById(returnRecord[0]._id)
+      .session(session)
+      .populate([
+        { path: 'producto', select: 'nombre categoria' },
+        { path: 'sale', select: 'ticketNumero total empleado' },
+      ]);
 
-    returnRecord[0].$session(null);
-    const populated = await returnRecord[0].populate([
-      { path: 'producto', select: 'nombre categoria' },
-      { path: 'sale', select: 'ticketNumero total empleado' },
-    ]);
+    await session.commitTransaction();
 
     void enviarEvento({
       tipo: 'devolucion',
       titulo: 'Devolución registrada',
-      mensaje: `${product.nombre} × ${data.cantidad}${data.sale ? ' · con ticket' : ''}`,
+      mensaje: `${product.nombre} × ${data.cantidad}${data.sale ? ' · con ticket' : ' · sin ticket'}`,
       url: '/returns',
       para: 'admins',
     });
 
     res.status(201).json(populated);
   } catch (error) {
-    await session.abortTransaction().catch(() => {});
+    await session?.abortTransaction().catch(() => {});
     next(error);
   } finally {
-    session.endSession();
+    session?.endSession();
   }
 };
 
 export const deleteReturn = async (req, res, next) => {
-  const session = await mongoose.startSession();
+  let session;
   try {
+    session = await mongoose.startSession();
     session.startTransaction();
     const returnRecord = await Return.findById(req.params.id).session(session);
     if (!returnRecord) {
       await session.abortTransaction();
       return res.status(404).json({ message: 'Devolución no encontrada' });
+    }
+
+    const cierre = await encontrarCierreDeFecha(returnRecord.createdAt);
+    if (cierre) {
+      await session.abortTransaction();
+      return res.status(409).json({
+        message: `No se puede eliminar una devolución que ya forma parte de un cierre.${mensajeCierre(cierre)}`,
+      });
     }
 
     const mismoProducto = returnRecord.productoCargar
@@ -210,39 +273,59 @@ export const deleteReturn = async (req, res, next) => {
       const sale = await Sale.findById(returnRecord.sale).session(session);
       if (sale) {
         const eraDevuelta = sale.estado === 'devuelta';
-        if (!eraDevuelta) {
-          const match = sale.items?.find((i) => i.producto?.toString() === returnRecord.producto.toString()
-            && (i.talle || '') === (returnRecord.talle || '')
-            && (i.color || '') === (returnRecord.color || ''));
-          if (match) {
+        const items = (sale.items && sale.items.length > 0)
+          ? sale.items
+          : (eraDevuelta ? [] : materializarItems(sale));
+        const match = items.find((i) => mismaLinea(i, {
+          producto: returnRecord.producto,
+          talle: returnRecord.talle,
+          color: returnRecord.color,
+        }));
+
+        if (match) {
+          if (!eraDevuelta) {
             match.cantidad += returnRecord.cantidad;
-            match.subtotal = Math.round(match.precio * match.cantidad * 100) / 100;
-          } else if (product) {
-            sale.items.push({
-              producto: returnRecord.producto,
-              cantidad: returnRecord.cantidad,
-              precio: product.precio,
-              talle: returnRecord.talle || '',
-              color: returnRecord.color || '',
-              subtotal: Math.round(product.precio * returnRecord.cantidad * 100) / 100,
-            });
+            match.subtotal = redondear(match.precio * match.cantidad);
           }
+        } else {
+          const precio = returnRecord.precioUnitario || product?.precio || 0;
+          sale.items.push({
+            producto: returnRecord.producto,
+            cantidad: returnRecord.cantidad,
+            precio,
+            talle: returnRecord.talle || '',
+            color: returnRecord.color || '',
+            subtotal: redondear(precio * returnRecord.cantidad),
+          });
         }
+
         if (sale.items?.length > 0) {
-          sale.total = Math.round(sale.items.reduce((s, i) => s + i.subtotal, 0) * (1 - (sale.descuento || 0) / 100) * 100) / 100;
+          sale.total = redondear(
+            sale.items.reduce((s, i) => s + (i.subtotal ?? i.precio * i.cantidad), 0) *
+              (1 - (sale.descuento || 0) / 100)
+          );
         }
-        const eraDevueltaFinal = sale.estado === 'devuelta';
-        if (eraDevueltaFinal) {
+
+        if (eraDevuelta) {
           sale.estado = 'activa';
-          sale.pagos = [{ metodo: sale.metodoPago || 'efectivo', monto: Math.round(sale.total * 100) / 100 }];
-          sale.cantidadDevuelta = Math.max(0, Math.round(((sale.cantidadDevuelta || 0) - returnRecord.cantidad) * 100) / 100);
-          sale.montoDevuelto = Math.max(0, Math.round(((sale.montoDevuelto || 0) - (returnRecord.montoDevuelto || 0)) * 100) / 100);
+          const pagos = (returnRecord.pagosOriginales || []).filter((p) => (p.monto || 0) > 0);
+          sale.pagos = pagos.length > 0
+            ? pagos.map((p) => ({ metodo: p.metodo, monto: p.monto }))
+            : [{ metodo: sale.metodoPago || 'efectivo', monto: redondear(sale.total) }];
+          sale.cantidadDevuelta = Math.max(0, redondear((sale.cantidadDevuelta || 0) - returnRecord.cantidad));
+          sale.montoDevuelto = Math.max(0, redondear((sale.montoDevuelto || 0) - (returnRecord.montoDevuelto || 0)));
           if (sale.devoluciones?.length > 0) {
-            sale.devoluciones.pop();
+            const idx = sale.devoluciones
+              .map((d, i) => ({ d, i }))
+              .filter(({ d }) => redondear(d.monto) === redondear(returnRecord.montoDevuelto) && (d.cantidad || 0) === returnRecord.cantidad)
+              .pop()?.i;
+            if (idx !== undefined) sale.devoluciones.splice(idx, 1);
+            else sale.devoluciones.pop();
           }
         } else {
           anularDevolucionEnVenta(sale, { cantidad: returnRecord.cantidad, monto: returnRecord.montoDevuelto || 0 });
         }
+
         await sale.save({ session });
       }
     }
@@ -258,10 +341,10 @@ export const deleteReturn = async (req, res, next) => {
     await session.commitTransaction();
     res.json({ message: 'Devolución eliminada correctamente' });
   } catch (error) {
-    await session.abortTransaction().catch(() => {});
+    await session?.abortTransaction().catch(() => {});
     next(error);
   } finally {
-    session.endSession();
+    session?.endSession();
   }
 };
 

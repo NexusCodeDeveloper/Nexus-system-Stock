@@ -4,35 +4,35 @@ import Product from '../Product/ProductModel.js';
 import Return from '../Return/ReturnModel.js';
 import DailyClose from './DailyCloseModel.js';
 import CashWithdrawal from '../CashWithdrawal/CashWithdrawalModel.js';
-import { createSaleSchema } from './SaleSchema.js';
+import { createSaleSchema, abrirCajaSchema, cerrarCajaSchema, reabrirCajaSchema } from './SaleSchema.js';
 import { generarTicketNumero, guardarConTicketUnico } from './ticketUtils.js';
 import { enviarCierreDeCaja, enviarMailTest, verificarMail } from '../../services/emailService.js';
 import { enviarEvento, enviarStockBajo } from '../../services/pushService.js';
 import { parseDate, getRange, startOfDayDate } from '../../utils/fechas.js';
 import { findVariantIdx, extraDeposito } from '../../utils/variantes.js';
+import { getItems, getUnidadesNetas, getTotalNeto } from '../../utils/ventas.js';
+import { encontrarCierreDeFecha, mensajeCierre } from '../../utils/cierres.js';
+import { buscarCajaAbierta, respuestaSinCaja, MENSAJE_SIN_CAJA, cajaEsDeHoy, mensajeCajaAnterior } from '../../utils/caja.js';
 import logger from '../../utils/logger.js';
 
 const escapeRegex = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-const getItems = (sale) => {
-  return (sale.items && sale.items.length > 0)
-    ? sale.items
-    : [{ producto: sale.producto, cantidad: sale.cantidad, precio: sale.precio, talle: sale.talle, color: '', subtotal: sale.total }];
-};
-
-const getUnidadesNetas = (sale) => {
-  if (sale.estado === 'devuelta') return 0;
-  const items = getItems(sale);
-  const total = items.reduce((acc, i) => acc + (Number(i.cantidad) || 0), 0);
-  if (sale.items && sale.items.length > 0) return total;
-  return Math.max(0, total - (sale.cantidadDevuelta || 0));
-};
-
 export const createSale = async (req, res, next) => {
-  const session = await mongoose.startSession();
+  let session;
   try {
+    session = await mongoose.startSession();
     session.startTransaction();
     const data = createSaleSchema.parse(req.body);
+
+    const caja = await buscarCajaAbierta(session);
+    if (!caja) {
+      await session.abortTransaction();
+      return res.status(409).json({ message: 'Antes de vender tenés que abrir la caja', code: 'SIN_CAJA' });
+    }
+    if (!cajaEsDeHoy(caja, Number(data.offset) || 0)) {
+      await session.abortTransaction();
+      return res.status(409).json({ message: mensajeCajaAnterior(caja), code: 'CAJA_DIA_ANTERIOR' });
+    }
 
     const items = [];
     const productosVendidos = [];
@@ -106,10 +106,11 @@ export const createSale = async (req, res, next) => {
 
     const savedSale = await guardarConTicketUnico(sale[0], session);
 
-    await session.commitTransaction();
+    const populated = await Sale.findById(savedSale._id)
+      .session(session)
+      .populate('items.producto', 'nombre codigo');
 
-    savedSale.$session(null);
-    const populated = await savedSale.populate('items.producto', 'nombre codigo');
+    await session.commitTransaction();
 
     void enviarStockBajo(productosVendidos);
     void enviarEvento({
@@ -122,16 +123,17 @@ export const createSale = async (req, res, next) => {
 
     res.status(201).json(populated);
   } catch (error) {
-    await session.abortTransaction().catch(() => {});
+    await session?.abortTransaction().catch(() => {});
     next(error);
   } finally {
-    session.endSession();
+    session?.endSession();
   }
 };
 
 export const deleteSale = async (req, res, next) => {
-  const session = await mongoose.startSession();
+  let session;
   try {
+    session = await mongoose.startSession();
     session.startTransaction();
     const sale = await Sale.findById(req.params.id).session(session);
     if (!sale) {
@@ -141,6 +143,14 @@ export const deleteSale = async (req, res, next) => {
     if (sale.estado === 'devuelta') {
       await session.abortTransaction();
       return res.status(400).json({ message: 'No se puede eliminar una venta ya devuelta' });
+    }
+
+    const cierre = await encontrarCierreDeFecha(sale.createdAt);
+    if (cierre) {
+      await session.abortTransaction();
+      return res.status(409).json({
+        message: `No se puede eliminar una venta que ya forma parte de un cierre.${mensajeCierre(cierre)}`,
+      });
     }
 
     const items = getItems(sale);
@@ -182,10 +192,10 @@ export const deleteSale = async (req, res, next) => {
     await session.commitTransaction();
     res.json({ message: 'Venta eliminada correctamente' });
   } catch (error) {
-    await session.abortTransaction().catch(() => {});
+    await session?.abortTransaction().catch(() => {});
     next(error);
   } finally {
-    session.endSession();
+    session?.endSession();
   }
 };
 
@@ -198,11 +208,12 @@ export const getSales = async (req, res, next) => {
       filter.createdAt = getRange(desde, hasta, offset);
     }
 
-    const numeroStr = String(numero || '').trim().replace(/[^0-9]/g, '');
+    const numeroStr = String(numero || '').trim();
     if (numeroStr) {
-      filter.ticketNumero = { $regex: `^${numeroStr}` };
+      filter.ticketNumero = { $regex: escapeRegex(numeroStr), $options: 'i' };
     }
 
+    const or = [];
     const codigoStr = String(codigo || '').trim();
     if (codigoStr) {
       const product = await Product.findOne({
@@ -213,13 +224,13 @@ export const getSales = async (req, res, next) => {
       if (!product) {
         return res.json({ sales: [], total: 0 });
       }
-      filter.$or = [{ 'items.producto': product._id }, { producto: product._id }];
+      or.push({ 'items.producto': product._id }, { producto: product._id });
     }
 
     const buscarStr = String(buscar || '').trim();
     if (buscarStr) {
       const safe = escapeRegex(buscarStr);
-      const or = [{ ticketNumero: { $regex: `^(T-)?${safe}`, $options: 'i' } }];
+      or.push({ ticketNumero: { $regex: `^(T-)?${safe}`, $options: 'i' } });
       const product = await Product.findOne({
         codigo: { $regex: `^${safe}$`, $options: 'i' },
       })
@@ -228,6 +239,8 @@ export const getSales = async (req, res, next) => {
       if (product) {
         or.push({ 'items.producto': product._id }, { producto: product._id });
       }
+    }
+    if (or.length > 0) {
       filter.$or = or;
     }
 
@@ -236,7 +249,7 @@ export const getSales = async (req, res, next) => {
       .populate('producto', 'nombre categoria codigo')
       .sort({ createdAt: -1 });
 
-    const total = Math.round(sales.reduce((sum, s) => sum + s.total, 0) * 100) / 100;
+    const total = Math.round(sales.reduce((sum, s) => sum + getTotalNeto(s), 0) * 100) / 100;
 
     res.json({ sales, total });
   } catch (error) {
@@ -247,6 +260,7 @@ export const getSales = async (req, res, next) => {
 export const getMostSold = async (req, res, next) => {
   try {
     const { desde, hasta, offset = 0, limit = 5 } = req.query;
+    const limite = Math.min(Math.max(Number(limit) || 5, 1), 50);
     const filter = {};
 
     if (desde || hasta) {
@@ -277,7 +291,7 @@ export const getMostSold = async (req, res, next) => {
     const sorted = Object.entries(productMap)
       .map(([productoId, data]) => ({ productoId, ...data }))
       .sort((a, b) => b.totalVendido - a.totalVendido)
-      .slice(0, Number(limit));
+      .slice(0, limite);
 
     const products = await Product.find({ _id: { $in: sorted.map(r => r.productoId) } });
     const productNames = {};
@@ -295,167 +309,224 @@ export const getMostSold = async (req, res, next) => {
   }
 };
 
-export const getDailyClose = async (req, res, next) => {
+const calcularResumenCaja = async (caja) => {
+  const desdeAt = caja.abiertoAt || caja.fecha;
+  const hastaAt = caja.cerradoAt || new Date();
+
+  const sales = await Sale.find({ createdAt: { $gte: desdeAt, $lt: hastaAt } })
+    .populate('items.producto', 'nombre categoria')
+    .populate('producto', 'nombre categoria');
+
+  const retiros = await CashWithdrawal.find({ createdAt: { $gte: desdeAt, $lt: hastaAt } }).sort({ createdAt: 1 });
+  const totalRetiros = Math.round(retiros.reduce((sum, r) => sum + r.monto, 0) * 100) / 100;
+
+  const devoluciones = await Return.find({ createdAt: { $gte: desdeAt, $lt: hastaAt } });
+  const totalDevoluciones = Math.round(devoluciones.reduce((sum, r) => sum + (r.montoDevuelto || 0), 0) * 100) / 100;
+  const efectivoDevuelto = Math.round(devoluciones.reduce((sum, r) => sum + (r.efectivoDevuelto || 0), 0) * 100) / 100;
+
+  const total = Math.round(sales.reduce((sum, s) => sum + getTotalNeto(s), 0) * 100) / 100;
+  const cantidad = sales.reduce((sum, s) => sum + getUnidadesNetas(s), 0);
+
+  const porMetodo = sales.reduce((acc, s) => {
+    const unidadesNetas = getUnidadesNetas(s);
+    if (unidadesNetas <= 0) return acc;
+    if (s.pagos && s.pagos.length > 0) {
+      const totalPagado = s.pagos.reduce((sum, p) => sum + p.monto, 0);
+      if (totalPagado <= 0) return acc;
+      let asignadas = 0;
+      for (let i = 0; i < s.pagos.length; i++) {
+        const p = s.pagos[i];
+        if (!acc[p.metodo]) acc[p.metodo] = { total: 0, cantidad: 0 };
+        acc[p.metodo].total += p.monto;
+        const parte = i === s.pagos.length - 1
+          ? unidadesNetas - asignadas
+          : Math.round(unidadesNetas * (p.monto / totalPagado));
+        acc[p.metodo].cantidad += parte;
+        asignadas += parte;
+      }
+    } else {
+      const m = s.metodoPago || 'efectivo';
+      if (!acc[m]) acc[m] = { total: 0, cantidad: 0 };
+      acc[m].total += s.total;
+      acc[m].cantidad += unidadesNetas;
+    }
+    return acc;
+  }, {});
+
+  const fondo = caja.fondoInicial || 0;
+  const efectivoEsperado = Math.max(
+    0,
+    Math.round((fondo + (porMetodo.efectivo?.total || 0) - totalRetiros - efectivoDevuelto) * 100) / 100
+  );
+
+  return {
+    desdeAt,
+    hastaAt,
+    sales,
+    retiros,
+    totalRetiros,
+    totalDevoluciones,
+    efectivoDevuelto,
+    total,
+    cantidad,
+    porMetodo,
+    fondo,
+    efectivoEsperado,
+  };
+};
+
+const resumenParaRespuesta = (resumen) => ({
+  desdeAt: resumen.desdeAt,
+  total: resumen.total,
+  cantidad: resumen.cantidad,
+  efectivo: { total: resumen.porMetodo.efectivo?.total || 0, cantidad: resumen.porMetodo.efectivo?.cantidad || 0 },
+  transferencia: { total: resumen.porMetodo.transferencia?.total || 0, cantidad: resumen.porMetodo.transferencia?.cantidad || 0 },
+  tarjeta: { total: resumen.porMetodo.tarjeta?.total || 0, cantidad: resumen.porMetodo.tarjeta?.cantidad || 0 },
+  totalRetiros: resumen.totalRetiros,
+  totalDevoluciones: resumen.totalDevoluciones,
+  efectivoDevuelto: resumen.efectivoDevuelto,
+  fondoInicial: resumen.fondo,
+  efectivoEsperado: resumen.efectivoEsperado,
+});
+
+export const abrirCaja = async (req, res, next) => {
   try {
-    const p = (key) => req.body?.[key] ?? req.query?.[key];
-    const offset = Number.isFinite(Number(p('offset'))) ? Number(p('offset')) : 0;
-    const turno = p('turno') || 'manana';
-    if (turno !== 'manana' && turno !== 'tarde') {
-      return res.status(400).json({ message: 'Turno inválido. Use "manana" o "tarde"' });
-    }
-    const cerradoPor = req.user.nombre;
+    const data = abrirCajaSchema.parse(req.body);
+    const offset = Number.isFinite(Number(data.offset)) ? Number(data.offset) : 0;
+    const fechaDate = startOfDayDate(offset);
 
-    const now = new Date();
-    const hoyInicio = startOfDayDate(offset);
-
-    let esHoy;
-    let fechaDate;
-    if (!p('fecha')) {
-      esHoy = true;
-      fechaDate = hoyInicio;
-    } else {
-      fechaDate = parseDate(p('fecha'), Number(offset));
-      if (!fechaDate) {
-        return res.status(400).json({ message: 'Fecha inválida' });
-      }
-      if (fechaDate.getTime() > hoyInicio.getTime()) {
-        return res.status(400).json({ message: 'No se puede cerrar una fecha futura' });
-      }
-      esHoy = fechaDate.getTime() === hoyInicio.getTime();
+    const abierta = await buscarCajaAbierta();
+    if (abierta) {
+      const fecha = new Date(abierta.fecha).toLocaleDateString('es-AR');
+      return res.status(409).json({
+        message: `Ya hay una caja abierta del ${fecha} por ${abierta.abiertoPor || 'otro usuario'}. Cerrala antes de abrir una nueva.`,
+      });
     }
 
-    const existing = await DailyClose.findOne({ fecha: fechaDate, turno });
-    if (existing) {
-      return res.status(400).json({ message: `Ese turno (${turno === 'tarde' ? 'tarde' : 'mañana'}) ya fue cerrado` });
-    }
-    if (!esHoy && !existing) {
-      const legacyClose = await DailyClose.findOne({ fecha: fechaDate, turno: { $exists: false } });
-      if (legacyClose) {
-        return res.status(400).json({ message: 'Ese turno de esa fecha ya fue cerrado' });
-      }
-    }
-    if (turno === 'tarde') {
-      const mananaClose = await DailyClose.findOne({ fecha: fechaDate, turno: 'manana' });
-      const legacyClose = await DailyClose.findOne({ fecha: fechaDate, turno: { $exists: false } });
-      if (!mananaClose && !legacyClose) {
-        return res.status(400).json({ message: 'Debe cerrar primero el turno mañana de esa fecha' });
-      }
+    const yaCerrada = await DailyClose.findOne({ fecha: fechaDate, turno: 'dia', estado: { $ne: 'abierto' } });
+    if (yaCerrada) {
+      return res.status(409).json({ message: 'La caja de hoy ya fue cerrada.' });
     }
 
-    let desdeAt;
-    if (turno === 'manana') {
-      desdeAt = fechaDate;
-    } else {
-      const mananaClose = await DailyClose.findOne({ fecha: fechaDate, turno: 'manana' });
-      desdeAt = (mananaClose && mananaClose.hastaAt) || fechaDate;
-    }
-
-    let hastaAt = esHoy ? now : new Date(fechaDate.getTime() + 86400000);
-
-    if (turno === 'manana') {
-      const tardeClose = await DailyClose.findOne({ fecha: fechaDate, turno: 'tarde' });
-      if (tardeClose?.desdeAt && tardeClose.desdeAt < hastaAt) {
-        hastaAt = tardeClose.desdeAt;
-      }
-    }
-
-    const sales = await Sale.find({ createdAt: { $gte: desdeAt, $lt: hastaAt } })
-      .populate('items.producto', 'nombre categoria')
-      .populate('producto', 'nombre categoria');
-
-    const retiros = await CashWithdrawal.find({ createdAt: { $gte: desdeAt, $lt: hastaAt } }).sort({ createdAt: 1 });
-    const totalRetiros = Math.round(retiros.reduce((sum, r) => sum + r.monto, 0) * 100) / 100;
-
-    const total = Math.round(sales.reduce((sum, s) => sum + s.total, 0) * 100) / 100;
-    const cantidad = sales.reduce((sum, s) => sum + getUnidadesNetas(s), 0);
-
-    const porMetodo = sales.reduce((acc, s) => {
-      const unidadesNetas = getUnidadesNetas(s);
-      if (unidadesNetas <= 0) return acc;
-      if (s.pagos && s.pagos.length > 0) {
-        const totalPagado = s.pagos.reduce((sum, p) => sum + p.monto, 0);
-        if (totalPagado <= 0) return acc;
-        let asignadas = 0;
-        for (let i = 0; i < s.pagos.length; i++) {
-          const p = s.pagos[i];
-          if (!acc[p.metodo]) acc[p.metodo] = { total: 0, cantidad: 0 };
-          acc[p.metodo].total += p.monto;
-          const parte = i === s.pagos.length - 1
-            ? unidadesNetas - asignadas
-            : Math.round(unidadesNetas * (p.monto / totalPagado));
-          acc[p.metodo].cantidad += parte;
-          asignadas += parte;
-        }
-      } else {
-        const m = s.metodoPago || 'efectivo';
-        if (!acc[m]) acc[m] = { total: 0, cantidad: 0 };
-        acc[m].total += s.total;
-        acc[m].cantidad += unidadesNetas;
-      }
-      return acc;
-    }, {});
-
-    const closeData = {
-      fecha: fechaDate,
-      turno,
-      desdeAt,
-      hastaAt,
-      cerradoPor,
-      total,
-      cantidad,
-      efectivo: { total: porMetodo.efectivo?.total || 0, cantidad: porMetodo.efectivo?.cantidad || 0 },
-      transferencia: { total: porMetodo.transferencia?.total || 0, cantidad: porMetodo.transferencia?.cantidad || 0 },
-      tarjeta: { total: porMetodo.tarjeta?.total || 0, cantidad: porMetodo.tarjeta?.cantidad || 0 },
-      retiros: retiros.map((r) => ({
-        monto: r.monto,
-        motivo: r.motivo,
-        realizadoPor: r.realizadoPor,
-        fecha: r.createdAt,
-      })),
-      totalRetiros,
-      cerradoAt: new Date(),
-    };
-
-    let close;
+    let caja;
     try {
-      close = await DailyClose.create(closeData);
+      caja = await DailyClose.create({
+        fecha: fechaDate,
+        turno: 'dia',
+        estado: 'abierto',
+        abiertoAt: new Date(),
+        abiertoPor: data.nombre,
+        abiertoPorUsuario: req.user?.nombre || '',
+        fondoInicial: data.fondoInicial || 0,
+        total: 0,
+        cantidad: 0,
+      });
     } catch (error) {
       if (error.code === 11000) {
-        return res.status(400).json({ message: 'Ese turno ya fue cerrado por otra operación simultánea' });
+        return res.status(409).json({ message: 'La caja de hoy ya fue abierta.' });
       }
       throw error;
     }
 
-    let totalDia = null;
-    if (turno === 'tarde') {
-      const mananaClose = await DailyClose.findOne({ fecha: fechaDate, turno: 'manana' });
-      if (mananaClose) {
-        totalDia = {
-          total: mananaClose.total + close.total,
-          cantidad: mananaClose.cantidad + close.cantidad,
-          totalRetiros: Math.round(((mananaClose.totalRetiros || 0) + (close.totalRetiros || 0)) * 100) / 100,
-          efectivo: {
-            total: mananaClose.efectivo.total + close.efectivo.total,
-            cantidad: mananaClose.efectivo.cantidad + close.efectivo.cantidad,
-          },
-          transferencia: {
-            total: mananaClose.transferencia.total + close.transferencia.total,
-            cantidad: mananaClose.transferencia.cantidad + close.transferencia.cantidad,
-          },
-          tarjeta: {
-            total: mananaClose.tarjeta.total + close.tarjeta.total,
-            cantidad: mananaClose.tarjeta.cantidad + close.tarjeta.cantidad,
-          },
-        };
-      }
+    void enviarEvento({
+      tipo: 'cierre',
+      titulo: 'Caja abierta',
+      mensaje: `${data.nombre} abrió la caja${data.fondoInicial > 0 ? ` con un fondo de $${Number(data.fondoInicial).toLocaleString('es-AR', { minimumFractionDigits: 2 })}` : ''}`,
+      url: '/sales',
+      para: 'admins',
+    });
+
+    res.status(201).json(caja);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getCajaAbierta = async (req, res, next) => {
+  try {
+    const offsetRaw = Number(req.query.offset);
+    const offset = Number.isFinite(offsetRaw) ? offsetRaw : 0;
+    const hoy = startOfDayDate(offset);
+    const cierreHoy = await DailyClose.findOne({ fecha: hoy, turno: 'dia', estado: 'cerrado' })
+      .select('_id fecha cerradoAt cerradoPor total cantidad reaperturas');
+
+    const caja = await buscarCajaAbierta();
+    if (!caja) {
+      return res.json({ caja: null, resumen: null, cierreHoy, esDeHoy: false });
+    }
+    const resumen = await calcularResumenCaja(caja);
+    res.json({
+      caja,
+      resumen: resumenParaRespuesta(resumen),
+      cierreHoy: null,
+      esDeHoy: cajaEsDeHoy(caja, offset),
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const cerrarCaja = async (req, res, next) => {
+  try {
+    const data = cerrarCajaSchema.parse(req.body);
+    const offset = Number.isFinite(Number(data.offset)) ? Number(data.offset) : 0;
+
+    const caja = await buscarCajaAbierta();
+    if (!caja) {
+      return res.status(409).json({ message: 'No hay una caja abierta para cerrar' });
     }
 
-    enviarCierreDeCaja({ ventas: sales, close, offset, turno, totalDia }).catch((err) =>
+    const resumen = await calcularResumenCaja(caja);
+    const cerradoAt = new Date();
+
+    const actualizada = await DailyClose.findOneAndUpdate(
+      { _id: caja._id, estado: 'abierto' },
+      {
+        $set: {
+          estado: 'cerrado',
+          cerradoAt,
+          cerradoPor: data.nombre,
+          cerradoPorUsuario: req.user?.nombre || '',
+          desdeAt: resumen.desdeAt,
+          hastaAt: cerradoAt,
+          total: resumen.total,
+          cantidad: resumen.cantidad,
+          efectivo: {
+            total: resumen.porMetodo.efectivo?.total || 0,
+            cantidad: resumen.porMetodo.efectivo?.cantidad || 0,
+          },
+          transferencia: {
+            total: resumen.porMetodo.transferencia?.total || 0,
+            cantidad: resumen.porMetodo.transferencia?.cantidad || 0,
+          },
+          tarjeta: {
+            total: resumen.porMetodo.tarjeta?.total || 0,
+            cantidad: resumen.porMetodo.tarjeta?.cantidad || 0,
+          },
+          retiros: resumen.retiros.map((r) => ({
+            monto: r.monto,
+            motivo: r.motivo,
+            realizadoPor: r.realizadoPor,
+            fecha: r.createdAt,
+          })),
+          totalRetiros: resumen.totalRetiros,
+          totalDevoluciones: resumen.totalDevoluciones,
+          efectivoDevuelto: resumen.efectivoDevuelto,
+        },
+      },
+      { new: true }
+    );
+
+    if (!actualizada) {
+      return res.status(409).json({ message: 'La caja ya fue cerrada por otra operación' });
+    }
+
+    enviarCierreDeCaja({ ventas: resumen.sales, close: actualizada, offset, turno: 'dia', totalDia: null }).catch((err) =>
       logger.error('No se pudo enviar el mail del cierre de caja', {
         motivo: err.message,
         queRevisar: 'Revisá la configuración MAIL_* o BREVO_API_KEY.',
         origen: 'backend',
-        lugar: 'SaleController.js → getDailyClose',
+        lugar: 'SaleController.js → cerrarCaja',
         stack: err.stack,
       })
     );
@@ -463,25 +534,69 @@ export const getDailyClose = async (req, res, next) => {
     void enviarEvento({
       tipo: 'cierre',
       titulo: 'Cierre de caja',
-      mensaje: `Turno ${turno === 'tarde' ? 'Tarde' : 'Mañana'} · $${Number(close.total).toLocaleString('es-AR', { minimumFractionDigits: 2 })} · ${cerradoPor}`,
+      mensaje: `Día · $${Number(actualizada.total).toLocaleString('es-AR', { minimumFractionDigits: 2 })} · ${data.nombre}`,
       url: '/sales',
       para: 'admins',
     });
 
     res.json({
-      fecha: close.fecha,
-      turno: close.turno,
-      cerradoPor: close.cerradoPor,
-      total: close.total,
-      cantidad: close.cantidad,
-      efectivo: close.efectivo,
-      transferencia: close.transferencia,
-      tarjeta: close.tarjeta,
-      retiros: close.retiros || [],
-      totalRetiros: close.totalRetiros || 0,
-      efectivoEsperado: Math.max(0, Math.round(((close.efectivo?.total || 0) - (close.totalRetiros || 0)) * 100) / 100),
-      cerradoAt: close.cerradoAt,
+      fecha: actualizada.fecha,
+      estado: actualizada.estado,
+      abiertoAt: actualizada.abiertoAt,
+      abiertoPor: actualizada.abiertoPor,
+      cerradoAt: actualizada.cerradoAt,
+      cerradoPor: actualizada.cerradoPor,
+      fondoInicial: actualizada.fondoInicial,
+      ...resumenParaRespuesta(resumen),
     });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const reabrirCaja = async (req, res, next) => {
+  try {
+    const data = reabrirCajaSchema.parse(req.body);
+    const offset = Number.isFinite(Number(data.offset)) ? Number(data.offset) : 0;
+    const hoy = startOfDayDate(offset);
+
+    const abierta = await buscarCajaAbierta();
+    if (abierta) {
+      const fecha = new Date(abierta.fecha).toLocaleDateString('es-AR');
+      return res.status(409).json({
+        message: `Ya hay una caja abierta del ${fecha} por ${abierta.abiertoPor || 'otro usuario'}.`,
+      });
+    }
+
+    const cerrada = await DailyClose.findOne({ fecha: hoy, turno: 'dia', estado: 'cerrado' });
+    if (!cerrada) {
+      return res.status(409).json({ message: 'No hay una caja cerrada de hoy para reabrir' });
+    }
+
+    const actualizada = await DailyClose.findOneAndUpdate(
+      { _id: cerrada._id, estado: 'cerrado' },
+      {
+        $set: { estado: 'abierto', cerradoAt: null, cerradoPor: '', cerradoPorUsuario: '' },
+        $push: {
+          reaperturas: { por: data.nombre, usuario: req.user?.nombre || '', at: new Date() },
+        },
+      },
+      { new: true }
+    );
+
+    if (!actualizada) {
+      return res.status(409).json({ message: 'La caja ya fue reabierta por otra operación' });
+    }
+
+    void enviarEvento({
+      tipo: 'cierre',
+      titulo: 'Caja reabierta',
+      mensaje: `${data.nombre} reabrió la caja`,
+      url: '/sales',
+      para: 'admins',
+    });
+
+    res.json(actualizada);
   } catch (error) {
     next(error);
   }
@@ -490,7 +605,7 @@ export const getDailyClose = async (req, res, next) => {
 export const getDailyCloses = async (req, res, next) => {
   try {
     const { desde, hasta, offset = 0, agrupar = 'turno' } = req.query;
-    const filter = {};
+    const filter = { estado: { $ne: 'abierto' } };
 
     if (desde || hasta) {
       filter.fecha = getRange(desde, hasta, offset);
@@ -508,6 +623,8 @@ export const getDailyCloses = async (req, res, next) => {
             total: 0,
             cantidad: 0,
             totalRetiros: 0,
+            totalDevoluciones: 0,
+            efectivoDevuelto: 0,
             efectivo: { total: 0, cantidad: 0 },
             transferencia: { total: 0, cantidad: 0 },
             tarjeta: { total: 0, cantidad: 0 },
@@ -519,6 +636,8 @@ export const getDailyCloses = async (req, res, next) => {
         g.total += c.total;
         g.cantidad += c.cantidad;
         g.totalRetiros += c.totalRetiros || 0;
+        g.totalDevoluciones += c.totalDevoluciones || 0;
+        g.efectivoDevuelto += c.efectivoDevuelto || 0;
         g.efectivo.total += c.efectivo?.total || 0;
         g.efectivo.cantidad += c.efectivo?.cantidad || 0;
         g.transferencia.total += c.transferencia?.total || 0;
@@ -539,10 +658,14 @@ export const getDailyCloses = async (req, res, next) => {
 
 export const deleteDailyClose = async (req, res, next) => {
   try {
-    const close = await DailyClose.findByIdAndDelete(req.params.id);
+    const close = await DailyClose.findById(req.params.id);
     if (!close) {
       return res.status(404).json({ message: 'Cierre no encontrado' });
     }
+    if (close.estado === 'abierto') {
+      return res.status(409).json({ message: 'No se puede eliminar una caja abierta. Cerrala primero.' });
+    }
+    await DailyClose.findByIdAndDelete(req.params.id);
     res.json({ message: 'Cierre eliminado correctamente' });
   } catch (error) {
     next(error);
@@ -552,6 +675,13 @@ export const deleteDailyClose = async (req, res, next) => {
 const getVentanaDeCierre = async (close) => {
   const fecha = close.fecha;
   const dayMs = 86400000;
+
+  if (close.turno === 'dia') {
+    return {
+      desdeAt: close.abiertoAt || close.desdeAt || fecha,
+      hastaAt: close.cerradoAt || close.hastaAt || new Date(fecha.getTime() + dayMs),
+    };
+  }
 
   let desdeAt = close.desdeAt;
   let hastaAt = close.hastaAt;
@@ -600,6 +730,9 @@ export const resendCloseMail = async (req, res, next) => {
         totalDia = {
           total: mananaClose.total + close.total,
           cantidad: mananaClose.cantidad + close.cantidad,
+          totalRetiros: Math.round(((mananaClose.totalRetiros || 0) + (close.totalRetiros || 0)) * 100) / 100,
+          totalDevoluciones: Math.round(((mananaClose.totalDevoluciones || 0) + (close.totalDevoluciones || 0)) * 100) / 100,
+          efectivoDevuelto: Math.round(((mananaClose.efectivoDevuelto || 0) + (close.efectivoDevuelto || 0)) * 100) / 100,
           efectivo: {
             total: mananaClose.efectivo.total + close.efectivo.total,
             cantidad: mananaClose.efectivo.cantidad + close.efectivo.cantidad,
@@ -662,21 +795,39 @@ export const mailStatus = async (req, res, next) => {
   }
 };
 
+export const migrateSaleItems = async () => {
+  const pendientes = await Sale.countDocuments({
+    $or: [{ items: { $exists: false } }, { items: { $size: 0 } }],
+    producto: { $exists: true, $ne: null },
+  });
+  if (pendientes === 0) return 0;
+
+  const cursor = Sale.find({
+    $or: [{ items: { $exists: false } }, { items: { $size: 0 } }],
+    producto: { $exists: true, $ne: null },
+  }).cursor();
+
+  let count = 0;
+  for await (const sale of cursor) {
+    const items = getItems(sale);
+    if (!items.length || !items[0].producto) continue;
+    sale.items = items.map((i) => ({
+      producto: i.producto,
+      cantidad: i.cantidad,
+      precio: i.precio,
+      talle: i.talle || '',
+      color: i.color || '',
+      subtotal: i.subtotal ?? sale.total,
+    }));
+    await sale.save();
+    count++;
+  }
+  return count;
+};
+
 export const runMigration = async (req, res, next) => {
   try {
-    const cursor = Sale.find({ items: { $exists: false } }).cursor();
-    let count = 0;
-    for await (const sale of cursor) {
-      sale.items = [{
-        producto: sale.producto,
-        cantidad: sale.cantidad,
-        precio: sale.precio,
-        talle: sale.talle || '',
-        subtotal: sale.total,
-      }];
-      await sale.save();
-      count++;
-    }
+    const count = await migrateSaleItems();
     try {
       await DailyClose.collection.dropIndex('fecha_1');
     } catch (error) {
@@ -736,7 +887,7 @@ export const getSalesStats = async (req, res, next) => {
 
     const sales = await Sale.find(filter);
 
-    const total = Math.round(sales.reduce((sum, s) => sum + s.total, 0) * 100) / 100;
+    const total = Math.round(sales.reduce((sum, s) => sum + getTotalNeto(s), 0) * 100) / 100;
     const cantidad = sales.reduce((sum, s) => sum + getUnidadesNetas(s), 0);
 
     const porMetodo = sales.reduce((acc, s) => {

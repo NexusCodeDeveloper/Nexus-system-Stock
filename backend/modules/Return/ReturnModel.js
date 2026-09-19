@@ -55,6 +55,27 @@ const returnSchema = new mongoose.Schema(
       ...campoCentavosPositivo,
       default: 0,
     },
+    efectivoDevuelto: {
+      ...campoCentavosPositivo,
+      default: 0,
+    },
+    precioUnitario: {
+      ...campoCentavosPositivo,
+      default: 0,
+    },
+    descuentoAplicado: {
+      type: Number,
+      default: 0,
+      min: 0,
+      max: 100,
+    },
+    pagosOriginales: {
+      type: [{
+        metodo: { type: String, enum: ['efectivo', 'transferencia', 'tarjeta'] },
+        monto: campoCentavosPositivo,
+      }],
+      default: [],
+    },
     ventaDiferenciaId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Sale',

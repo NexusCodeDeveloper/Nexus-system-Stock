@@ -12,6 +12,7 @@ import {
   addStock,
   addDeposito,
   reponerStock,
+  pasarAlSalon,
   retirarStock,
   getLowStock,
 } from './ProductController.js';
@@ -31,6 +32,7 @@ router.post('/', admin, createProduct);
 router.put('/:id', admin, updateProduct);
 router.put('/:id/add-stock', admin, addStock);
 router.put('/:id/deposito', admin, addDeposito);
+router.post('/pasar-salon', pasarAlSalon);
 router.post('/:id/reponer', reponerStock);
 router.post('/:id/retirar', admin, retirarStock);
 router.post('/exchange', exchangeProduct);

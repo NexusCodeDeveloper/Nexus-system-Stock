@@ -1,6 +1,10 @@
+const norm = (v) => String(v ?? '').trim().toLowerCase();
+
 export const findVariantIdx = (product, talle, color) => {
   if (!product?.variants?.length) return -1;
-  return product.variants.findIndex((v) => v.talle === (talle || '') && v.color === (color || ''));
+  const t = norm(talle);
+  const c = norm(color);
+  return product.variants.findIndex((v) => norm(v.talle) === t && norm(v.color) === c);
 };
 
 export const findVariant = (product, talle, color) => {
@@ -10,7 +14,9 @@ export const findVariant = (product, talle, color) => {
 
 export const depositoDe = (product, talle, color) => {
   const variant = findVariant(product, talle, color);
-  return variant ? (variant.deposito || 0) : (product?.deposito || 0);
+  if (variant) return variant.deposito || 0;
+  if (product?.variants?.length > 0) return 0;
+  return product?.deposito || 0;
 };
 
 export const extraDeposito = (product, talle, color) => {

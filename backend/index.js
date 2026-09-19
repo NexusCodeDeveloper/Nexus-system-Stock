@@ -22,7 +22,8 @@ import PushRoutes from './modules/Push/PushRoutes.js';
 import ErrorReportRoutes from './modules/ErrorReport/ErrorReportRoutes.js';
 import User from './modules/Auth/AuthModel.js';
 import Sale from './modules/Sale/SaleModel.js';
-import { ensureTicketNumbers } from './modules/Sale/SaleController.js';
+import DailyClose from './modules/Sale/DailyCloseModel.js';
+import { ensureTicketNumbers, migrateSaleItems } from './modules/Sale/SaleController.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -209,6 +210,9 @@ connectDB()
     await seedUsers();
     try {
       await Sale.init();
+      await DailyClose.init();
+      const itemsMigrados = await migrateSaleItems();
+      if (itemsMigrados > 0) logger.info(`Ventas legacy migradas al formato items[]: ${itemsMigrados}`);
       const migradas = await ensureTicketNumbers();
       if (migradas > 0) logger.info(`Números de ticket asignados a ${migradas} ventas existentes`);
     } catch (error) {

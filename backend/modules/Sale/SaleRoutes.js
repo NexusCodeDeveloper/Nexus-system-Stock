@@ -1,12 +1,15 @@
 import { Router } from 'express';
-import { createSale, deleteSale, getSales, getSalesStats, getMostSold, getDailyClose, getDailyCloses, deleteDailyClose, resendCloseMail, mailTest, mailStatus, runMigration, migrateTickets } from './SaleController.js';
+import { createSale, deleteSale, getSales, getSalesStats, getMostSold, abrirCaja, getCajaAbierta, cerrarCaja, reabrirCaja, getDailyCloses, deleteDailyClose, resendCloseMail, mailTest, mailStatus, runMigration, migrateTickets } from './SaleController.js';
 import { protect, admin } from '../../middlewares/AuthMiddleware.js';
 
 const router = Router();
 
 router.use(protect);
 
-router.post('/daily-close', getDailyClose);
+router.post('/caja/abrir', abrirCaja);
+router.get('/caja/abierta', getCajaAbierta);
+router.post('/caja/cerrar', cerrarCaja);
+router.post('/caja/reabrir', admin, reabrirCaja);
 router.get('/daily-closes', getDailyCloses);
 router.delete('/daily-closes/:id', admin, deleteDailyClose);
 router.post('/daily-closes/:id/resend-mail', admin, resendCloseMail);
