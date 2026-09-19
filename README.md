@@ -4,11 +4,10 @@ Sistema de gestión de stock, ventas, devoluciones, cierre de caja y notificacio
 
 - **Backend:** Node.js 20.19+ / Express 4 / MongoDB (Mongoose) / JWT
 - **Frontend:** React 19 / Vite / Tailwind
-- **Deploy:** Render (`render.yaml`)
 
 ## Requisitos
 
-- Node.js >= 20.19.0 (probado con 22)
+- Node.js `^20.19.0 || >=22.12.0` (probado con 22)
 - Una base MongoDB (Atlas recomendado, requiere replica set para transacciones)
 
 ## Puesta en marcha (local)
@@ -33,8 +32,52 @@ npm run dev            # backend (nodemon, puerto 5000) + frontend (Vite, puerto
 | `npm start` | Arranca el backend (sirve `frontend/dist` si `NODE_ENV=production`) |
 | `npm run lint` | Lint del frontend (oxlint) |
 | `npm test` | Tests del backend (node:test) |
-| `npm run migrate:money` | Dry-run de la migración de montos a centavos |
+| `npm run migrate:money --prefix backend` | Dry-run de la migración de montos a centavos |
 | `npm run migrate:money:apply --prefix backend` | Aplica la migración (hace backup antes) |
+| `npm run audit:data --prefix backend` | Diagnóstico de datos (solo lectura): legacy, huérfanos, descuadres |
+| `npm run repair:data --prefix backend` | Dry-run de reparación de datos |
+| `npm run repair:data:apply --prefix backend` | Aplica la reparación (hace backup antes) |
+
+## Integridad de datos
+
+- **Tests de integración**: `npm test` levanta una base MongoDB en memoria y ejecuta los flujos
+  críticos (venta, borrado, devolución total y su reversión, cambio con ticket legacy, cierre,
+  disponible de caja, migración de ventas). La CI los corre en cada push.
+- **Ventas legacy**: al arrancar, las ventas sin `items[]` se migran solas al formato nuevo.
+- **Cierres**: no se pueden borrar ventas, retiros ni devoluciones que ya forman parte de una caja
+  cerrada; primero hay que eliminar el cierre (solo admin). El cierre descuenta retiros y reintegros
+  en efectivo, y muestra el total de devoluciones.
+- **Devoluciones**: guardan snapshot del precio y de los pagos originales para poder revertirse sin
+  perder información. Las devoluciones sin ticket registran el efectivo devuelto y bajan el
+  disponible de la caja.
+- **Productos**: no se pueden agregar variantes a un producto con stock general (se rechaza para no
+  perder unidades) ni eliminar productos con ventas, devoluciones o movimientos asociados.
+- **Migración de dinero**: el marcador se reclama antes de tocar datos y se saltan los documentos
+  creados después de iniciada, evitando la doble conversión ×100. **Detené el servidor antes de
+  aplicar la migración.** Verificación: `node scripts/migrate-money.js --verify` (parado en
+  `backend/`).
+
+## Caja del día
+
+La caja funciona con **una apertura y un cierre por día**:
+
+- **Abrir caja** (cualquier usuario): pide el nombre de quien abre y, opcionalmente, el fondo
+  inicial (la plata que ya hay en la caja). Sin caja abierta **no se puede vender, devolver,
+  cambiar ni retirar efectivo**.
+- **Cerrar caja**: pide el nombre de quien cierra, muestra un resumen previo y al confirmar guarda
+  los totales y **envía el mail del día** (apertura y cierre con nombres y horarios, totales por
+  método, unidades, devoluciones, retiros, reintegros y efectivo esperado).
+- **Reabrir caja** (solo admin): si la caja de hoy ya fue cerrada, el admin puede reabrirla las
+  veces que necesite, cargando su nombre. Cada reapertura queda registrada y al volver a cerrar se
+  recalculan los totales y se envía un mail actualizado ("Caja reabierta · actualizado").
+- **Caja de un día anterior**: si quedó una caja abierta, vender, devolver, cambiar y retirar
+  quedan bloqueados hasta cerrarla (el aviso indica la fecha). La caja se cierra con aviso si es de
+  un día anterior.
+- **Efectivo disponible** = fondo inicial + ventas en efectivo − retiros − reintegros.
+- El historial de Cierres muestra solo cajas cerradas, con estado, quién abrió/cerró y los totales.
+  Los cierres viejos (mañana/tarde) se siguen viendo igual.
+- Endpoints: `POST /api/sales/caja/abrir`, `GET /api/sales/caja/abierta`,
+  `POST /api/sales/caja/cerrar` y `POST /api/sales/caja/reabrir` (admin).
 
 ## Migración de montos a centavos
 
@@ -47,20 +90,20 @@ decimales (getters de Mongoose). La migración ya fue aplicada a la base de desa
 - Antes de aplicar, el script guarda un backup JSON en `backend/backups/`
 - Es idempotente: usa el marcador `migrations._id = "money-cents-v1"`
 
-## Deploy en Render
+## Deploy (opcional)
 
-- Build: `npm ci --prefix backend --omit=dev && npm ci --prefix frontend --include=dev && npm run build`
-- Start: `npm start`
-- Variables obligatorias: `MONGO_URI`, `JWT_SECRET` (32+), `ALLOWED_ORIGINS`,
-  `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `EMPLEADO_EMAIL`, `EMPLEADO_PASSWORD`
-- VAPID: si se dejan `VAPID_PUBLIC_KEY`/`VAPID_PRIVATE_KEY` vacías, el push se desactiva
-  sin errores. Si se cargan, deben ser claves válidas (`npx web-push generate-vapid-keys`).
+Actualmente **no hay un servicio de deploy activo**. Si se vuelve a desplegar, `render.yaml` queda
+como referencia: build `npm ci --prefix backend --omit=dev && npm ci --prefix frontend --include=dev && npm run build`,
+start `npm start`, y variables obligatorias `MONGO_URI`, `JWT_SECRET` (32+), `ALLOWED_ORIGINS`,
+`ADMIN_EMAIL`, `ADMIN_PASSWORD`, `EMPLEADO_EMAIL`, `EMPLEADO_PASSWORD`.
+VAPID: si se dejan `VAPID_PUBLIC_KEY`/`VAPID_PRIVATE_KEY` vacías, el push se desactiva
+sin errores. Si se cargan, deben ser claves válidas (`npx web-push generate-vapid-keys`).
 
 ## Logging y captura de errores
 
 El backend usa **Winston**. En desarrollo escribe en la consola (legible, con colores) y en
 `backend/logs/error.log` (rotación 5 MB × 5). En producción escribe JSON a stdout, visible en
-el dashboard de Render (Logs).
+los logs del servidor.
 
 - `LOG_LEVEL`: `debug` (default en dev) | `info` | `warn` | `error`.
 - Cada request lleva `X-Request-Id` (visible en DevTools → Network) y aparece en los logs como
@@ -75,7 +118,7 @@ Cómo ver los logs en desarrollo:
 - Archivo en vivo (PowerShell): `Get-Content backend\logs\error.log -Wait -Tail 50`
 - Buscar un request puntual: `grep "requestId-a-buscar" backend/logs/error.log`
 
-En producción (Render): Dashboard → servicio → **Logs**; buscar por `ERROR`, por ruta o por `requestId`.
+En producción: en los logs del servidor buscar por `ERROR`, por ruta o por `requestId`.
 
 Ejemplo de error en desarrollo:
 
@@ -95,7 +138,7 @@ Ejemplo de error en desarrollo:
 Peticiones normales (en una línea): `[OK] 21:39:01 · GET /api/sales → 200 · 45 ms · quién=admin@nexus.com · petición 3f2b9c1a`
 
 En producción los logs salen como JSON con claves en español (`fecha`, `nivel`, `mensaje`, `motivo`,
-`peticion`, `codigo`, `donde`, `queRevisar`…) para poder filtrarlos en Render.
+`peticion`, `codigo`, `donde`, `queRevisar`…) para poder filtrarlos en los logs del servidor.
 
 ## Depósito y salón
 
@@ -132,7 +175,7 @@ Cada producto tiene un **código interno** único (`NC-000001`) que se genera au
 - **Pistola lectora:** funciona en toda la app (Productos, Tickets, Devoluciones y formularios); detecta la
   ráfaga de tecleo + Enter. Si tu pistola no envía Enter, configurá el sufijo en el lector.
 - **Cámara del celular:** botón de cámara junto al buscador de Productos y en el carrito.
-  Requiere HTTPS (Render ya lo cumple); por IP local `http://192.168.x.x` el navegador bloquea la cámara.
+  Requiere HTTPS; por IP local `http://192.168.x.x` el navegador bloquea la cámara.
 - **Escanear para vender:** con productos en el carrito, escanear agrega directo (si el producto
   tiene variantes, se abre el selector). En mobile, abrí el carrito con el botón "Carrito" y usá
   "Escanear" para agregar en serie.
@@ -144,8 +187,8 @@ Cada producto tiene un **código interno** único (`NC-000001`) que se genera au
   diferencia y el método de pago). Las devoluciones sin ticket ya no modifican ventas existentes.
 - **Número de ticket:** se genera solo, como código aleatorio único `T-XXXXXXXX` (letras y números, sin
   caracteres ambiguos). Antes de asignarlo el servidor verifica que no exista y el índice único de la
-  base impide cualquier repetición. Para regenerar los tickets viejos: `npm run migrate:tickets`
-  (dry-run) y `npm run migrate:tickets:apply` (aplica, con backup).
+  base impide cualquier repetición. Para regenerar los tickets viejos: `npm run migrate:tickets --prefix backend`
+  (dry-run) y `npm run migrate:tickets:apply --prefix backend` (aplica, con backup).
 - **Etiquetas:** desde el menú de acciones del producto en Depósito elegís el formato, la medida y la
   cantidad (1–100):
   - **Etiqueta:** una por página con la medida elegida (60×40 por defecto; ideal para rollo troquelado
@@ -174,3 +217,4 @@ Endpoints: `GET /api/products/codigo/:codigo` (buscar por código) y `GET /api/p
 - `docs/reporte-auditoria.md`: auditoría completa, crash original, correcciones y pendientes.
 - `docs/reporte-auditoria-2.md`: segunda auditoría (críticos de integridad, correcciones fases 1–4,
   tests y pendientes de upgrade).
+- `docs/reporte-auditoria-3.md`: tercera auditoría (depósito, carrito, notificaciones y accesibilidad).
