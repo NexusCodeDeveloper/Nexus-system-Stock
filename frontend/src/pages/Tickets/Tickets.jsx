@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef, useLayoutEffect } from 'react';
-import { getSales as getTickets } from '../../api/sales';
+import { obtenerVentas as obtenerTickets } from '../../api/ventas';
 import Ticket, { printTicket } from '../../components/Ticket/Ticket';
-import ReturnForm from '../../components/ReturnForm/ReturnForm';
-import { getApiErrorMessage } from '../../utils/apiError';
+import FormularioDevolucion from '../../components/FormularioDevolucion/FormularioDevolucion';
+import { obtenerMensajeErrorApi } from '../../utils/apiError';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
 import IosModal from '../../components/ui/IosModal';
 import IosSearch from '../../components/ui/IosSearch';
@@ -111,7 +111,7 @@ const Tickets = () => {
     const params = { offset: new Date().getTimezoneOffset() };
     const termino = busqueda.trim();
     if (termino) params.buscar = termino;
-    getTickets(params)
+    obtenerTickets(params)
       .then((res) => {
         if (seq !== fetchSeqRef.current) return;
         const sales = res.data?.sales;
@@ -119,7 +119,7 @@ const Tickets = () => {
       })
       .catch((err) => {
         if (seq !== fetchSeqRef.current) return;
-        setFetchError(getApiErrorMessage(err, 'Error al cargar tickets'));
+        setFetchError(obtenerMensajeErrorApi(err, 'Error al cargar tickets'));
       })
       .finally(() => {
         if (seq === fetchSeqRef.current) setLoading(false);
@@ -424,7 +424,7 @@ const Tickets = () => {
         )}
       </IosModal>
 
-      <ReturnForm
+      <FormularioDevolucion
         sale={returnSale}
         open={!!returnSale}
         defaultExchange={returnIsCambio}

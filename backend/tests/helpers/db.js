@@ -1,13 +1,13 @@
 import { MongoMemoryReplSet } from 'mongodb-memory-server';
 import mongoose from 'mongoose';
-import Product from '../../modules/Product/ProductModel.js';
-import Sale from '../../modules/Sale/SaleModel.js';
-import Return from '../../modules/Return/ReturnModel.js';
-import StockMovement from '../../modules/StockMovement/StockMovementModel.js';
-import CashWithdrawal from '../../modules/CashWithdrawal/CashWithdrawalModel.js';
-import CashWithdrawalDay from '../../modules/CashWithdrawal/CashWithdrawalDayModel.js';
-import DailyClose from '../../modules/Sale/DailyCloseModel.js';
-import Counter from '../../modules/Sale/CounterModel.js';
+import Producto from '../../modules/Producto/ProductoModel.js';
+import Venta from '../../modules/Venta/VentaModel.js';
+import Devolucion from '../../modules/Devolucion/DevolucionModel.js';
+import MovimientoStock from '../../modules/MovimientoStock/MovimientoStockModel.js';
+import RetiroCaja from '../../modules/RetiroCaja/RetiroCajaModel.js';
+import RetiroCajaDia from '../../modules/RetiroCaja/RetiroCajaDiaModel.js';
+import CierreCaja from '../../modules/Venta/CierreCajaModel.js';
+import Contador from '../../modules/Venta/ContadorModel.js';
 
 let replSet;
 
@@ -15,14 +15,14 @@ export const startTestDB = async () => {
   replSet = await MongoMemoryReplSet.create({ replSet: { count: 1, storageEngine: 'wiredTiger' } });
   await mongoose.connect(replSet.getUri(), { serverSelectionTimeoutMS: 30000 });
   await Promise.all([
-    Product.init(),
-    Sale.init(),
-    Return.init(),
-    StockMovement.init(),
-    CashWithdrawal.init(),
-    CashWithdrawalDay.init(),
-    DailyClose.init(),
-    Counter.init(),
+    Producto.init(),
+    Venta.init(),
+    Devolucion.init(),
+    MovimientoStock.init(),
+    RetiroCaja.init(),
+    RetiroCajaDia.init(),
+    CierreCaja.init(),
+    Contador.init(),
   ]);
 };
 
@@ -44,7 +44,7 @@ export const clearDB = async () => {
 
 export const runHandler = async (
   handler,
-  { body = {}, params = {}, query = {}, user = { id: '507f1f77bcf86cd799439011', nombre: 'Admin', rol: 'admin' } } = {}
+  { body = {}, params = {}, query = {}, usuario = { id: '507f1f77bcf86cd799439011', nombre: 'Admin', rol: 'admin' } } = {}
 ) => {
   let statusCode = 200;
   let payload;
@@ -58,7 +58,7 @@ export const runHandler = async (
       return this;
     },
   };
-  const req = { body, params, query, user };
+  const req = { body, params, query, usuario };
   await handler(req, res, (err) => {
     throw err;
   });

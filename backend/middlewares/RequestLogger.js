@@ -1,20 +1,20 @@
 import { randomUUID } from 'node:crypto';
-import logger from '../utils/logger.js';
+import logger from '../utils/LoggerUtils.js';
 
-export const requestContext = (req, res, next) => {
+export const contextoPeticion = (req, res, next) => {
   req.id = req.headers['x-request-id'] || randomUUID();
   res.setHeader('X-Request-Id', req.id);
   next();
 };
 
-export const requestLogger = (req, res, next) => {
+export const registradorPeticiones = (req, res, next) => {
   const inicio = Date.now();
 
   res.on('finish', () => {
     const meta = {
       compacto: true,
       duracion: Date.now() - inicio,
-      quien: req.user?.email || undefined,
+      quien: req.usuario?.email || undefined,
       ip: req.ip,
       seguimiento: req.id,
     };

@@ -91,13 +91,13 @@ decimales (getters de Mongoose), por lo que **el frontend no requirió cambios**
   cierre de caja (`buildClose`) convierte explícitamente con `aCentavos()`
 - `CashWithdrawalDay.retirado` se mantiene decimal (se actualiza con `$inc` atómico)
 
-**Migración ejecutada** (`backend/scripts/migrate-money.js --apply`):
+**Migración ejecutada** (`backend/scripts/migrar-dinero.js --apply`):
 ```
 products: 2/2 · sales: 5/5 · returns: 0/0 · cashwithdrawals: 1/1 · dailycloses: 0/0
 Marcador: migrations._id = "money-cents-v1"
 Backup: backend/backups/money-<timestamp>/  (gitignored)
 ```
-Idempotente: si el marcador existe, no hace nada. Dry-run: `npm run migrate:money --prefix backend`.
+Idempotente: si el marcador existe, no hace nada. Dry-run: `npm run migrar:dinero --prefix backend`.
 
 ---
 
@@ -150,4 +150,4 @@ Idempotente: si el marcador existe, no hace nada. Dry-run: `npm run migrate:mone
 4. `ALLOWED_ORIGINS` con el dominio real de Render (ej. `https://stock-tienda.onrender.com`).
 5. El build ahora es `npm ci --prefix backend --omit=dev && npm ci --prefix frontend --include=dev && npm run build`.
 6. Ejecutar la migración de dinero una sola vez contra la base de producción:
-   `npm run migrate:money --prefix backend` (dry-run) y luego `--apply` (hace backup).
+   `npm run migrar:dinero --prefix backend` (dry-run) y luego `--apply` (hace backup).

@@ -2,22 +2,22 @@ import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import Navbar from './Navbar';
 import MobileNav from './MobileNav';
-import NewNotificationAlert from '../alerts/NewNotificationAlert';
-import CartPanel from '../Cart/CartPanel';
+import AvisoNuevaNotificacion from '../alerts/AvisoNuevaNotificacion';
+import PanelCarrito from '../Carrito/PanelCarrito';
 import { IconCart } from '../ui/icons';
-import { NotificationProvider } from '../../context/NotificationContext';
+import { NotificacionProvider } from '../../context/NotificacionContext';
 import { CajaProvider } from '../../context/CajaContext';
-import { CartProvider, useCart } from '../../context/CartContext';
+import { CarritoProvider, useCarrito } from '../../context/CarritoContext';
 
 const LayoutInner = () => {
-  const { cart, openCart } = useCart();
+  const { cart, openCart } = useCarrito();
   const { pathname } = useLocation();
   const navigate = useNavigate();
   const conCarrito = cart.length > 0;
 
   const abrirCarritoMobile = () => {
     openCart();
-    if (pathname !== '/products') navigate('/products');
+    if (pathname !== '/productos') navigate('/productos');
   };
 
   return (
@@ -35,7 +35,7 @@ const LayoutInner = () => {
       </div>
       {conCarrito && (
         <div className="hidden md:block shrink-0 w-[320px]">
-          <CartPanel />
+          <PanelCarrito />
         </div>
       )}
       {conCarrito && (
@@ -50,19 +50,19 @@ const LayoutInner = () => {
         </button>
       )}
       <MobileNav />
-      <NewNotificationAlert />
+      <AvisoNuevaNotificacion />
     </div>
   );
 };
 
 const Layout = () => (
-  <NotificationProvider>
+  <NotificacionProvider>
     <CajaProvider>
-      <CartProvider>
+      <CarritoProvider>
         <LayoutInner />
-      </CartProvider>
+      </CarritoProvider>
     </CajaProvider>
-  </NotificationProvider>
+  </NotificacionProvider>
 );
 
 export default Layout;

@@ -32,11 +32,11 @@ npm run dev            # backend (nodemon, puerto 5000) + frontend (Vite, puerto
 | `npm start` | Arranca el backend (sirve `frontend/dist` si `NODE_ENV=production`) |
 | `npm run lint` | Lint del frontend (oxlint) |
 | `npm test` | Tests del backend (node:test) |
-| `npm run migrate:money --prefix backend` | Dry-run de la migración de montos a centavos |
-| `npm run migrate:money:apply --prefix backend` | Aplica la migración (hace backup antes) |
-| `npm run audit:data --prefix backend` | Diagnóstico de datos (solo lectura): legacy, huérfanos, descuadres |
-| `npm run repair:data --prefix backend` | Dry-run de reparación de datos |
-| `npm run repair:data:apply --prefix backend` | Aplica la reparación (hace backup antes) |
+| `npm run migrar:dinero --prefix backend` | Dry-run de la migración de montos a centavos |
+| `npm run migrar:dinero:aplicar --prefix backend` | Aplica la migración (hace backup antes) |
+| `npm run auditoria:datos --prefix backend` | Diagnóstico de datos (solo lectura): legacy, huérfanos, descuadres |
+| `npm run reparar:datos --prefix backend` | Dry-run de reparación de datos |
+| `npm run reparar:datos:aplicar --prefix backend` | Aplica la reparación (hace backup antes) |
 
 ## Integridad de datos
 
@@ -54,7 +54,7 @@ npm run dev            # backend (nodemon, puerto 5000) + frontend (Vite, puerto
   perder unidades) ni eliminar productos con ventas, devoluciones o movimientos asociados.
 - **Migración de dinero**: el marcador se reclama antes de tocar datos y se saltan los documentos
   creados después de iniciada, evitando la doble conversión ×100. **Detené el servidor antes de
-  aplicar la migración.** Verificación: `node scripts/migrate-money.js --verify` (parado en
+  aplicar la migración.** Verificación: `node scripts/migrar-dinero.js --verify` (parado en
   `backend/`).
 
 ## Caja del día
@@ -84,9 +84,9 @@ La caja funciona con **una apertura y un cierre por día**:
 Los montos se guardan en la base como **enteros en centavos** y la API los expone como
 decimales (getters de Mongoose). La migración ya fue aplicada a la base de desarrollo.
 
-- Script: `backend/scripts/migrate-money.js`
-- Dry-run: `npm run migrate:money --prefix backend`
-- Aplicar: `npm run migrate:money:apply --prefix backend` (requiere confirmación implícita del flag)
+- Script: `backend/scripts/migrar-dinero.js`
+- Dry-run: `npm run migrar:dinero --prefix backend`
+- Aplicar: `npm run migrar:dinero:aplicar --prefix backend` (requiere confirmación implícita del flag)
 - Antes de aplicar, el script guarda un backup JSON en `backend/backups/`
 - Es idempotente: usa el marcador `migrations._id = "money-cents-v1"`
 
@@ -187,8 +187,8 @@ Cada producto tiene un **código interno** único (`NC-000001`) que se genera au
   diferencia y el método de pago). Las devoluciones sin ticket ya no modifican ventas existentes.
 - **Número de ticket:** se genera solo, como código aleatorio único `T-XXXXXXXX` (letras y números, sin
   caracteres ambiguos). Antes de asignarlo el servidor verifica que no exista y el índice único de la
-  base impide cualquier repetición. Para regenerar los tickets viejos: `npm run migrate:tickets --prefix backend`
-  (dry-run) y `npm run migrate:tickets:apply --prefix backend` (aplica, con backup).
+  base impide cualquier repetición. Para regenerar los tickets viejos: `npm run migrar:tickets --prefix backend`
+  (dry-run) y `npm run migrar:tickets:aplicar --prefix backend` (aplica, con backup).
 - **Etiquetas:** desde el menú de acciones del producto en Depósito elegís el formato, la medida y la
   cantidad (1–100):
   - **Etiqueta:** una por página con la medida elegida (60×40 por defecto; ideal para rollo troquelado

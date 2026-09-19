@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { abrirCaja, cerrarCaja, getCajaAbierta, reabrirCaja } from '../api/sales';
+import { abrirCaja, cerrarCaja, obtenerCajaAbierta, reabrirCaja } from '../api/ventas';
 import { useIosAlert } from '../components/alerts';
-import { getApiErrorMessage } from '../utils/apiError';
+import { obtenerMensajeErrorApi } from '../utils/apiError';
 import IosModal from '../components/ui/IosModal';
 import { IosField, IosInput } from '../components/ui/IosForm';
 import { formatMoney } from '../utils/format';
@@ -53,7 +53,7 @@ export const CajaProvider = ({ children }) => {
   const refresh = useCallback(async () => {
     const seq = ++seqRef.current;
     try {
-      const res = await getCajaAbierta({ offset: new Date().getTimezoneOffset() });
+      const res = await obtenerCajaAbierta({ offset: new Date().getTimezoneOffset() });
       if (seq !== seqRef.current) return;
       setCaja(res.data?.caja || null);
       setResumen(res.data?.resumen || null);
@@ -105,7 +105,7 @@ export const CajaProvider = ({ children }) => {
       await refresh();
       toast({ message: `Caja abierta por ${n}` });
     } catch (err) {
-      alert({ icon: 'error', title: 'Error', message: getApiErrorMessage(err, 'No se pudo abrir la caja') });
+      alert({ icon: 'error', title: 'Error', message: obtenerMensajeErrorApi(err, 'No se pudo abrir la caja') });
     } finally {
       setSaving(false);
     }
@@ -125,7 +125,7 @@ export const CajaProvider = ({ children }) => {
       await refresh();
       toast({ message: `Caja reabierta por ${n}` });
     } catch (err) {
-      alert({ icon: 'error', title: 'Error', message: getApiErrorMessage(err, 'No se pudo reabrir la caja') });
+      alert({ icon: 'error', title: 'Error', message: obtenerMensajeErrorApi(err, 'No se pudo reabrir la caja') });
     } finally {
       setSaving(false);
     }
@@ -173,7 +173,7 @@ export const CajaProvider = ({ children }) => {
         ),
       });
     } catch (err) {
-      alert({ icon: 'error', title: 'Error', message: getApiErrorMessage(err, 'No se pudo cerrar la caja') });
+      alert({ icon: 'error', title: 'Error', message: obtenerMensajeErrorApi(err, 'No se pudo cerrar la caja') });
     } finally {
       setSaving(false);
     }

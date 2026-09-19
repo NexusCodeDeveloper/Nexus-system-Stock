@@ -26,7 +26,7 @@ Verificación: `npm test` (backend) 28 tests OK, `npm run lint` (frontend) 0 err
 | 2 | `CartContext.jsx` | Al fusionar ítems, una cantidad editada (string) se concatenaba: `"2" + 1 = "21"`. | Conversión numérica antes de sumar + chequeos de stock en Products. |
 | 3 | `ProductRoutes.js` | "Pasar al salón" visible a empleados pero el endpoint exigía admin (403), contra el README. | Se quitó el middleware `admin` de `POST /:id/reponer`. |
 | 4 | `ReturnForm.jsx` | La diferencia del cambio ignoraba el descuento del ticket (el backend sí lo aplica). | Se aplica `1 - descuento/100` en el cálculo de la UI. |
-| 5 | `migrate-tickets.js` | Podía regenerar tickets `T-XXXXXXXX` ya válidos e impresos. | Solo regenera los que no cumplen el formato y marca los válidos. |
+| 5 | `migrar-tickets.js` | Podía regenerar tickets `T-XXXXXXXX` ya válidos e impresos. | Solo regenera los que no cumplen el formato y marca los válidos. |
 
 ## Altos corregidos
 

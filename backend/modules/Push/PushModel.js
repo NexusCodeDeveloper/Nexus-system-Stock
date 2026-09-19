@@ -13,15 +13,15 @@ const pushSubscriptionSchema = new mongoose.Schema(
     },
     email: { type: String, default: '' },
     nombre: { type: String, default: '' },
-    userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    usuarioId: { type: mongoose.Schema.Types.ObjectId, ref: 'Usuario' },
     rol: { type: String, default: 'user' },
     actualizadoAt: { type: Date, default: Date.now },
   },
-  { timestamps: true }
+  { timestamps: { createdAt: 'fechaCreacion', updatedAt: 'fechaActualizacion' } }
 );
 
 pushSubscriptionSchema.index({ rol: 1 });
 pushSubscriptionSchema.index({ nombre: 1 });
-pushSubscriptionSchema.index({ userId: 1 });
+pushSubscriptionSchema.index({ usuarioId: 1 });
 
-export default mongoose.model('PushSubscription', pushSubscriptionSchema);
+export default mongoose.model('SuscripcionPush', pushSubscriptionSchema, 'suscripcionesPush');

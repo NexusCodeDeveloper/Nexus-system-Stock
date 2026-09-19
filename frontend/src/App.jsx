@@ -1,21 +1,21 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
-import { useAuth } from './context/AuthContext'
+import { useAutenticacion } from './context/AutenticacionContext'
 import ProtectedRoute from './components/ProtectedRoute/ProtectedRoute'
 import Layout from './components/Layout/Layout'
 import LoginModal from './pages/Login/Login'
-import Products from './pages/Products/Products'
+import Productos from './pages/Productos/Productos'
 import Deposito from './pages/Deposito/Deposito'
-import Suppliers from './pages/Suppliers/Suppliers'
-import Returns from './pages/Returns/Returns'
-import Sales from './pages/Sales/Sales'
+import Proveedores from './pages/Proveedores/Proveedores'
+import Devoluciones from './pages/Devoluciones/Devoluciones'
+import Ventas from './pages/Ventas/Ventas'
 import Tickets from './pages/Tickets/Tickets'
-import Notifications from './pages/Notifications/Notifications'
+import Notificaciones from './pages/Notificaciones/Notificaciones'
 import LoadingSpinner from './components/common/LoadingSpinner'
 import WelcomeOverlay from './components/Layout/WelcomeOverlay'
-import PushPermissionBanner from './components/PushPermissionBanner'
+import BannerPermisoPush from './components/BannerPermisoPush'
 
 function App() {
-  const { user, loading } = useAuth()
+  const { usuario, loading } = useAutenticacion()
 
   if (loading) {
     return (
@@ -32,24 +32,24 @@ function App() {
           path="/"
           element={
             <ProtectedRoute>
-              <Layout key={user ? 'auth' : 'guest'} />
+              <Layout key={usuario ? 'auth' : 'guest'} />
             </ProtectedRoute>
           }
         >
-          <Route index element={<Products />} />
-          <Route path="products" element={<Products />} />
+          <Route index element={<Productos />} />
+          <Route path="productos" element={<Productos />} />
           <Route path="deposito" element={<Deposito />} />
-          <Route path="sales" element={<Sales />} />
+          <Route path="ventas" element={<Ventas />} />
           <Route path="tickets" element={<Tickets />} />
-          <Route path="suppliers" element={<Suppliers />} />
-          <Route path="returns" element={<Returns />} />
-          <Route path="notifications" element={<Notifications />} />
+          <Route path="proveedores" element={<Proveedores />} />
+          <Route path="devoluciones" element={<Devoluciones />} />
+          <Route path="notificaciones" element={<Notificaciones />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
-      {!user && <LoginModal />}
-      {user && <WelcomeOverlay />}
-      {user && <PushPermissionBanner />}
+      {!usuario && <LoginModal />}
+      {usuario && <WelcomeOverlay />}
+      {usuario && <BannerPermisoPush />}
     </>
   )
 }

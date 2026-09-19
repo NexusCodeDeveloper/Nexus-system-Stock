@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
-import { loginUser } from '../../api/auth';
-import { useAuth } from '../../context/AuthContext';
-import { getApiErrorMessage } from '../../utils/apiError';
+import { iniciarSesion } from '../../api/autenticacion';
+import { useAutenticacion } from '../../context/AutenticacionContext';
+import { obtenerMensajeErrorApi } from '../../utils/apiError';
 import IosButton from '../../components/ui/IosButton';
 import { IconEye, IconEyeOff } from '../../components/ui/icons';
 
@@ -10,7 +10,7 @@ const LoginModal = () => {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [showPw, setShowPw] = useState(false);
-  const { login } = useAuth();
+  const { login } = useAutenticacion();
   const mountedRef = useRef(true);
 
   useEffect(() => {
@@ -26,10 +26,10 @@ const LoginModal = () => {
     setError('');
     setLoading(true);
     try {
-      const res = await loginUser({ ...form, email: form.email.trim() });
+      const res = await iniciarSesion({ ...form, email: form.email.trim() });
       login(res.data);
     } catch (err) {
-      if (mountedRef.current) setError(getApiErrorMessage(err, 'Error al iniciar sesión'));
+      if (mountedRef.current) setError(obtenerMensajeErrorApi(err, 'Error al iniciar sesión'));
     } finally {
       if (mountedRef.current) setLoading(false);
     }

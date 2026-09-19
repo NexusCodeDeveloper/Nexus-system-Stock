@@ -1,12 +1,12 @@
 import { Router } from 'express';
-import { subscribe, unsubscribe } from './PushController.js';
-import { protect } from '../../middlewares/AuthMiddleware.js';
+import { suscribir, desuscribir } from './PushController.js';
+import { proteger } from '../../middlewares/AutenticacionMiddleware.js';
 
 const router = Router();
 
-router.use(protect);
+router.use(proteger);
 
-router.post('/subscribe', subscribe);
-router.delete('/subscribe', unsubscribe);
+router.post('/suscribir', suscribir);
+router.delete('/suscribir', desuscribir);
 
 export default router;

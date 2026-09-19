@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createProductSchema, updateProductSchema } from '../modules/Product/ProductSchema.js';
+import { schemaCrearProducto, schemaActualizarProducto } from '../modules/Producto/ProductoSchema.js';
 
 const base = {
   nombre: 'Remera',
@@ -8,22 +8,22 @@ const base = {
   categoria: 'Indumentaria',
 };
 
-test('createProductSchema acepta variantes únicas', () => {
-  const data = createProductSchema.parse({
+test('schemaCrearProducto acepta variantes únicas', () => {
+  const data = schemaCrearProducto.parse({
     ...base,
-    variants: [
+    variantes: [
       { talle: 'S', color: 'Rojo', deposito: 2 },
       { talle: 'M', color: 'Rojo', deposito: 3 },
     ],
     colores: ['Rojo'],
   });
-  assert.equal(data.variants.length, 2);
+  assert.equal(data.variantes.length, 2);
 });
 
-test('createProductSchema rechaza variantes repetidas (talle+color)', () => {
-  const result = createProductSchema.safeParse({
+test('schemaCrearProducto rechaza variantes repetidas (talle+color)', () => {
+  const result = schemaCrearProducto.safeParse({
     ...base,
-    variants: [
+    variantes: [
       { talle: 'S', color: 'Rojo', deposito: 2 },
       { talle: 'S', color: 'Rojo', deposito: 5 },
     ],
@@ -33,10 +33,10 @@ test('createProductSchema rechaza variantes repetidas (talle+color)', () => {
   assert.match(result.error.issues.map((i) => i.message).join(' '), /repetida/);
 });
 
-test('createProductSchema tolera diferencias de mayúsculas/espacios al detectar repetidas', () => {
-  const result = createProductSchema.safeParse({
+test('schemaCrearProducto tolera diferencias de mayúsculas/espacios al detectar repetidas', () => {
+  const result = schemaCrearProducto.safeParse({
     ...base,
-    variants: [
+    variantes: [
       { talle: 's', color: 'Rojo', deposito: 1 },
       { talle: 'S ', color: ' rojo', deposito: 1 },
     ],
@@ -45,19 +45,19 @@ test('createProductSchema tolera diferencias de mayúsculas/espacios al detectar
   assert.equal(result.success, false);
 });
 
-test('createProductSchema rechaza colores fuera de la lista', () => {
-  const result = createProductSchema.safeParse({
+test('schemaCrearProducto rechaza colores fuera de la lista', () => {
+  const result = schemaCrearProducto.safeParse({
     ...base,
-    variants: [{ talle: 'S', color: 'Verde', deposito: 1 }],
+    variantes: [{ talle: 'S', color: 'Verde', deposito: 1 }],
     colores: ['Rojo'],
   });
   assert.equal(result.success, false);
   assert.match(result.error.issues.map((i) => i.message).join(' '), /no está en la lista de colores/);
 });
 
-test('updateProductSchema rechaza variantes repetidas', () => {
-  const result = updateProductSchema.safeParse({
-    variants: [
+test('schemaActualizarProducto rechaza variantes repetidas', () => {
+  const result = schemaActualizarProducto.safeParse({
+    variantes: [
       { talle: 'XL', color: 'Azul', deposito: 1 },
       { talle: 'XL', color: 'Azul', deposito: 2 },
     ],
@@ -65,13 +65,13 @@ test('updateProductSchema rechaza variantes repetidas', () => {
   assert.equal(result.success, false);
 });
 
-test('updateProductSchema acepta un update sin variantes', () => {
-  const data = updateProductSchema.parse({ nombre: 'Remera nueva' });
+test('schemaActualizarProducto acepta un update sin variantes', () => {
+  const data = schemaActualizarProducto.parse({ nombre: 'Remera nueva' });
   assert.equal(data.nombre, 'Remera nueva');
-  assert.equal(data.variants, undefined);
+  assert.equal(data.variantes, undefined);
 });
 
-test('updateProductSchema acepta lista de variantes vacía', () => {
-  const data = updateProductSchema.parse({ variants: [] });
-  assert.deepEqual(data.variants, []);
+test('schemaActualizarProducto acepta lista de variantes vacía', () => {
+  const data = schemaActualizarProducto.parse({ variantes: [] });
+  assert.deepEqual(data.variantes, []);
 });
