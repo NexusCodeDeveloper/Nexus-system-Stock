@@ -20,8 +20,20 @@ jobs:
           npm ci --prefix backend --include=dev
           npm ci --prefix frontend --include=dev
 
+      - name: Cachear binario de MongoDB para tests
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/mongodb-binaries
+          key: mongodb-binaries-${{ runner.os }}
+
       - name: Lint frontend
         run: npm run lint --prefix frontend
+
+      - name: Verificar sintaxis backend
+        run: find backend -name "*.js" -not -path "*/node_modules/*" -print0 | xargs -0 -n1 node --check
+
+      - name: Tests backend
+        run: npm test --prefix backend
 
       - name: Build frontend
         run: npm run build --prefix frontend
