@@ -107,7 +107,7 @@ export const printLabel = async (producto, opciones = {}) => {
   .etiqueta:last-child { page-break-after: auto; break-after: auto; }`;
   }
 
-  await printHtml(`<!DOCTYPE html>
+  const ok = await printHtml(`<!DOCTYPE html>
 <html>
 <head>
 <meta charset="utf-8" />
@@ -140,5 +140,5 @@ ${paginasCss}
 ${cuerpo}
 </body>
 </html>`);
-  return true;
+  return ok;
 };

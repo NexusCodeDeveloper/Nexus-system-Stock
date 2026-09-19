@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { IconX, IconSun } from '../ui/icons';
+import { pushModal, popModal, esTopModal } from '../ui/IosModal';
 
 const beep = () => {
   try {
@@ -64,11 +65,17 @@ const ScannerModal = ({ open, onClose, onLeer, continuo = false, titulo = 'Escan
 
   useEffect(() => {
     if (!open) return undefined;
+    const entrada = pushModal(() => onCloseRef.current?.());
     const onKey = (event) => {
-      if (event.key === 'Escape') onCloseRef.current?.();
+      if (event.key !== 'Escape') return;
+      if (!esTopModal(entrada)) return;
+      onCloseRef.current?.();
     };
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      popModal(entrada);
+    };
   }, [open]);
 
   useEffect(() => {

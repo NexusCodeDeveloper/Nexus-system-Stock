@@ -6,6 +6,19 @@ const isMobileViewport = () => window.matchMedia('(max-width: 767px)').matches;
 
 const modalStack = [];
 
+export const pushModal = (onClose) => {
+  const entrada = { onClose };
+  modalStack.push(entrada);
+  return entrada;
+};
+
+export const popModal = (entrada) => {
+  const idx = modalStack.indexOf(entrada);
+  if (idx !== -1) modalStack.splice(idx, 1);
+};
+
+export const esTopModal = (entrada) => modalStack[modalStack.length - 1] === entrada;
+
 const IosModal = ({
   open,
   onClose,
@@ -35,20 +48,18 @@ const IosModal = ({
 
   useEffect(() => {
     if (!open) return undefined;
-    const entrada = { onClose: () => onCloseRef.current?.() };
-    modalStack.push(entrada);
+    const entrada = pushModal(() => onCloseRef.current?.());
     document.body.style.overflow = 'hidden';
     const onKey = (e) => {
       if (e.key !== 'Escape') return;
-      if (modalStack[modalStack.length - 1] !== entrada) return;
+      if (!esTopModal(entrada)) return;
       e.stopPropagation();
       onCloseRef.current?.();
     };
     window.addEventListener('keydown', onKey, true);
     return () => {
       window.removeEventListener('keydown', onKey, true);
-      const idx = modalStack.indexOf(entrada);
-      if (idx !== -1) modalStack.splice(idx, 1);
+      popModal(entrada);
       if (modalStack.length === 0) document.body.style.overflow = '';
     };
   }, [open]);

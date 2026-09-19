@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { createSale } from '../api/sales';
+import { getProduct } from '../api/products';
 import { useAuth } from './AuthContext';
 import { useIosAlert } from '../components/alerts';
 import { getApiErrorMessage } from '../utils/apiError';
@@ -95,17 +96,46 @@ export const CartProvider = ({ children }) => {
   }, [sellSplit]);
 
   const toggleSplit = useCallback(() => {
-    setSellSplit((prev) => {
-      const next = !prev;
-      if (next) {
-        setSellMonto2('');
-        setSellMetodo2((m) => (m === sellMetodoPago ? METODOS_PAGO.find((x) => x.key !== sellMetodoPago)?.key || '' : m));
-      } else {
-        setSellMonto2('');
+    const next = !sellSplit;
+    setSellSplit(next);
+    setSellMonto2('');
+    if (next) {
+      setSellMetodo2((m) => (m === sellMetodoPago ? METODOS_PAGO.find((x) => x.key !== sellMetodoPago)?.key || '' : m));
+    }
+  }, [sellSplit, sellMetodoPago]);
+
+  const validarCarrito = useCallback(async () => {
+    const respuestas = await Promise.allSettled(cart.map((i) => getProduct(i.producto).then((r) => r.data)));
+    const problemas = [];
+    const actualizados = cart.map((item, idx) => {
+      const res = respuestas[idx];
+      const p = res.status === 'fulfilled' ? res.value : null;
+      if (!p) {
+        problemas.push(`"${item.nombre || 'Un producto'}" ya no existe.`);
+        return item;
       }
-      return next;
+      const precio = Number(p.precio) || 0;
+      if (Math.abs(precio - Number(item.precio)) > 0.001) {
+        problemas.push(`"${p.nombre}" cambió de precio ($${Number(item.precio).toFixed(2)} → $${precio.toFixed(2)}).`);
+        return { ...item, precio, nombre: p.nombre };
+      }
+      let disponible;
+      if (p.variants?.length > 0) {
+        const norm = (v) => String(v ?? '').trim().toLowerCase();
+        const v = p.variants.find(
+          (x) => norm(x.talle) === norm(item.talle) && norm(x.color) === norm(item.color)
+        );
+        disponible = v?.cantidad ?? 0;
+      } else {
+        disponible = p.cantidad ?? 0;
+      }
+      if (disponible < Number(item.cantidad)) {
+        problemas.push(`"${p.nombre}" ya no tiene stock suficiente (quedan ${disponible}).`);
+      }
+      return { ...item, precio, nombre: p.nombre };
     });
-  }, [sellMetodoPago]);
+    return { actualizados, problemas };
+  }, [cart]);
 
   const confirmSale = useCallback(async () => {
     if (sellSaving) return;
@@ -135,6 +165,21 @@ export const CartProvider = ({ children }) => {
     }
     setSellSaving(true);
     try {
+      try {
+        const { actualizados, problemas } = await validarCarrito();
+        if (problemas.length > 0) {
+          setCart(actualizados);
+          alert({
+            icon: 'warning',
+            title: 'El carrito cambió',
+            message: `${problemas.join(' ')} Revisá el total y confirmá de nuevo.`,
+          });
+          return;
+        }
+      } catch {
+        /* si la verificación falla, el backend valida precios y stock igual */
+      }
+
       const pagos = sellSplit
         ? [
             { metodo: sellMetodoPago, monto: Math.round(sellMonto1 * 100) / 100 },
@@ -145,6 +190,7 @@ export const CartProvider = ({ children }) => {
         items: cart.map((i) => ({ producto: i.producto, cantidad: Number(i.cantidad), talle: i.talle, color: i.color || '' })),
         pagos,
         descuento: descuentoNum,
+        offset: new Date().getTimezoneOffset(),
       });
       setLastSale(res.data);
       setShowTicketModal(true);
@@ -157,7 +203,7 @@ export const CartProvider = ({ children }) => {
     } finally {
       setSellSaving(false);
     }
-  }, [sellSaving, sellEmpleado, descuentoNum, sellSplit, sellMetodo2, sellMetodoPago, sellMonto2Num, finalTotal, sellMonto1, cart, alert, toast]);
+  }, [sellSaving, sellEmpleado, descuentoNum, sellSplit, sellMetodo2, sellMetodoPago, sellMonto2Num, finalTotal, sellMonto1, cart, validarCarrito, alert, toast]);
 
   const handlePrintTicket = useCallback(async () => {
     if (!lastSale) return;

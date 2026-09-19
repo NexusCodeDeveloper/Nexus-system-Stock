@@ -1,6 +1,6 @@
 import { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { getProducts, createProduct, updateProduct, deleteProduct, addDeposito, reponerStock } from '../../api/products';
+import { getProducts, createProduct, updateProduct, deleteProduct, addDeposito, reponerStock, pasarSalon } from '../../api/products';
 import { getStockMovements } from '../../api/stockMovements';
 import { getApiErrorMessage } from '../../utils/apiError';
 import { printLabel } from '../../utils/printLabel';
@@ -101,12 +101,13 @@ const Deposito = () => {
   const [movLimit, setMovLimit] = useState(100);
   const [pasarTodoSaving, setPasarTodoSaving] = useState(false);
 
-  const fetchProductos = async () => {
+  const fetchProductos = async (buscar = search) => {
     const seq = ++productosSeqRef.current;
     setLoading(true);
     setError('');
     try {
-      const res = await getProducts();
+      const term = String(buscar || '').trim();
+      const res = await getProducts(term ? { search: term } : undefined);
       if (seq !== productosSeqRef.current) return;
       setProductos(Array.isArray(res.data) ? res.data : []);
     } catch (err) {
@@ -127,6 +128,7 @@ const Deposito = () => {
       if (movBuscar.trim()) params.buscar = movBuscar.trim();
       if (movDesde) params.desde = movDesde;
       if (movHasta) params.hasta = movHasta;
+      if (movDesde || movHasta) params.tz = new Date().getTimezoneOffset();
       const res = await getStockMovements(params);
       if (seq !== movSeqRef.current) return;
       setMovimientos(Array.isArray(res.data) ? res.data : []);
@@ -139,6 +141,7 @@ const Deposito = () => {
   };
 
   const handleGuardar = async (data) => {
+    if (isSubmitting) return;
     setIsSubmitting(true);
     try {
       if (editing) {
@@ -158,8 +161,9 @@ const Deposito = () => {
   };
 
   useEffect(() => {
-    fetchProductos();
-  }, []);
+    const timer = setTimeout(() => fetchProductos(search), search.trim() ? 300 : 0);
+    return () => clearTimeout(timer);
+  }, [search]);
 
   useEffect(() => {
     if (location.state?.crear) {
@@ -394,13 +398,10 @@ const Deposito = () => {
     if (!confirmed) return;
     setPasarTodoSaving(true);
     try {
-      if (p.variants?.length > 0) {
-        for (const v of variantes) {
-          await reponerStock(p._id, { cantidad: v.deposito, talle: v.talle || '', color: v.color || '' });
-        }
-      } else {
-        await reponerStock(p._id, { cantidad: total, talle: '', color: '' });
-      }
+      const items = p.variants?.length > 0
+        ? variantes.map((v) => ({ producto: p._id, cantidad: v.deposito, talle: v.talle || '', color: v.color || '' }))
+        : [{ producto: p._id, cantidad: total, talle: '', color: '' }];
+      await pasarSalon(items);
       fetchProductos();
       toast({ message: `Pasado al salón: ${total} u.` });
     } catch (err) {
@@ -442,13 +443,7 @@ const Deposito = () => {
 
   const filtrados = productos.filter((p) => {
     if (soloConStock && depositoTotal(p) <= 0) return false;
-    if (!search.trim()) return true;
-    const term = search.trim().toLowerCase();
-    return (
-      (p.nombre || '').toLowerCase().includes(term) ||
-      (p.categoria || '').toLowerCase().includes(term) ||
-      (p.codigo || '').toLowerCase().includes(term)
-    );
+    return true;
   });
 
   const valorDeposito = filtrados.reduce((s, p) => s + depositoTotal(p) * (Number(p.precio) || 0), 0);

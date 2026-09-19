@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   getNotifications,
   createNotification,
@@ -37,6 +37,7 @@ const Notifications = () => {
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const seqRef = useRef(0);
 
   const [detail, setDetail] = useState(null);
   const [formOpen, setFormOpen] = useState(false);
@@ -59,14 +60,17 @@ const Notifications = () => {
   }, [isAdmin, markVistasAdmin]);
 
   const fetchNotifications = async () => {
+    const seq = ++seqRef.current;
     setError('');
     try {
       const res = await getNotifications();
+      if (seq !== seqRef.current) return;
       setNotifications(Array.isArray(res.data) ? res.data : []);
     } catch (err) {
+      if (seq !== seqRef.current) return;
       setError(getApiErrorMessage(err, 'Error al cargar avisos'));
     } finally {
-      setLoading(false);
+      if (seq === seqRef.current) setLoading(false);
     }
   };
 
@@ -119,18 +123,20 @@ const Notifications = () => {
       confirmText: 'Eliminar',
       destructive: true,
     });
-    if (!confirmed) return;
+    if (!confirmed) return false;
     try {
       await deleteNotification(n._id);
       fetchNotifications();
       refresh();
       toast({ message: 'Aviso eliminado' });
+      return true;
     } catch (err) {
       alert({
         icon: 'error',
         title: 'Error',
         message: getApiErrorMessage(err, 'Error al eliminar el aviso'),
       });
+      return false;
     }
   };
 
@@ -164,18 +170,20 @@ const Notifications = () => {
       message: 'Volverá a estado pendiente y se borrará el comentario',
       confirmText: 'Reabrir',
     });
-    if (!confirmed) return;
+    if (!confirmed) return false;
     try {
       await reopenNotification(n._id);
       fetchNotifications();
       refresh();
       toast({ message: 'Aviso reabierto' });
+      return true;
     } catch (err) {
       alert({
         icon: 'error',
         title: 'Error',
         message: getApiErrorMessage(err, 'Error al reabrir el aviso'),
       });
+      return false;
     }
   };
 
@@ -245,7 +253,7 @@ const Notifications = () => {
               </IosButton>
             )}
             {isAdmin && detail?.estado === 'realizado' && (
-              <IosButton variant="gray" className="w-full py-3" onClick={() => { handleReopen(detail); setDetail(null); }}>
+              <IosButton variant="gray" className="w-full py-3" onClick={async () => { const ok = await handleReopen(detail); if (ok) setDetail(null); }}>
                 <IconRefresh className="w-4 h-4" />
                 Reabrir aviso
               </IosButton>
@@ -256,7 +264,7 @@ const Notifications = () => {
                   <IconPencil className="w-4 h-4" />
                   Editar aviso
                 </IosButton>
-                <IosButton variant="destructiveTinted" className="w-full py-3" onClick={() => { handleDelete(detail); setDetail(null); }}>
+                <IosButton variant="destructiveTinted" className="w-full py-3" onClick={async () => { const ok = await handleDelete(detail); if (ok) setDetail(null); }}>
                   <IconTrash className="w-4 h-4" />
                   Eliminar aviso
                 </IosButton>

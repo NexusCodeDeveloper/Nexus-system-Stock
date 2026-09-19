@@ -13,8 +13,11 @@ const LoginModal = () => {
   const { login } = useAuth();
   const mountedRef = useRef(true);
 
-  useEffect(() => () => {
-    mountedRef.current = false;
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
   }, []);
 
   const handleSubmit = async (e) => {

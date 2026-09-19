@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { getReturns, deleteReturn } from '../../api/returns';
 import { getApiErrorMessage } from '../../utils/apiError';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
@@ -13,20 +13,24 @@ const Returns = () => {
   const [returns, setReturns] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const seqRef = useRef(0);
 
   useEffect(() => {
     fetchReturns();
   }, []);
 
   const fetchReturns = async () => {
+    const seq = ++seqRef.current;
     setError('');
     try {
       const res = await getReturns();
+      if (seq !== seqRef.current) return;
       setReturns(Array.isArray(res.data) ? res.data : []);
     } catch (err) {
+      if (seq !== seqRef.current) return;
       setError(getApiErrorMessage(err, 'Error al cargar devoluciones'));
     } finally {
-      setLoading(false);
+      if (seq === seqRef.current) setLoading(false);
     }
   };
 

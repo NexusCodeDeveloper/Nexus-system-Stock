@@ -308,8 +308,8 @@ const renderToHtml = (sale, qrDataUrl = '', barcodes = {}) => {
 
 export const printTicket = async (sale) => {
   const { qrDataUrl, barcodes } = await generarImagenesTicket(sale);
-  await printHtml(buildPrintHtml(sale, qrDataUrl, barcodes));
-  return true;
+  const ok = await printHtml(buildPrintHtml(sale, qrDataUrl, barcodes));
+  return ok;
 };
 
 const Ticket = ({ sale }) => <TicketBody sale={sale} />;

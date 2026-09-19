@@ -1,14 +1,24 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { IconCheck, IconX, IconAlert } from './alertIcons';
+import { pushModal, popModal, esTopModal } from '../ui/IosModal';
 
 const IosAlert = ({ alert, onClose }) => {
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
   useEffect(() => {
+    const entrada = pushModal(() => onCloseRef.current?.());
     const onKey = (e) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key !== 'Escape') return;
+      if (!esTopModal(entrada)) return;
+      onCloseRef.current?.();
     };
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      popModal(entrada);
+    };
+  }, []);
 
   const buttons = alert.buttons?.length ? alert.buttons : [{ text: 'OK', style: 'default', onPress: alert.onOk }];
 

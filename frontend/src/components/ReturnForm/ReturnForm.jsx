@@ -27,6 +27,7 @@ const ReturnForm = ({ sale, open, onClose, onDone, defaultExchange = false, init
   const { show: alert, toast } = useIosAlert();
 
   const [products, setProducts] = useState([]);
+  const [productsError, setProductsError] = useState('');
   const [itemIdx, setItemIdx] = useState(0);
   const [cantidad, setCantidad] = useState('1');
   const [motivo, setMotivo] = useState('');
@@ -63,8 +64,14 @@ const ReturnForm = ({ sale, open, onClose, onDone, defaultExchange = false, init
       setExchangeVariantIdx('');
       setMetodoPago(sale.pagos?.[0]?.metodo || 'efectivo');
       getProducts()
-        .then((res) => setProducts(res.data || []))
-        .catch(() => {});
+        .then((res) => {
+          setProducts(res.data || []);
+          setProductsError('');
+        })
+        .catch((err) => {
+          setProducts([]);
+          setProductsError(getApiErrorMessage(err, 'No se pudieron cargar los productos para el cambio'));
+        });
     }
   }, [open, sale, defaultExchange, initialCodigo]);
 
@@ -82,9 +89,14 @@ const ReturnForm = ({ sale, open, onClose, onDone, defaultExchange = false, init
     : 0;
   const diferencia = Math.round((cargarValor - devolverValor) * 100) / 100;
 
-  const filteredExchange = products.filter((p) =>
-    (p.nombre || '').toLowerCase().includes(exchangeSearch.toLowerCase())
-  );
+  const filteredExchange = products.filter((p) => {
+    const term = exchangeSearch.trim().toLowerCase();
+    if (!term) return true;
+    return (
+      (p.nombre || '').toLowerCase().includes(term) ||
+      (p.codigo || '').toLowerCase().includes(term)
+    );
+  });
 
   const confirmar = async () => {
     if (saving) return;
@@ -141,6 +153,7 @@ const ReturnForm = ({ sale, open, onClose, onDone, defaultExchange = false, init
         sale: sale._id,
         metodoPago,
         empleado: sale.empleado,
+        offset: new Date().getTimezoneOffset(),
       };
     } else {
       payload = {
@@ -150,6 +163,7 @@ const ReturnForm = ({ sale, open, onClose, onDone, defaultExchange = false, init
         color: item.color || '',
         motivo: motivoFinal,
         sale: sale._id,
+        offset: new Date().getTimezoneOffset(),
       };
     }
 
@@ -289,6 +303,14 @@ const ReturnForm = ({ sale, open, onClose, onDone, defaultExchange = false, init
                 <ScannerButton onClick={() => setScannerOpen(true)} title="Escanear producto" />
               </div>
             </IosField>
+
+            {productsError && (
+              <p className="text-amber-400 text-xs">{productsError}</p>
+            )}
+
+            {exchangeSearch && filteredExchange.length === 0 && !productsError && (
+              <p className="text-ios-tertiary text-xs">No se encontraron productos con esa búsqueda.</p>
+            )}
 
             {exchangeSearch && filteredExchange.length > 0 && (
               <div className="border border-ios-separator/40 rounded-2xl max-h-36 overflow-y-auto bg-ios-surface overflow-hidden">

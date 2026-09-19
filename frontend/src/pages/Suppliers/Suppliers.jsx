@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   getSuppliers,
   createSupplier,
@@ -20,6 +20,7 @@ const Suppliers = () => {
   const [suppliers, setSuppliers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const seqRef = useRef(0);
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -31,14 +32,17 @@ const Suppliers = () => {
   });
 
   const fetchSuppliers = async () => {
+    const seq = ++seqRef.current;
     setError('');
     try {
       const res = await getSuppliers();
+      if (seq !== seqRef.current) return;
       setSuppliers(Array.isArray(res.data) ? res.data : []);
     } catch (err) {
+      if (seq !== seqRef.current) return;
       setError(getApiErrorMessage(err, 'Error al cargar proveedores'));
     } finally {
-      setLoading(false);
+      if (seq === seqRef.current) setLoading(false);
     }
   };
 

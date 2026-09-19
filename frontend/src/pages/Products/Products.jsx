@@ -18,6 +18,7 @@ import ReturnForm from '../../components/ReturnForm/ReturnForm';
 import { useAuth } from '../../context/AuthContext';
 import { useLector } from '../../context/LectorContext';
 import { useCart } from '../../context/CartContext';
+import { useCaja } from '../../context/CajaContext';
 import { useIosAlert, IconAlert } from '../../components/alerts';
 import IosButton from '../../components/ui/IosButton';
 import IosModal from '../../components/ui/IosModal';
@@ -54,6 +55,7 @@ const Products = () => {
   const anchorRef = useRef(null);
   const fetchSeqRef = useRef(0);
   const returnSeqRef = useRef(0);
+  const lowStockSeqRef = useRef(0);
 
   useLayoutEffect(() => {
     if (!dropdown.product) return;
@@ -125,6 +127,7 @@ const Products = () => {
     confirmSale,
     saleVersion,
   } = useCart();
+  const { caja, cierreHoy, esDeHoy, openAbrir, openReabrir } = useCaja();
 
   const [lowStock, setLowStock] = useState([]);
   const [lowStockOpen, setLowStockOpen] = useState(false);
@@ -152,10 +155,17 @@ const Products = () => {
   };
 
   const fetchLowStock = () => {
+    const seq = ++lowStockSeqRef.current;
     setLowStockError('');
     getLowStock()
-      .then((res) => setLowStock(Array.isArray(res.data) ? res.data : []))
-      .catch((err) => setLowStockError(getApiErrorMessage(err, 'Error al cargar stock bajo')));
+      .then((res) => {
+        if (seq !== lowStockSeqRef.current) return;
+        setLowStock(Array.isArray(res.data) ? res.data : []);
+      })
+      .catch((err) => {
+        if (seq !== lowStockSeqRef.current) return;
+        setLowStockError(getApiErrorMessage(err, 'Error al cargar stock bajo'));
+      });
   };
 
   const fetchDataRef = useRef(fetchData);
@@ -289,6 +299,14 @@ const Products = () => {
   };
 
   const openReturn = (product, esCambio) => {
+    if (!product?.codigo) {
+      alert({
+        icon: 'warning',
+        title: 'Producto sin código',
+        message: 'Este producto no tiene código interno, no se pueden buscar sus tickets con seguridad. Usá la sección Tickets para devolverlo.',
+      });
+      return;
+    }
     setReturnPicker({ producto: product, esCambio });
     setReturnTickets([]);
     setReturnTicketsError('');
@@ -452,32 +470,76 @@ const Products = () => {
             {lowStockOpen && (
               <>
                 <div className="fixed inset-0 z-30" onClick={() => setLowStockOpen(false)} />
-                <div className="absolute left-0 md:left-auto top-full mt-2 z-40 w-72 max-w-[calc(100vw-2rem)] bg-ios-surface/95 backdrop-blur-2xl border border-ios-separator/40 rounded-2xl shadow-ios-alert p-2 animate-ios-modal max-h-64 overflow-y-auto">
+                <div
+                  role="dialog"
+                  aria-label="Detalle de stock bajo y agotados"
+                  className="absolute left-0 md:left-auto md:right-0 top-full mt-2 z-40 w-[26rem] max-w-[calc(100vw-2rem)] bg-ios-surface/95 backdrop-blur-2xl border border-ios-separator/40 rounded-2xl shadow-ios-alert p-3 animate-ios-modal max-h-[70vh] overflow-y-auto"
+                >
+                  {bajos.length > 0 && (
+                    <p className="px-3 pt-1 pb-1.5 text-[11px] font-bold uppercase tracking-wider text-ios-orange">
+                      Stock bajo ({bajos.length})
+                    </p>
+                  )}
                   {bajos.map((item, i) => (
-                    <div key={i} className="flex items-center gap-2 px-3 py-2 text-xs text-ios-orange/90 rounded-xl">
-                      <span className="w-1.5 h-1.5 rounded-full bg-ios-orange/60 shrink-0" />
-                      <span className="font-medium truncate">{item.productoNombre}</span>
-                      {item.talle && <span className="shrink-0 text-ios-tertiary">· {item.talle}</span>}
-                      {item.color && <span className="shrink-0 text-ios-tertiary">· {item.color}</span>}
-                      <span className="ml-auto shrink-0 text-ios-orange/70 font-semibold">{item.cantidad} uds.</span>
-                      {item.deposito > 0 && (
-                        <span className="shrink-0 text-ios-tertiary">Dep: {item.deposito}</span>
-                      )}
+                    <div
+                      key={`bajo-${item.productoId}-${item.talle || ''}-${item.color || ''}-${i}`}
+                      className="flex items-start gap-2.5 px-3 py-3 rounded-xl hover:bg-ios-hover/[0.04] transition-colors"
+                    >
+                      <span className="mt-1.5 w-2 h-2 rounded-full bg-ios-orange shrink-0" />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-semibold text-ios-label break-words">{item.productoNombre}</p>
+                        {(item.talle || item.color) && (
+                          <p className="text-xs text-ios-tertiary mt-0.5">
+                            {[item.talle, item.color].filter(Boolean).join(' · ')}
+                          </p>
+                        )}
+                      </div>
+                      <div className="flex flex-col items-end gap-1 shrink-0">
+                        <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-ios-orange/15 text-ios-orange whitespace-nowrap">
+                          Quedan {item.cantidad}
+                        </span>
+                        <span
+                          className={`px-2 py-0.5 rounded-full text-[11px] font-semibold whitespace-nowrap ${
+                            item.deposito > 0 ? 'bg-ios-surface2 text-ios-tertiary' : 'bg-ios-surface2/60 text-ios-tertiary opacity-60'
+                          }`}
+                        >
+                          Dep: {item.deposito}
+                        </span>
+                      </div>
                     </div>
                   ))}
-                  {bajos.length > 0 && agotados.length > 0 && (
-                    <div className="h-px bg-ios-separator/50 my-1 mx-3" />
+
+                  {agotados.length > 0 && (
+                    <p className={`px-3 pb-1.5 text-[11px] font-bold uppercase tracking-wider text-ios-red ${bajos.length > 0 ? 'pt-3' : 'pt-1'}`}>
+                      Agotados ({agotados.length})
+                    </p>
                   )}
                   {agotados.map((item, i) => (
-                    <div key={i} className="flex items-center gap-2 px-3 py-2 text-xs text-ios-red rounded-xl">
-                      <span className="w-1.5 h-1.5 rounded-full bg-ios-red shrink-0" />
-                      <span className="font-medium truncate">{item.productoNombre}</span>
-                      {item.talle && <span className="shrink-0 text-ios-red/60">· {item.talle}</span>}
-                      {item.color && <span className="shrink-0 text-ios-red/60">· {item.color}</span>}
-                      <span className="ml-auto shrink-0 font-semibold">AGOTADO</span>
-                      {item.deposito > 0 && (
-                        <span className="shrink-0 text-ios-tertiary">Dep: {item.deposito}</span>
-                      )}
+                    <div
+                      key={`agotado-${item.productoId}-${item.talle || ''}-${item.color || ''}-${i}`}
+                      className="flex items-start gap-2.5 px-3 py-3 rounded-xl hover:bg-ios-hover/[0.04] transition-colors"
+                    >
+                      <span className="mt-1.5 w-2 h-2 rounded-full bg-ios-red shrink-0" />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-semibold text-ios-label break-words">{item.productoNombre}</p>
+                        {(item.talle || item.color) && (
+                          <p className="text-xs text-ios-tertiary mt-0.5">
+                            {[item.talle, item.color].filter(Boolean).join(' · ')}
+                          </p>
+                        )}
+                      </div>
+                      <div className="flex flex-col items-end gap-1 shrink-0">
+                        <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-ios-red/15 text-ios-red whitespace-nowrap">
+                          AGOTADO
+                        </span>
+                        <span
+                          className={`px-2 py-0.5 rounded-full text-[11px] font-semibold whitespace-nowrap ${
+                            item.deposito > 0 ? 'bg-ios-surface2 text-ios-tertiary' : 'bg-ios-surface2/60 text-ios-tertiary opacity-60'
+                          }`}
+                        >
+                          Dep: {item.deposito}
+                        </span>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -525,9 +587,42 @@ const Products = () => {
           confirmText="Confirmar Venta"
           confirmVariant="tinted"
           onConfirm={confirmSale}
-          confirmDisabled={sellSaving}
+          confirmDisabled={sellSaving || !caja || !esDeHoy}
           maxWidth="max-w-2xl"
         >
+        {!caja && cierreHoy && (
+          <div className="mb-3 rounded-2xl px-3.5 py-3 bg-amber-500/10 border border-amber-500/25 text-amber-300 text-xs leading-relaxed">
+            La caja está cerrada.
+            {user?.rol === 'admin' ? (
+              <button
+                type="button"
+                onClick={openReabrir}
+                className="mt-2 w-full py-2 rounded-ios-control bg-amber-500/20 font-bold hover:bg-amber-500/30 transition-colors"
+              >
+                Reabrir caja
+              </button>
+            ) : (
+              <p className="mt-1 text-amber-200/80">Solo el administrador puede reabrirla.</p>
+            )}
+          </div>
+        )}
+        {!caja && !cierreHoy && (
+          <div className="mb-3 rounded-2xl px-3.5 py-3 bg-amber-500/10 border border-amber-500/25 text-amber-300 text-xs leading-relaxed">
+            La caja está cerrada. Abrila para poder vender.
+            <button
+              type="button"
+              onClick={openAbrir}
+              className="mt-2 w-full py-2 rounded-ios-control bg-amber-500/20 font-bold hover:bg-amber-500/30 transition-colors"
+            >
+              Abrir caja
+            </button>
+          </div>
+        )}
+        {caja && !esDeHoy && (
+          <div className="mb-3 rounded-2xl px-3.5 py-3 bg-amber-500/10 border border-amber-500/25 text-amber-300 text-xs leading-relaxed">
+            La caja abierta es del {new Date(caja.fecha).toLocaleDateString('es-AR')}. Cerrála desde Ventas para poder vender.
+          </div>
+        )}
         <div className="flex items-center justify-between gap-3 mb-3">
           <p className="text-xs text-ios-tertiary">
             Escaneá productos para agregarlos al carrito
@@ -989,7 +1084,7 @@ const Products = () => {
                   <div className="mt-3 pt-3 border-t border-ios-separator/40 text-xs leading-relaxed space-y-1 animate-slideDown">
                     {p.colores?.length > 0
                       ? p.colores.map((color) => {
-                          const vars = p.variants.filter((v) => v.color === color);
+                          const vars = (p.variants || []).filter((v) => v.color === color);
                           return (
                             <div key={color}>
                               <span className="font-semibold text-ios-secondary">{color}: </span>
