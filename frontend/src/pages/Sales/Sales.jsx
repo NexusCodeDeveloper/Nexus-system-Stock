@@ -1,5 +1,5 @@
 import { useState, useEffect, Fragment, useRef } from 'react';
-import { getSales, getSalesStats, getMostSold, deleteSale, getDailyClose, getDailyCloses, deleteDailyClose, resendCloseMail } from '../../api/sales';
+import { getSales, getSalesStats, getMostSold, deleteSale, getDailyCloses, deleteDailyClose, resendCloseMail } from '../../api/sales';
 import { createCashWithdrawal, getCashWithdrawals, deleteCashWithdrawal, getCashWithdrawalsAvailable } from '../../api/cashWithdrawals';
 import Ticket, { printTicket } from '../../components/Ticket/Ticket';
 import ReturnForm from '../../components/ReturnForm/ReturnForm';
@@ -8,13 +8,14 @@ import { formatMoney, formatDate, formatDateSafe, formatDateShort } from '../../
 import { escucharPush } from '../../services/pushManager';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
 import { useAuth } from '../../context/AuthContext';
+import { useCaja } from '../../context/CajaContext';
 import { useIosAlert } from '../../components/alerts';
 import IosButton from '../../components/ui/IosButton';
 import IosModal from '../../components/ui/IosModal';
 import IosToggle from '../../components/ui/IosToggle';
 import IosSegmented from '../../components/ui/IosSegmented';
 import { IosField, IosInput } from '../../components/ui/IosForm';
-import { IconX, IconChevronRight, IconChart, IconCash, IconBank, IconCard, IconTile } from '../../components/ui/icons';
+import { IconChevronRight, IconChart, IconCash, IconBank, IconCard, IconTile } from '../../components/ui/icons';
 
 const metodosIcon = {
   efectivo: IconCash,
@@ -141,13 +142,15 @@ const SaldosTurno = ({ turno }) => (
 
 const RetirosInfo = ({ turno }) => {
   const totalRetiros = Number(turno.totalRetiros) || 0;
-  if (totalRetiros <= 0) return null;
+  const efectivoDevuelto = Number(turno.efectivoDevuelto) || 0;
+  const totalDevoluciones = Number(turno.totalDevoluciones) || 0;
+  if (totalRetiros <= 0 && efectivoDevuelto <= 0 && totalDevoluciones <= 0) return null;
   const efectivoEsperado = Number.isFinite(turno.efectivoEsperado)
     ? turno.efectivoEsperado
-    : Math.max(0, Number(turno.efectivo?.total || 0) - totalRetiros);
+    : Math.max(0, Number(turno.efectivo?.total || 0) - totalRetiros - efectivoDevuelto);
   return (
     <div className="pt-3 border-t border-ios-separator/40 mt-3 space-y-1.5 px-2.5">
-      <p className="text-[11px] text-ios-tertiary uppercase tracking-wider font-semibold">Retiros de efectivo</p>
+      <p className="text-[11px] text-ios-tertiary uppercase tracking-wider font-semibold">Ajustes de efectivo</p>
       {turno.retiros?.map((r, i) => (
         <div key={i} className="flex items-center justify-between text-[12px]">
           <span className="text-ios-secondary truncate">
@@ -157,6 +160,18 @@ const RetirosInfo = ({ turno }) => {
           <span className="text-ios-red font-semibold whitespace-nowrap">-{formatMoney(r.monto)}</span>
         </div>
       ))}
+      {totalDevoluciones > 0 && (
+        <div className="flex items-center justify-between text-[12px]">
+          <span className="text-ios-secondary">Devoluciones</span>
+          <span className="text-ios-red font-semibold whitespace-nowrap">-{formatMoney(totalDevoluciones)}</span>
+        </div>
+      )}
+      {efectivoDevuelto > 0 && (
+        <div className="flex items-center justify-between text-[12px]">
+          <span className="text-ios-secondary">Reintegros en efectivo</span>
+          <span className="text-ios-red font-semibold whitespace-nowrap">-{formatMoney(efectivoDevuelto)}</span>
+        </div>
+      )}
       <div className="flex items-center justify-between pt-1">
         <span className="text-[13px] text-ios-secondary font-medium">Efectivo esperado</span>
         <span className="text-[13px] text-ios-label font-bold whitespace-nowrap tabular-nums">{formatMoney(efectivoEsperado)}</span>
@@ -197,11 +212,8 @@ const Sales = () => {
   const [returnSale, setReturnSale] = useState(null);
   const [returnIsCambio, setReturnIsCambio] = useState(false);
   const [resendingId, setResendingId] = useState(null);
-  const [showCloseHint, setShowCloseHint] = useState(true);
 
-  const [closeForm, setCloseForm] = useState(null);
-  const [closeFecha, setCloseFecha] = useState(today);
-  const [closeSaving, setCloseSaving] = useState(false);
+  const { caja, refresh: refreshCaja, openAbrir, openCerrar, cierreHoy, esDeHoy, openReabrir } = useCaja();
 
   const ventasSeqRef = useRef(0);
   const cierresSeqRef = useRef(0);
@@ -292,6 +304,29 @@ const Sales = () => {
         </div>
       ) : (
         <div className="space-y-3">
+          {(d.abiertoPor || d.cerradoPor || Number(d.fondoInicial) > 0) && (
+            <div className="rounded-2xl px-4 py-3 bg-ios-surface2/70 border border-ios-separator/40 text-xs text-ios-secondary space-y-1 text-left">
+              {d.abiertoPor && (
+                <p>
+                  Abrió <span className="font-semibold text-ios-label">{d.abiertoPor}</span>
+                  {d.abiertoAt ? ` a las ${new Date(d.abiertoAt).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}` : ''}
+                </p>
+              )}
+              {d.cerradoPor && (
+                <p>
+                  Cerró <span className="font-semibold text-ios-label">{d.cerradoPor}</span>
+                  {d.cerradoAt ? ` a las ${new Date(d.cerradoAt).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}` : ''}
+                </p>
+              )}
+              {Number(d.fondoInicial) > 0 && <p>Fondo inicial: {formatMoney(d.fondoInicial)}</p>}
+              {Array.isArray(d.reaperturas) && d.reaperturas.length > 0 && (
+                <p className="text-amber-400">
+                  Reabierta {d.reaperturas.length} {d.reaperturas.length === 1 ? 'vez' : 'veces'} · última por{' '}
+                  {d.reaperturas[d.reaperturas.length - 1].por}
+                </p>
+              )}
+            </div>
+          )}
           <div className="text-center pt-1">
             <p className="text-[26px] font-bold text-ios-green whitespace-nowrap tabular-nums">{formatMoney(d.total)}</p>
             <p className="text-xs text-ios-tertiary mt-0.5">{d.cantidad} unidades</p>
@@ -301,74 +336,6 @@ const Sales = () => {
         </div>
       ),
     });
-  };
-
-  const openCloseForm = (turno) => {
-    setCloseForm(turno);
-    setCloseFecha(today());
-  };
-
-  const doDailyClose = async () => {
-    if (closeSaving) return;
-    const turno = closeForm;
-    const hoy = today();
-
-    if (!closeFecha) {
-      alert({ icon: 'warning', title: 'Fecha requerida', message: 'Seleccioná la fecha del cierre' });
-      return;
-    }
-
-    if (closeFecha !== hoy) {
-      const confirmado = await confirm({
-        icon: 'warning',
-        title: `¿Cerrar el turno del ${formatDateSafe(closeFecha)}?`,
-        message: 'Estás cerrando un turno de un día anterior. Verificá los montos antes de confirmar.',
-        confirmText: 'Sí, cerrar',
-      });
-      if (!confirmado) return;
-    }
-
-    setCloseSaving(true);
-    try {
-      const params = { offset: new Date().getTimezoneOffset(), turno };
-      if (closeFecha !== hoy && closeFecha) params.fecha = closeFecha;
-      const res = await getDailyClose(params);
-      const d = res.data;
-      setCloseForm(null);
-      setCloseSaving(false);
-
-      const fechaLabel = new Date(d.fecha).toLocaleDateString('es-AR', {
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric',
-      });
-
-      await alert({
-        icon: 'success',
-        title: `Cierre de ${turnoLabel(turno)}`,
-        buttons: [{ text: 'Ver en historial', style: 'default' }],
-        content: (
-          <div className="space-y-4">
-            <div className="text-center">
-              <p className="text-xs text-ios-tertiary">{fechaLabel} · Cerrado por {d.cerradoPor}</p>
-              <p className="text-[26px] font-bold text-ios-label mt-2 whitespace-nowrap tabular-nums">{formatMoney(d.total)}</p>
-              <p className="text-xs text-ios-tertiary">{d.cantidad} unidades vendidas</p>
-            </div>
-            <SaldosTurno turno={d} />
-            <RetirosInfo turno={d} />
-          </div>
-        ),
-      });
-
-      setActiveTab('cierres');
-      setCDesde(today());
-      setCHasta(today());
-      setCActivePeriodo('dia');
-      fetchCloses(today(), today());
-    } catch (err) {
-      setCloseSaving(false);
-      alert({ icon: 'error', title: 'Error', message: getApiErrorMessage(err, 'Error al obtener cierre de caja') });
-    }
   };
 
   const openWithdrawalModal = () => {
@@ -529,11 +496,18 @@ const Sales = () => {
       const tipo = payload?.tipo;
       if (['venta', 'cierre', 'retiro', 'devolucion'].includes(tipo)) {
         fetchData();
-        if (tipo === 'cierre' || tipo === 'retiro') fetchCloses();
+        if (tipo === 'cierre' || tipo === 'retiro') {
+          fetchCloses();
+          refreshCaja();
+        }
       }
     });
     return off;
-  }, [desde, hasta, cDesde, cHasta, cView]);
+  }, [desde, hasta, cDesde, cHasta, cView, refreshCaja]);
+
+  useEffect(() => {
+    if (activeTab === 'cierres') fetchCloses();
+  }, [caja]);
 
   const selectPeriodo = (p) => {
     setActivePeriodo(p.key);
@@ -541,7 +515,9 @@ const Sales = () => {
     setHasta(p.hasta());
   };
 
-  if (loading && activeTab === 'ventas') return <LoadingSpinner />;
+  if (loading && activeTab === 'ventas' && !ticketModal && !returnSale && !withdrawalOpen) {
+    return <LoadingSpinner />;
+  }
 
   return (
     <div>
@@ -559,13 +535,55 @@ const Sales = () => {
           className="w-full sm:w-auto"
         />
         <div className="flex items-center gap-2 w-full sm:w-auto">
-          <IosButton variant="tinted" onClick={() => openCloseForm('manana')} className="flex-1 sm:flex-none">
-            Cierre Mañana
-          </IosButton>
-          <IosButton variant="tinted" onClick={() => openCloseForm('tarde')} className="flex-1 sm:flex-none">
-            Cierre Tarde
-          </IosButton>
-          <IosButton variant="tinted" onClick={openWithdrawalModal} className="flex-1 sm:flex-none">
+          {caja ? (
+            <div
+              className={`flex flex-1 sm:flex-none items-center gap-2 rounded-ios-pill pl-3.5 pr-1.5 py-1.5 border ${
+                esDeHoy ? 'bg-emerald-500/10 border-emerald-500/25' : 'bg-amber-500/10 border-amber-500/25'
+              }`}
+            >
+              <span className={`w-2 h-2 rounded-full shrink-0 ${esDeHoy ? 'bg-emerald-400' : 'bg-amber-400'}`} />
+              <span className={`text-xs font-semibold whitespace-nowrap ${esDeHoy ? 'text-emerald-300' : 'text-amber-300'}`}>
+                {esDeHoy
+                  ? `Caja abierta ${new Date(caja.abiertoAt).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })} · ${caja.abiertoPor}`
+                  : `Caja abierta del ${new Date(caja.fecha).toLocaleDateString('es-AR')} · ${caja.abiertoPor}`}
+              </span>
+              <button
+                onClick={openCerrar}
+                className={`shrink-0 px-3 py-1.5 rounded-ios-pill text-xs font-bold transition-colors ${
+                  esDeHoy
+                    ? 'bg-emerald-500/20 text-emerald-200 hover:bg-emerald-500/30'
+                    : 'bg-amber-500/20 text-amber-200 hover:bg-amber-500/30'
+                }`}
+              >
+                Cerrar caja
+              </button>
+            </div>
+          ) : cierreHoy ? (
+            <div className="flex flex-1 sm:flex-none items-center gap-2 bg-ios-surface2 border border-ios-separator/40 rounded-ios-pill pl-3.5 pr-1.5 py-1.5">
+              <span className="w-2 h-2 rounded-full bg-ios-tertiary shrink-0" />
+              <span className="text-xs text-ios-secondary font-semibold whitespace-nowrap">Caja cerrada hoy</span>
+              {user?.rol === 'admin' ? (
+                <button
+                  onClick={openReabrir}
+                  className="shrink-0 px-3 py-1.5 rounded-ios-pill bg-ios-tint/20 text-ios-tint text-xs font-bold hover:bg-ios-tint/30 transition-colors"
+                >
+                  Reabrir caja
+                </button>
+              ) : (
+                <span className="shrink-0 px-3 py-1.5 text-[11px] text-ios-tertiary whitespace-nowrap">
+                  Solo el admin puede reabrirla
+                </span>
+              )}
+            </div>
+          ) : (
+            <button
+              onClick={openAbrir}
+              className="flex-1 sm:flex-none px-4 py-2 rounded-ios-pill bg-amber-500/15 border border-amber-500/30 text-amber-300 text-sm font-semibold hover:bg-amber-500/25 transition-colors"
+            >
+              Abrir caja
+            </button>
+          )}
+          <IosButton variant="tinted" onClick={openWithdrawalModal} className="flex-1 sm:flex-none" disabled={!caja}>
             <IconCash className="w-4 h-4" />
             Retirar Efectivo
           </IosButton>
@@ -942,23 +960,6 @@ const Sales = () => {
         </>
       ) : (
         <>
-          {showCloseHint && (
-            <div className="mb-4 flex items-start gap-3 bg-sky-500/10 border border-sky-500/25 rounded-2xl px-4 py-3.5 animate-ios-fade">
-              <p className="text-sm text-sky-300 flex-1 leading-relaxed">
-                <span className="font-semibold">¿Te olvidaste de cerrar un turno?</span>{' '}
-                Tocá <span className="font-semibold">Cierre Mañana</span> o{' '}
-                <span className="font-semibold">Cierre Tarde</span> y cambiá la fecha para cerrar un día anterior.
-              </p>
-              <button
-                onClick={() => setShowCloseHint(false)}
-                className="text-sky-400/60 hover:text-sky-300 transition-colors shrink-0"
-                aria-label="Ocultar aviso"
-              >
-                <IconX className="w-4 h-4" strokeWidth={2} />
-              </button>
-            </div>
-          )}
-
           {closesError && (
             <div className="mb-4 px-4 py-3 bg-ios-red/10 border border-ios-red/25 rounded-ios-control text-ios-red text-sm font-medium">
               {closesError}
@@ -1219,33 +1220,6 @@ const Sales = () => {
           setTicketModal(null);
         }}
       />
-
-      <IosModal
-        open={!!closeForm}
-        onClose={() => setCloseForm(null)}
-        title={`Cierre de ${closeForm === 'tarde' ? 'Tarde' : 'Mañana'}`}
-        cancelText="Cancelar"
-        confirmText={closeSaving ? 'Cerrando…' : 'Confirmar cierre'}
-        onConfirm={doDailyClose}
-        confirmDisabled={closeSaving}
-        maxWidth="max-w-sm"
-      >
-        <div className="space-y-4">
-          <IosField label="Fecha del cierre" hint="¿Te olvidaste de cerrar un turno? Podés elegir la fecha y cerrar un día anterior.">
-            <IosInput
-              type="date"
-              value={closeFecha}
-              max={today()}
-              onChange={(e) => setCloseFecha(e.target.value)}
-            />
-          </IosField>
-          <IosField label="Cierra el turno">
-            <div className="px-3.5 py-2.5 bg-ios-surface2 rounded-ios-control text-ios-secondary text-sm truncate">
-              {user?.nombre || '—'}
-            </div>
-          </IosField>
-        </div>
-      </IosModal>
 
       <IosModal
         open={withdrawalOpen}

@@ -1,4 +1,6 @@
 import { useCart } from '../../context/CartContext';
+import { useCaja } from '../../context/CajaContext';
+import { useAuth } from '../../context/AuthContext';
 import IosButton from '../ui/IosButton';
 import IosToggle from '../ui/IosToggle';
 import { IosField, IosInput, IosSelect } from '../ui/IosForm';
@@ -8,6 +10,8 @@ import { formatMoney } from '../../utils/format';
 
 const CartPanel = () => {
   const { confirm } = useIosAlert();
+  const { caja, cierreHoy, esDeHoy, openAbrir, openReabrir } = useCaja();
+  const { user } = useAuth();
   const {
     cart,
     removeFromCart,
@@ -182,7 +186,43 @@ const CartPanel = () => {
           </span>
         </div>
 
-        <IosButton variant="tinted" onClick={confirmSale} disabled={sellSaving} className="w-full">
+        {!caja && cierreHoy && (
+          <div className="rounded-2xl px-3.5 py-3 bg-amber-500/10 border border-amber-500/25 text-amber-300 text-xs leading-relaxed">
+            La caja está cerrada.
+            {user?.rol === 'admin' ? (
+              <button
+                type="button"
+                onClick={openReabrir}
+                className="mt-2 w-full py-2 rounded-ios-control bg-amber-500/20 font-bold hover:bg-amber-500/30 transition-colors"
+              >
+                Reabrir caja
+              </button>
+            ) : (
+              <p className="mt-1 text-amber-200/80">Solo el administrador puede reabrirla.</p>
+            )}
+          </div>
+        )}
+
+        {!caja && !cierreHoy && (
+          <div className="rounded-2xl px-3.5 py-3 bg-amber-500/10 border border-amber-500/25 text-amber-300 text-xs leading-relaxed">
+            La caja está cerrada. Abrila para poder vender.
+            <button
+              type="button"
+              onClick={openAbrir}
+              className="mt-2 w-full py-2 rounded-ios-control bg-amber-500/20 font-bold hover:bg-amber-500/30 transition-colors"
+            >
+              Abrir caja
+            </button>
+          </div>
+        )}
+
+        {caja && !esDeHoy && (
+          <div className="rounded-2xl px-3.5 py-3 bg-amber-500/10 border border-amber-500/25 text-amber-300 text-xs leading-relaxed">
+            La caja abierta es del {new Date(caja.fecha).toLocaleDateString('es-AR')}. Cerrála desde Ventas para poder vender.
+          </div>
+        )}
+
+        <IosButton variant="tinted" onClick={confirmSale} disabled={sellSaving || !caja || !esDeHoy} className="w-full">
           {sellSaving ? 'Guardando…' : 'Confirmar Venta'}
         </IosButton>
       </div>
