@@ -19,9 +19,12 @@ export const proteger = async (req, res, next) => {
   }
 
   try {
-    const usuario = await Usuario.findById(decoded.id).select('nombre email rol versionToken');
+    const usuario = await Usuario.findById(decoded.id).select('nombre email rol versionToken permisos activo');
     if (!usuario) {
       return res.status(401).json({ message: 'Sesión inválida, usuario no encontrado' });
+    }
+    if (!usuario.activo) {
+      return res.status(401).json({ message: 'Cuenta desactivada, contacte al administrador', codigo: 'CUENTA_DESACTIVADA' });
     }
     if ((usuario.versionToken || 0) !== (decoded.versionToken || 0)) {
       return res.status(401).json({ message: 'Sesión expirada, vuelva a iniciar sesión' });
@@ -32,6 +35,8 @@ export const proteger = async (req, res, next) => {
       nombre: usuario.nombre,
       email: usuario.email,
       rol: usuario.rol,
+      permisos: usuario.permisos || [],
+      activo: usuario.activo,
     };
     next();
   } catch (error) {
