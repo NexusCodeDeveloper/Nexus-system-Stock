@@ -8,7 +8,7 @@ import { IconReturn } from '../../components/ui/icons';
 import { formatMoney, formatDate } from '../../utils/format';
 
 const Devoluciones = () => {
-  const { usuario } = useAutenticacion();
+  const { esAdmin } = useAutenticacion();
   const { confirm, toast, show: alert } = useIosAlert();
   const [returns, setReturns] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -118,7 +118,7 @@ const Devoluciones = () => {
                     </td>
                     <td className="px-4 py-3.5 text-ios-tertiary text-xs">{formatDate(r.fechaCreacion)}</td>
                     <td className="px-5 py-3.5 text-right">
-                      {usuario?.rol === 'admin' && (
+                      {esAdmin && (
                         <button
                           onClick={() => handleDelete(r._id)}
                           className="text-ios-red hover:text-ios-red/80 font-medium text-sm"
@@ -144,7 +144,7 @@ const Devoluciones = () => {
                         {r.talle ? ` · Talle ${r.talle}` : ''}
                       </p>
                     </div>
-                    {usuario?.rol === 'admin' && (
+                    {esAdmin && (
                       <button
                         onClick={() => handleDelete(r._id)}
                         className="text-ios-red text-xs border border-ios-red/30 px-2.5 py-1 rounded-ios-pill hover:bg-ios-red/10 transition-all font-semibold shrink-0"

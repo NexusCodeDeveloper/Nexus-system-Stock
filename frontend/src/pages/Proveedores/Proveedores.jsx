@@ -15,7 +15,7 @@ import { IosField, IosInput } from '../../components/ui/IosForm';
 import { IconPlus } from '../../components/ui/icons';
 
 const Proveedores = () => {
-  const { usuario } = useAutenticacion();
+  const { usuario, esAdmin } = useAutenticacion();
   const { show: alert, confirm, toast } = useIosAlert();
   const [suppliers, setSuppliers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -47,9 +47,9 @@ const Proveedores = () => {
   };
 
   useEffect(() => {
-    if (usuario?.rol === 'admin') fetchSuppliers();
+    if (esAdmin) fetchSuppliers();
     else setLoading(false);
-  }, [usuario?.rol]);
+  }, [esAdmin]);
 
   const resetForm = () => {
     setForm({ nombre: '', telefono: '', email: '', direccion: '' });
@@ -57,7 +57,7 @@ const Proveedores = () => {
     setShowForm(false);
   };
 
-  if (usuario && usuario.rol !== 'admin') {
+  if (usuario && !esAdmin) {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="text-center">
