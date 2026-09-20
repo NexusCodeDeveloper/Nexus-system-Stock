@@ -10,9 +10,14 @@ import Devoluciones from './pages/Devoluciones/Devoluciones'
 import Ventas from './pages/Ventas/Ventas'
 import Tickets from './pages/Tickets/Tickets'
 import Notificaciones from './pages/Notificaciones/Notificaciones'
+import Empleados from './pages/Empleados/Empleados'
 import LoadingSpinner from './components/common/LoadingSpinner'
 import WelcomeOverlay from './components/Layout/WelcomeOverlay'
 import BannerPermisoPush from './components/BannerPermisoPush'
+
+function Inicio() {
+  return <Navigate to="/productos" replace />
+}
 
 function App() {
   const { usuario, loading } = useAutenticacion()
@@ -36,14 +41,15 @@ function App() {
             </ProtectedRoute>
           }
         >
-          <Route index element={<Productos />} />
+          <Route index element={<Inicio />} />
           <Route path="productos" element={<Productos />} />
           <Route path="deposito" element={<Deposito />} />
           <Route path="ventas" element={<Ventas />} />
           <Route path="tickets" element={<Tickets />} />
-          <Route path="proveedores" element={<Proveedores />} />
+          <Route path="proveedores" element={<ProtectedRoute soloAdmin><Proveedores /></ProtectedRoute>} />
           <Route path="devoluciones" element={<Devoluciones />} />
           <Route path="notificaciones" element={<Notificaciones />} />
+          <Route path="empleados" element={<ProtectedRoute soloAdmin><Empleados /></ProtectedRoute>} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
