@@ -180,7 +180,7 @@ const RetirosInfo = ({ turno }) => {
   );
 };
 const Ventas = () => {
-  const { usuario } = useAutenticacion();
+  const { usuario, esAdmin } = useAutenticacion();
   const { show: alert, confirm, toast } = useIosAlert();
 
   const imprimirTicket = async (s) => {
@@ -562,7 +562,7 @@ const Ventas = () => {
             <div className="flex flex-1 sm:flex-none items-center gap-2 bg-ios-surface2 border border-ios-separator/40 rounded-ios-pill pl-3.5 pr-1.5 py-1.5">
               <span className="w-2 h-2 rounded-full bg-ios-tertiary shrink-0" />
               <span className="text-xs text-ios-secondary font-semibold whitespace-nowrap">Caja cerrada hoy</span>
-              {usuario?.rol === 'admin' ? (
+              {esAdmin ? (
                 <button
                   onClick={openReabrir}
                   className="shrink-0 px-3 py-1.5 rounded-ios-pill bg-ios-tint/20 text-ios-tint text-xs font-bold hover:bg-ios-tint/30 transition-colors"
@@ -765,7 +765,7 @@ const Ventas = () => {
                           </td>
                           <td className="px-4 py-3.5 text-ios-tertiary text-xs">{formatDate(s.fechaCreacion)}</td>
                           <td className="px-5 py-3.5 text-right">
-                            {usuario?.rol === 'admin' && (
+                            {esAdmin && (
                               <button
                                 onClick={(e) => { e.stopPropagation(); handleDelete(s._id); }}
                                 className="text-ios-red hover:text-ios-red/80 text-xs border border-ios-red/30 px-2.5 py-1 rounded-ios-pill hover:bg-ios-red/10 transition-all font-semibold"
@@ -889,7 +889,7 @@ const Ventas = () => {
                         {s.descuento ? ` · ${s.descuento}% desc.` : ''}
                       </p>
                       <div className="flex gap-2 shrink-0">
-                        {usuario?.rol === 'admin' && (
+                        {esAdmin && (
                           <button
                             onClick={() => handleDelete(s._id)}
                             className="text-ios-red text-xs border border-ios-red/30 px-2.5 py-1 rounded-ios-pill hover:bg-ios-red/10 transition-all font-semibold"
@@ -1078,7 +1078,7 @@ const Ventas = () => {
                             >
                               Ver
                             </button>
-                            {!c.turnos && usuario?.rol === 'admin' && (
+                            {!c.turnos && esAdmin && (
                               <button
                                 onClick={() => handleResendCloseMail(c._id)}
                                 disabled={resendingId === c._id}
@@ -1091,7 +1091,7 @@ const Ventas = () => {
                                 {resendingId === c._id ? 'Pendiente…' : 'Reenviar'}
                               </button>
                             )}
-                            {!c.turnos && usuario?.rol === 'admin' && (
+                            {!c.turnos && esAdmin && (
                               <button
                                 onClick={() => handleDeleteClose(c._id)}
                                 className="text-ios-red hover:text-ios-red/80 text-xs border border-ios-red/30 px-2.5 py-1 rounded-ios-pill hover:bg-ios-red/10 transition-all font-semibold"
@@ -1163,7 +1163,7 @@ const Ventas = () => {
                       >
                         Ver
                       </button>
-                      {!c.turnos && usuario?.rol === 'admin' && (
+                      {!c.turnos && esAdmin && (
                         <button
                           onClick={() => handleResendCloseMail(c._id)}
                           disabled={resendingId === c._id}
@@ -1176,7 +1176,7 @@ const Ventas = () => {
                           {resendingId === c._id ? 'Pendiente…' : 'Reenviar'}
                         </button>
                       )}
-                      {!c.turnos && usuario?.rol === 'admin' && (
+                      {!c.turnos && esAdmin && (
                         <button
                           onClick={() => handleDeleteClose(c._id)}
                           className="text-ios-red text-xs border border-ios-red/30 px-2.5 py-1 rounded-ios-pill hover:bg-ios-red/10 transition-all font-semibold"
@@ -1304,7 +1304,7 @@ const Ventas = () => {
                         {w.motivo} · {w.realizadoPor} · {new Date(w.fechaCreacion).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}
                       </p>
                     </div>
-                    {usuario?.rol === 'admin' && (
+                    {esAdmin && (
                       <button
                         onClick={() => handleDeleteWithdrawal(w._id)}
                         className="text-ios-red text-xs border border-ios-red/30 px-2.5 py-1 rounded-ios-pill hover:bg-ios-red/10 transition-all font-semibold shrink-0"
