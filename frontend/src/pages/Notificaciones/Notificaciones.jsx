@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import {
   obtenerNotificaciones,
   crearNotificacion,
@@ -8,10 +8,11 @@ import {
   reabrirNotificacion,
 } from '../../api/notificaciones';
 import { obtenerMensajeErrorApi } from '../../utils/apiError';
+import { obtenerUsuarios } from '../../api/usuarios';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
 import IosButton from '../../components/ui/IosButton';
 import IosModal from '../../components/ui/IosModal';
-import { IosField, IosInput, IosTextArea } from '../../components/ui/IosForm';
+import { IosField, IosInput, IosTextArea, IosSelect } from '../../components/ui/IosForm';
 import { useAutenticacion } from '../../context/AutenticacionContext';
 import { useNotificaciones } from '../../context/NotificacionContext';
 import { useIosAlert } from '../../components/alerts';
@@ -43,13 +44,23 @@ const Notificaciones = () => {
   const [formOpen, setFormOpen] = useState(false);
   const [savingNotif, setSavingNotif] = useState(false);
   const [editing, setEditing] = useState(null);
-  const [form, setForm] = useState({ titulo: '', descripcion: '' });
+  const [form, setForm] = useState({ titulo: '', descripcion: '', destinatario: '' });
+  const [empleados, setEmpleados] = useState([]);
 
   const [completeTarget, setCompleteTarget] = useState(null);
   const [comment, setComment] = useState('');
   const [savingComplete, setSavingComplete] = useState(false);
 
   const isAdmin = usuario?.rol === 'admin';
+
+  const opcionesEmpleados = useMemo(() => {
+    if (form.destinatario && !empleados.some((e) => e._id === form.destinatario)) {
+      const nombre =
+        editing?.destinatarioNombre || editing?.destinatario?.nombre || 'Empleado';
+      return [...empleados, { _id: form.destinatario, nombre: `${nombre} (inactivo)` }];
+    }
+    return empleados;
+  }, [empleados, form.destinatario, editing]);
 
   useEffect(() => {
     fetchNotifications();
@@ -58,6 +69,25 @@ const Notificaciones = () => {
   useEffect(() => {
     if (isAdmin) marcarVistasAdmin();
   }, [isAdmin, marcarVistasAdmin]);
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    let cancelado = false;
+    const cargarEmpleados = async () => {
+      try {
+        const res = await obtenerUsuarios();
+        if (cancelado) return;
+        const lista = Array.isArray(res.data) ? res.data : [];
+        setEmpleados(lista.filter((u) => u.activo && u.rol === 'user'));
+      } catch {
+        if (!cancelado) setEmpleados([]);
+      }
+    };
+    cargarEmpleados();
+    return () => {
+      cancelado = true;
+    };
+  }, [isAdmin]);
 
   const fetchNotifications = async () => {
     const seq = ++seqRef.current;
@@ -76,13 +106,17 @@ const Notificaciones = () => {
 
   const openCreate = () => {
     setEditing(null);
-    setForm({ titulo: '', descripcion: '' });
+    setForm({ titulo: '', descripcion: '', destinatario: '' });
     setFormOpen(true);
   };
 
   const openEdit = (n) => {
     setEditing(n);
-    setForm({ titulo: n.titulo, descripcion: n.descripcion });
+    setForm({
+      titulo: n.titulo,
+      descripcion: n.descripcion,
+      destinatario: n.destinatario?._id || n.destinatario || '',
+    });
     setFormOpen(true);
   };
 
@@ -93,12 +127,17 @@ const Notificaciones = () => {
     }
     if (savingNotif) return;
     setSavingNotif(true);
+    const payload = {
+      titulo: form.titulo,
+      descripcion: form.descripcion,
+      destinatario: form.destinatario || null,
+    };
     try {
       if (editing) {
-        await actualizarNotificacion(editing._id, form);
+        await actualizarNotificacion(editing._id, payload);
         toast({ message: 'Aviso actualizado' });
       } else {
-        await crearNotificacion(form);
+        await crearNotificacion(payload);
         toast({ message: 'Aviso creado' });
       }
       setFormOpen(false);
@@ -119,7 +158,9 @@ const Notificaciones = () => {
     const confirmed = await confirm({
       icon: 'warning',
       title: '¿Eliminar este aviso?',
-      message: 'Se eliminará para todos los empleados',
+      message: n.destinatario
+        ? `Se eliminará el aviso asignado a ${n.destinatarioNombre || n.destinatario?.nombre || 'este empleado'}`
+        : 'Se eliminará para todos los empleados',
       confirmText: 'Eliminar',
       destructive: true,
     });
@@ -229,8 +270,20 @@ const Notificaciones = () => {
               className="w-full flex items-center gap-3 px-4 py-4 text-left transition-colors hover:bg-ios-hover/[0.03] active:bg-ios-hover/[0.06]"
             >
               <div className="min-w-0 flex-1">
-                <p className="font-semibold text-ios-label truncate">{n.titulo}</p>
-                <p className="text-[11px] text-ios-tertiary mt-0.5">{formatDate(n.fechaCreacion)}</p>
+                <div className="flex items-center gap-2 min-w-0">
+                  <p className="font-semibold text-ios-label truncate">{n.titulo}</p>
+                  {n.destinatario && (
+                    <span className="shrink-0 inline-flex items-center px-2 py-0.5 rounded-ios-pill bg-ios-tint/15 text-ios-tint text-[10px] font-semibold">
+                      Asignado
+                    </span>
+                  )}
+                </div>
+                <p className="text-[11px] text-ios-tertiary mt-0.5 truncate">
+                  {n.destinatario
+                    ? `${n.destinatarioNombre || n.destinatario?.nombre || 'Empleado'} · `
+                    : ''}
+                  {formatDate(n.fechaCreacion)}
+                </p>
               </div>
               <EstadoBadge estado={n.estado} />
               <IconChevronRight className="w-4 h-4 text-ios-tertiary shrink-0" />
@@ -284,6 +337,14 @@ const Notificaciones = () => {
             </p>
           </div>
           <div className="space-y-2 text-sm">
+            {detail?.destinatario && (
+              <div className="flex items-start justify-between gap-3">
+                <span className="text-ios-tertiary text-xs shrink-0 pt-0.5">Asignado a</span>
+                <span className="text-ios-secondary text-right text-[13px]">
+                  {detail?.destinatarioNombre || detail?.destinatario?.nombre || '—'}
+                </span>
+              </div>
+            )}
             <div className="flex items-start justify-between gap-3">
               <span className="text-ios-tertiary text-xs shrink-0 pt-0.5">Creado por</span>
               <span className="text-ios-secondary text-right text-[13px]">
@@ -335,6 +396,22 @@ const Notificaciones = () => {
               onChange={(e) => setForm({ ...form, descripcion: e.target.value })}
               placeholder="Detalle de la tarea para el empleado…"
             />
+          </IosField>
+          <IosField
+            label="Asignar a"
+            hint="Si no elegís un empleado, el aviso lo verá todo el equipo"
+          >
+            <IosSelect
+              value={form.destinatario}
+              onChange={(e) => setForm({ ...form, destinatario: e.target.value })}
+            >
+              <option value="">Todos (general)</option>
+              {opcionesEmpleados.map((emp) => (
+                <option key={emp._id} value={emp._id}>
+                  {emp.nombre}
+                </option>
+              ))}
+            </IosSelect>
           </IosField>
         </div>
       </IosModal>
