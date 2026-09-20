@@ -14,8 +14,8 @@ const pagoLabel = (metodo) =>
   metodo === 'efectivo' ? 'EFECTIVO' : metodo === 'transferencia' ? 'TRANSFERENCIA' : 'TARJETA';
 
 const getItems = (sale) =>
-  (sale.items && sale.items.length > 0
-    ? sale.items
+  (sale.articulos && sale.articulos.length > 0
+    ? sale.articulos
     : [{ producto: sale.producto, cantidad: sale.cantidad, precio: sale.precio, talle: sale.talle, color: '', subtotal: sale.total }]);
 
 const getPagos = (sale) =>
@@ -116,7 +116,7 @@ const TicketBody = ({ sale }) => {
       )}
       <div className="ticket-line">
         <span>Fecha</span>
-        <span>{formatFecha(new Date(sale.createdAt || Date.now()))}</span>
+        <span>{formatFecha(new Date(sale.fechaCreacion || Date.now()))}</span>
       </div>
       <div className="ticket-line">
         <span>Vendedor</span>
@@ -290,7 +290,7 @@ const renderToHtml = (sale, qrDataUrl = '', barcodes = {}) => {
   ${sep()}
   ${line('Ticket Nº', getTicketNumber(sale) || '—')}
   ${getDevolucionLabel(sale) ? `<p class="ticket-devolucion" style="text-align:center;font-weight:bold;letter-spacing:1px;color:#b91c1c;">${escapeHtml(getDevolucionLabel(sale))}</p>` : ''}
-  ${line('Fecha', formatFecha(new Date(sale.createdAt || Date.now())))}
+  ${line('Fecha', formatFecha(new Date(sale.fechaCreacion || Date.now())))}
   ${line('Vendedor', sale.empleado || '—')}
   ${sep()}
   ${itemsHtml}

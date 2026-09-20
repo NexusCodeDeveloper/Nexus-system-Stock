@@ -101,8 +101,8 @@ const Devoluciones = () => {
                     <td className="px-4 py-3.5 text-ios-secondary">{r.talle || '—'}</td>
                     <td className="px-4 py-3.5 text-ios-secondary">{r.motivo}</td>
                     <td className="px-4 py-3.5">
-                      {r.sale?.ticketNumero ? (
-                        <span className="text-ios-label font-semibold tabular-nums">{r.sale.ticketNumero}</span>
+                      {r.venta?.ticketNumero ? (
+                        <span className="text-ios-label font-semibold tabular-nums">{r.venta.ticketNumero}</span>
                       ) : (
                         <span className="text-ios-tertiary">—</span>
                       )}
@@ -116,7 +116,7 @@ const Devoluciones = () => {
                         <span className="text-ios-tertiary">—</span>
                       )}
                     </td>
-                    <td className="px-4 py-3.5 text-ios-tertiary text-xs">{formatDate(r.createdAt)}</td>
+                    <td className="px-4 py-3.5 text-ios-tertiary text-xs">{formatDate(r.fechaCreacion)}</td>
                     <td className="px-5 py-3.5 text-right">
                       {usuario?.rol === 'admin' && (
                         <button
@@ -171,7 +171,7 @@ const Devoluciones = () => {
                     </div>
                     <div className="flex items-center justify-between">
                       <span className="text-ios-tertiary text-xs">Ticket</span>
-                      <span className="text-ios-label font-semibold tabular-nums text-xs">{r.sale?.ticketNumero || '—'}</span>
+                      <span className="text-ios-label font-semibold tabular-nums text-xs">{r.venta?.ticketNumero || '—'}</span>
                     </div>
                     <div className="flex items-center justify-between">
                       <span className="text-ios-tertiary text-xs">Motivo</span>
@@ -179,7 +179,7 @@ const Devoluciones = () => {
                     </div>
                     <div className="flex items-center justify-between">
                       <span className="text-ios-tertiary text-xs">Fecha</span>
-                      <span className="text-ios-secondary text-xs">{formatDate(r.createdAt)}</span>
+                      <span className="text-ios-secondary text-xs">{formatDate(r.fechaCreacion)}</span>
                     </div>
                   </div>
               </div>

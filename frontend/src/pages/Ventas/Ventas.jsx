@@ -75,7 +75,7 @@ const getPagos = (s) =>
   (s.pagos && s.pagos.length > 0 ? s.pagos : [{ metodo: s.metodoPago || 'efectivo', monto: s.total }]);
 
 const getItems = (s) =>
-  (s.items && s.items.length > 0 ? s.items : [{ producto: s.producto, cantidad: s.cantidad, precio: s.precio, talle: s.talle }]);
+  (s.articulos && s.articulos.length > 0 ? s.articulos : [{ producto: s.producto, cantidad: s.cantidad, precio: s.precio, talle: s.talle }]);
 
 const turnoLabel = (t) => (t === 'manana' ? 'Mañana' : t === 'tarde' ? 'Tarde' : 'Día completo');
 
@@ -113,7 +113,7 @@ const DetailRow = ({ c }) => (
     <div className="min-w-0 text-left">
       <p className="text-sm font-semibold text-ios-label">{turnoLabel(c.turno)}</p>
       <p className="text-[11px] text-ios-tertiary">
-        {new Date(c.cerradoAt).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })} · {c.cerradoPor || '—'}
+        {new Date(c.cerradaEn).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })} · {c.cerradoPor || '—'}
       </p>
     </div>
     <div className="text-right shrink-0">
@@ -191,7 +191,7 @@ const Ventas = () => {
   const [desde, setDesde] = useState(today);
   const [hasta, setHasta] = useState(today);
   const [activePeriodo, setActivePeriodo] = useState('dia');
-  const [data, setData] = useState({ sales: [], total: 0 });
+  const [data, setData] = useState({ ventas: [], total: 0 });
   const [stats, setStats] = useState(null);
   const [mostSold, setMostSold] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -224,10 +224,10 @@ const Ventas = () => {
   const [withdrawalMonto, setWithdrawalMonto] = useState('');
   const [withdrawalMotivo, setWithdrawalMotivo] = useState('');
   const [withdrawalSaving, setWithdrawalSaving] = useState(false);
-  const [withdrawals, setWithdrawals] = useState([]);
-  const [withdrawalsTotal, setWithdrawalsTotal] = useState(0);
-  const [withdrawalsLoading, setWithdrawalsLoading] = useState(false);
-  const [withdrawalsError, setWithdrawalsError] = useState('');
+  const [retiros, setRetiros] = useState([]);
+  const [retirosTotal, setRetirosTotal] = useState(0);
+  const [retirosLoading, setRetirosLoading] = useState(false);
+  const [retirosError, setRetirosError] = useState('');
   const [efectivoDisponible, setEfectivoDisponible] = useState(null);
   const [efectivoError, setEfectivoError] = useState('');
 
@@ -241,10 +241,10 @@ const Ventas = () => {
       obtenerEstadisticasVentas({ desde, hasta, offset: tz }),
       obtenerMasVendidos({ desde, hasta, offset: tz }),
     ])
-      .then(([salesRes, statsRes, mostSoldRes]) => {
+      .then(([ventasRes, statsRes, mostSoldRes]) => {
         if (seq !== ventasSeqRef.current) return;
-        const ventas = salesRes.data?.sales;
-        setData({ sales: Array.isArray(ventas) ? ventas : [], total: salesRes.data?.total || 0 });
+        const ventas = ventasRes.data?.ventas;
+        setData({ ventas: Array.isArray(ventas) ? ventas : [], total: ventasRes.data?.total || 0 });
         setStats(statsRes.data);
         setMostSold(mostSoldRes.data);
       })
@@ -309,13 +309,13 @@ const Ventas = () => {
               {d.abiertoPor && (
                 <p>
                   Abrió <span className="font-semibold text-ios-label">{d.abiertoPor}</span>
-                  {d.abiertoAt ? ` a las ${new Date(d.abiertoAt).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}` : ''}
+                  {d.abiertaEn ? ` a las ${new Date(d.abiertaEn).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}` : ''}
                 </p>
               )}
               {d.cerradoPor && (
                 <p>
                   Cerró <span className="font-semibold text-ios-label">{d.cerradoPor}</span>
-                  {d.cerradoAt ? ` a las ${new Date(d.cerradoAt).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}` : ''}
+                  {d.cerradaEn ? ` a las ${new Date(d.cerradaEn).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}` : ''}
                 </p>
               )}
               {Number(d.fondoInicial) > 0 && <p>Fondo inicial: {formatMoney(d.fondoInicial)}</p>}
@@ -363,20 +363,20 @@ const Ventas = () => {
 
   const fetchWithdrawals = () => {
     const seq = ++retirosSeqRef.current;
-    setWithdrawalsLoading(true);
-    setWithdrawalsError('');
+    setRetirosLoading(true);
+    setRetirosError('');
     obtenerRetirosCaja({ desde: today(), hasta: today(), offset: new Date().getTimezoneOffset() })
       .then((res) => {
         if (seq !== retirosSeqRef.current) return;
-        setWithdrawals(res.data.withdrawals || []);
-        setWithdrawalsTotal(res.data.total || 0);
+        setRetiros(res.data.retiros || []);
+        setRetirosTotal(res.data.total || 0);
       })
       .catch((err) => {
         if (seq !== retirosSeqRef.current) return;
-        setWithdrawalsError(obtenerMensajeErrorApi(err, 'No se pudieron cargar los retiros'));
+        setRetirosError(obtenerMensajeErrorApi(err, 'No se pudieron cargar los retiros'));
       })
       .finally(() => {
-        if (seq === retirosSeqRef.current) setWithdrawalsLoading(false);
+        if (seq === retirosSeqRef.current) setRetirosLoading(false);
       });
   };
 
@@ -544,7 +544,7 @@ const Ventas = () => {
               <span className={`w-2 h-2 rounded-full shrink-0 ${esDeHoy ? 'bg-emerald-400' : 'bg-amber-400'}`} />
               <span className={`text-xs font-semibold whitespace-nowrap ${esDeHoy ? 'text-emerald-300' : 'text-amber-300'}`}>
                 {esDeHoy
-                  ? `Caja abierta ${new Date(caja.abiertoAt).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })} · ${caja.abiertoPor}`
+                  ? `Caja abierta ${new Date(caja.abiertaEn).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })} · ${caja.abiertoPor}`
                   : `Caja abierta del ${new Date(caja.fecha).toLocaleDateString('es-AR')} · ${caja.abiertoPor}`}
               </span>
               <button
@@ -714,14 +714,14 @@ const Ventas = () => {
                 </tr>
               </thead>
               <tbody>
-                {data.sales.length === 0 ? (
+                {data.ventas.length === 0 ? (
                   <tr>
                     <td colSpan={7} className="text-center py-10 text-ios-tertiary text-sm">
                       No hay ventas en este periodo
                     </td>
                   </tr>
                 ) : (
-                  data.sales.map((s) => {
+                  data.ventas.map((s) => {
                     const items = getItems(s);
                     const isExpanded = expandedId === s._id;
                     return (
@@ -763,7 +763,7 @@ const Ventas = () => {
                               ))}
                             </div>
                           </td>
-                          <td className="px-4 py-3.5 text-ios-tertiary text-xs">{formatDate(s.createdAt)}</td>
+                          <td className="px-4 py-3.5 text-ios-tertiary text-xs">{formatDate(s.fechaCreacion)}</td>
                           <td className="px-5 py-3.5 text-right">
                             {usuario?.rol === 'admin' && (
                               <button
@@ -847,12 +847,12 @@ const Ventas = () => {
           </div>
 
           <div className="md:hidden space-y-2.5">
-            {data.sales.length === 0 ? (
+            {data.ventas.length === 0 ? (
               <div className="text-center py-10 text-ios-tertiary text-sm">
                 No hay ventas en este periodo
               </div>
             ) : (
-              data.sales.map((s) => {
+              data.ventas.map((s) => {
                 const items = getItems(s);
                 const isExpanded = expandedId === s._id;
                 const totalUnidades = items.reduce((acc, i) => acc + (Number(i.cantidad) || 0), 0);
@@ -885,7 +885,7 @@ const Ventas = () => {
                     </div>
                     <div className="flex items-center justify-between mt-3 pt-3 border-t border-ios-separator/40">
                       <p className="text-xs text-ios-tertiary truncate min-w-0 flex-1">
-                        {new Date(s.createdAt).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })} · {s.empleado}
+                        {new Date(s.fechaCreacion).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })} · {s.empleado}
                         {s.descuento ? ` · ${s.descuento}% desc.` : ''}
                       </p>
                       <div className="flex gap-2 shrink-0">
@@ -1064,7 +1064,7 @@ const Ventas = () => {
                         <td className="px-4 py-3.5 text-green-400 font-semibold whitespace-nowrap tabular-nums">{formatMoney(c.efectivo?.total || 0)} <span className="text-ios-tertiary text-xs font-medium">({c.efectivo?.cantidad || 0})</span></td>
                         <td className="px-4 py-3.5 text-blue-400 font-semibold whitespace-nowrap tabular-nums">{formatMoney(c.transferencia?.total || 0)} <span className="text-ios-tertiary text-xs font-medium">({c.transferencia?.cantidad || 0})</span></td>
                         <td className="px-4 py-3.5 text-purple-400 font-semibold whitespace-nowrap tabular-nums">{formatMoney(c.tarjeta?.total || 0)} <span className="text-ios-tertiary text-xs font-medium">({c.tarjeta?.cantidad || 0})</span></td>
-                        <td className="px-4 py-3.5 text-ios-tertiary text-xs whitespace-nowrap">{new Date(c.cerradoAt).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}</td>
+                        <td className="px-4 py-3.5 text-ios-tertiary text-xs whitespace-nowrap">{new Date(c.cerradaEn).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}</td>
                         <td className="px-4 py-3.5 text-ios-secondary">
                           {c.turnos
                             ? [...new Set(c.turnos.map((t) => t.cerradoPor).filter(Boolean))].join(' / ') || '—'
@@ -1151,7 +1151,7 @@ const Ventas = () => {
                   </div>
                   <div className="flex items-center justify-between mt-3 pt-3 border-t border-ios-separator/40">
                     <p className="text-xs text-ios-tertiary">
-                      {new Date(c.cerradoAt).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })} ·{' '}
+                      {new Date(c.cerradaEn).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })} ·{' '}
                       {c.turnos
                         ? [...new Set(c.turnos.map((t) => t.cerradoPor).filter(Boolean))].join(' / ') || '—'
                         : c.cerradoPor || '—'}
@@ -1276,32 +1276,32 @@ const Ventas = () => {
           <div>
             <div className="flex items-center justify-between mb-2">
               <p className="text-[13px] text-ios-secondary font-medium">Retiros de hoy</p>
-              {withdrawals.length > 0 && (
+              {retiros.length > 0 && (
                 <span className="text-xs text-ios-tertiary font-semibold">
-                  Total: {formatMoney(withdrawalsTotal)}
+                  Total: {formatMoney(retirosTotal)}
                 </span>
               )}
             </div>
-            {withdrawalsLoading ? (
+            {retirosLoading ? (
               <div className="flex justify-center py-6">
                 <LoadingSpinner size="h-6 w-6" />
               </div>
-            ) : withdrawalsError ? (
+            ) : retirosError ? (
               <p className="text-center text-xs text-ios-red py-5 bg-ios-surface2/50 rounded-2xl">
-                {withdrawalsError}
+                {retirosError}
               </p>
-            ) : withdrawals.length === 0 ? (
+            ) : retiros.length === 0 ? (
               <p className="text-center text-xs text-ios-tertiary py-5 bg-ios-surface2/50 rounded-2xl">
                 No hay retiros registrados hoy
               </p>
             ) : (
               <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
-                {withdrawals.map((w) => (
+                {retiros.map((w) => (
                   <div key={w._id} className="flex items-center gap-3 bg-ios-surface2/60 rounded-2xl px-3.5 py-2.5">
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-semibold text-ios-label truncate">{formatMoney(w.monto)}</p>
                       <p className="text-[11px] text-ios-tertiary truncate">
-                        {w.motivo} · {w.realizadoPor} · {new Date(w.createdAt).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}
+                        {w.motivo} · {w.realizadoPor} · {new Date(w.fechaCreacion).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}
                       </p>
                     </div>
                     {usuario?.rol === 'admin' && (

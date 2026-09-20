@@ -262,7 +262,7 @@ export const CajaProvider = ({ children }) => {
           {caja && (
             <div className="rounded-2xl px-4 py-3 bg-ios-surface2/70 border border-ios-separator/40 text-xs text-ios-secondary space-y-1">
               <p>
-                Abierta por <span className="font-semibold text-ios-label">{caja.abiertoPor}</span> a las {hora(caja.abiertoAt)}
+                Abierta por <span className="font-semibold text-ios-label">{caja.abiertoPor}</span> a las {hora(caja.abiertaEn)}
               </p>
               {Number(caja.fondoInicial) > 0 && <p>Fondo inicial: {formatMoney(caja.fondoInicial)}</p>}
             </div>

@@ -19,8 +19,8 @@ const getItemId = (item) => item?.producto?._id || item?.producto;
 const getItemNombre = (item) => item?.producto?.nombre || item?.nombre || 'Producto';
 
 const getItems = (sale) =>
-  (sale.items && sale.items.length > 0
-    ? sale.items
+  (sale.articulos && sale.articulos.length > 0
+    ? sale.articulos
     : [{ producto: sale.producto, cantidad: sale.cantidad, precio: sale.precio, talle: sale.talle, color: '', subtotal: sale.total }]);
 
 const FormularioDevolucion = ({ sale, open, onClose, onDone, defaultExchange = false, initialCodigo = '' }) => {
@@ -121,7 +121,7 @@ const FormularioDevolucion = ({ sale, open, onClose, onDone, defaultExchange = f
         alert({ icon: 'warning', title: 'Campo requerido', message: 'Debe elegir el producto nuevo' });
         return;
       }
-      if (exchangeTarget.variants?.length > 0 && exchangeVariantIdx === '') {
+      if (exchangeTarget.variantes?.length > 0 && exchangeVariantIdx === '') {
         alert({ icon: 'warning', title: 'Campo requerido', message: 'Debe seleccionar la variante del producto nuevo' });
         return;
       }
@@ -129,7 +129,7 @@ const FormularioDevolucion = ({ sale, open, onClose, onDone, defaultExchange = f
         alert({ icon: 'warning', title: 'Cantidad inválida', message: 'Debe cargar al menos 1 unidad' });
         return;
       }
-      const excVariant = exchangeTarget.variants?.[Number(exchangeVariantIdx)];
+      const excVariant = exchangeTarget.variantes?.[Number(exchangeVariantIdx)];
       const mismaVariante = exchangeTarget._id === getItemId(item)
         && (excVariant?.talle || '') === (item.talle || '')
         && (excVariant?.color || '') === (item.color || '');
@@ -150,7 +150,7 @@ const FormularioDevolucion = ({ sale, open, onClose, onDone, defaultExchange = f
         talleCargar: excVariant?.talle || '',
         colorCargar: excVariant?.color || '',
         motivo: motivoFinal,
-        sale: sale._id,
+        venta: sale._id,
         metodoPago,
         empleado: sale.empleado,
         offset: new Date().getTimezoneOffset(),
@@ -162,7 +162,7 @@ const FormularioDevolucion = ({ sale, open, onClose, onDone, defaultExchange = f
         talle: item.talle || '',
         color: item.color || '',
         motivo: motivoFinal,
-        sale: sale._id,
+        venta: sale._id,
         offset: new Date().getTimezoneOffset(),
       };
     }
@@ -344,11 +344,11 @@ const FormularioDevolucion = ({ sale, open, onClose, onDone, defaultExchange = f
                   <br />
                   <span className="font-semibold">Stock disponible:</span> {exchangeTarget.cantidad}
                 </p>
-                {exchangeTarget.variants?.length > 0 && (
+                {exchangeTarget.variantes?.length > 0 && (
                   <IosField label="Variante a cargar" required>
                     <IosSelect value={exchangeVariantIdx} onChange={(e) => setExchangeVariantIdx(e.target.value)}>
                       <option value="" className="bg-ios-surface2">Seleccionar...</option>
-                      {exchangeTarget.variants.map((v, i) => (
+                      {exchangeTarget.variantes.map((v, i) => (
                         <option key={i} value={String(i)} className="bg-ios-surface2">
                           {variantLabel(v)} (stock: {v.cantidad})
                         </option>
