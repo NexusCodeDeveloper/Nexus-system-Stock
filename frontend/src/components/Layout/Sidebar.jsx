@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom';
-import { IconBox, IconChart, IconUsers, IconReturn, IconBell, IconTile, IconTicket, IconWarehouse } from '../ui/icons';
+import { IconBox, IconChart, IconUsers, IconUserPlus, IconReturn, IconBell, IconTile, IconTicket, IconWarehouse } from '../ui/icons';
 import { useNotificaciones } from '../../context/NotificacionContext';
 import { useAutenticacion } from '../../context/AutenticacionContext';
 
@@ -11,12 +11,13 @@ const links = [
   { to: '/proveedores', label: 'Proveedores', icon: IconUsers, gradient: 'from-indigo-500 to-purple-600', adminOnly: true },
   { to: '/devoluciones', label: 'Devoluciones', icon: IconReturn, gradient: 'from-orange-500 to-rose-600' },
   { to: '/notificaciones', label: 'Avisos', icon: IconBell, gradient: 'from-cyan-500 to-sky-600' },
+  { to: '/empleados', label: 'Empleados', icon: IconUserPlus, gradient: 'from-rose-500 to-pink-600', adminOnly: true },
 ];
 
 const Sidebar = () => {
   const { pendingCount } = useNotificaciones();
-  const { usuario } = useAutenticacion();
-  const visibleLinks = links.filter((link) => !link.adminOnly || usuario?.rol === 'admin');
+  const { esAdmin } = useAutenticacion();
+  const visibleLinks = links.filter((link) => !link.adminOnly || esAdmin);
 
   return (
     <aside className="group absolute inset-y-0 left-0 z-30 w-[72px] hover:w-[260px] transition-[width] duration-300 ease-out overflow-hidden bg-ios-surface/95 backdrop-blur-2xl border-r border-ios-separator/40 flex flex-col shadow-[8px_0_28px_rgba(0,0,0,0.28)]">
