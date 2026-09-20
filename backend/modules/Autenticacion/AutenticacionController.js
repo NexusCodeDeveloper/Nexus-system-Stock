@@ -27,6 +27,13 @@ export const iniciarSesion = async (req, res, next) => {
       return res.status(401).json({ message: 'Credenciales inválidas' });
     }
 
+    if (!usuario.activo) {
+      return res.status(403).json({
+        message: 'Tu cuenta está desactivada, contactá al administrador',
+        codigo: 'CUENTA_DESACTIVADA',
+      });
+    }
+
     const token = generarToken(usuario);
 
     res.json({
@@ -34,6 +41,7 @@ export const iniciarSesion = async (req, res, next) => {
       nombre: usuario.nombre,
       email: usuario.email,
       rol: usuario.rol,
+      activo: usuario.activo,
       token,
     });
   } catch (error) {
@@ -47,7 +55,7 @@ export const obtenerPerfil = async (req, res, next) => {
     if (!usuario) {
       return res.status(404).json({ message: 'Usuario no encontrado' });
     }
-    res.json(usuario);
+    res.json(usuario.toJSON());
   } catch (error) {
     next(error);
   }
