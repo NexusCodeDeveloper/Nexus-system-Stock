@@ -230,7 +230,7 @@ const Notificaciones = () => {
             >
               <div className="min-w-0 flex-1">
                 <p className="font-semibold text-ios-label truncate">{n.titulo}</p>
-                <p className="text-[11px] text-ios-tertiary mt-0.5">{formatDate(n.createdAt)}</p>
+                <p className="text-[11px] text-ios-tertiary mt-0.5">{formatDate(n.fechaCreacion)}</p>
               </div>
               <EstadoBadge estado={n.estado} />
               <IconChevronRight className="w-4 h-4 text-ios-tertiary shrink-0" />
@@ -287,7 +287,7 @@ const Notificaciones = () => {
             <div className="flex items-start justify-between gap-3">
               <span className="text-ios-tertiary text-xs shrink-0 pt-0.5">Creado por</span>
               <span className="text-ios-secondary text-right text-[13px]">
-                {detail?.creadoPor?.nombre || '—'} · {formatDate(detail?.createdAt)}
+                {detail?.creadoPor?.nombre || '—'} · {formatDate(detail?.fechaCreacion)}
               </span>
             </div>
             {detail?.estado === 'realizado' && (

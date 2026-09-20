@@ -43,7 +43,7 @@ const variantShortLabel = (v) => {
 };
 
 const depositoTotal = (p) =>
-  p.variants?.length > 0 ? p.variants.reduce((s, v) => s + (v.deposito || 0), 0) : (p.deposito || 0);
+  p.variantes?.length > 0 ? p.variantes.reduce((s, v) => s + (v.deposito || 0), 0) : (p.deposito || 0);
 
 const Productos = () => {
   const navigate = useNavigate();
@@ -230,11 +230,11 @@ const Productos = () => {
       alert({ icon: 'warning', title: 'Cantidad inválida' });
       return;
     }
-    if (quickAdd.variants?.length > 0 && qaVariantIdx === '') {
+    if (quickAdd.variantes?.length > 0 && qaVariantIdx === '') {
       alert({ icon: 'warning', title: 'Campo requerido', message: 'Debe seleccionar una variante' });
       return;
     }
-    const variant = quickAdd.variants?.[Number(qaVariantIdx)];
+    const variant = quickAdd.variantes?.[Number(qaVariantIdx)];
     const stockDisponible = variant ? variant.cantidad : quickAdd.cantidad;
     const talle = variant?.talle || '';
     const color = variant?.color || '';
@@ -260,10 +260,10 @@ const Productos = () => {
   const openRetirar = (product) => {
     setRetirarModal(product);
     setRetirarCantidad('1');
-    setRetirarVariantIdx(product?.variants?.length === 1 ? '0' : '');
+    setRetirarVariantIdx(product?.variantes?.length === 1 ? '0' : '');
   };
 
-  const retirarVariants = retirarModal?.variants || [];
+  const retirarVariants = retirarModal?.variantes || [];
   const retirarVariant = retirarVariants[Number(retirarVariantIdx)] || null;
   const retirarDisponible = retirarVariants.length > 0
     ? (retirarVariant ? (retirarVariant.cantidad || 0) : null)
@@ -315,8 +315,8 @@ const Productos = () => {
     obtenerTickets({ codigo: product.codigo, offset: new Date().getTimezoneOffset() })
       .then((res) => {
         if (seq !== returnSeqRef.current) return;
-        const sales = res.data?.sales;
-        setReturnTickets(Array.isArray(sales) ? sales.filter((s) => s.estado !== 'devuelta') : []);
+        const ventas = res.data?.ventas;
+        setReturnTickets(Array.isArray(ventas) ? ventas.filter((s) => s.estado !== 'devuelta') : []);
       })
       .catch((err) => {
         if (seq !== returnSeqRef.current) return;
@@ -335,7 +335,7 @@ const Productos = () => {
   };
 
   const agregarAlCarritoEscaneado = (producto) => {
-    if (producto.variants?.length > 0) {
+    if (producto.variantes?.length > 0) {
       setScannerOpen(false);
       openQuickAdd(producto);
       return;
@@ -574,7 +574,7 @@ const Productos = () => {
               {formatMoney(quickAdd?.precio)}
             </div>
           </IosField>
-          {renderVariantSelect(quickAdd?.variants, qaVariantIdx, setQaVariantIdx)}
+          {renderVariantSelect(quickAdd?.variantes, qaVariantIdx, setQaVariantIdx)}
         </div>
       </IosModal>
 
@@ -854,7 +854,7 @@ const Productos = () => {
                   <span className="text-ios-green font-semibold tabular-nums">{formatMoney(s.total)}</span>
                 </div>
                 <div className="text-xs text-ios-tertiary mt-0.5">
-                  {formatDate(s.createdAt)} · {s.empleado || '—'}
+                  {formatDate(s.fechaCreacion)} · {s.empleado || '—'}
                 </div>
               </button>
             ))}
@@ -930,7 +930,7 @@ const Productos = () => {
                         <div className="text-xs leading-relaxed space-y-0.5 animate-slideDown">
                           {p.colores?.length > 0
                             ? p.colores.map((color) => {
-                                const vars = (p.variants || []).filter((v) => v.color === color);
+                                const vars = (p.variantes || []).filter((v) => v.color === color);
                                 return (
                                   <div key={color}>
                                     <span className="font-semibold text-ios-secondary">{color}: </span>
@@ -944,10 +944,10 @@ const Productos = () => {
                                   </div>
                                 );
                               })
-                            : p.variants?.length > 0
-                              ? p.variants.map((v, i) => (
+                            : p.variantes?.length > 0
+                              ? p.variantes.map((v, i) => (
                                   <span key={i} className="text-ios-tertiary">
-                                    {variantShortLabel(v)}:{v.cantidad}{v.deposito ? ` (dep ${v.deposito})` : ''}{i < p.variants.length - 1 ? ', ' : ''}
+                                    {variantShortLabel(v)}:{v.cantidad}{v.deposito ? ` (dep ${v.deposito})` : ''}{i < p.variantes.length - 1 ? ', ' : ''}
                                   </span>
                                 ))
                               : <span className="text-ios-tertiary">—</span>}
@@ -958,7 +958,7 @@ const Productos = () => {
                           {p.colores?.length > 0 ? (
                             <span className="text-ios-tertiary">
                               {p.colores.slice(0, 3).map((c, i) => {
-                                const count = (p.variants || []).filter((v) => v.color === c).length;
+                                const count = (p.variantes || []).filter((v) => v.color === c).length;
                                 return (
                                   <span key={c}>
                                     {i > 0 && <span className="text-ios-separator"> · </span>}
@@ -969,8 +969,8 @@ const Productos = () => {
                               })}
                               {p.colores.length > 3 && <span className="text-ios-tertiary ml-1">· +{p.colores.length - 3} más</span>}
                             </span>
-                          ) : p.variants?.length > 0 ? (
-                            <span className="text-ios-secondary">{p.variants.length} variantes</span>
+                          ) : p.variantes?.length > 0 ? (
+                            <span className="text-ios-secondary">{p.variantes.length} variantes</span>
                           ) : (
                             <span className="text-ios-tertiary">—</span>
                           )}
@@ -1074,8 +1074,8 @@ const Productos = () => {
                   <span className="flex items-center gap-1.5 text-xs text-ios-tertiary">
                     {p.colores?.length > 0
                       ? `${p.colores.length} ${p.colores.length === 1 ? 'color' : 'colores'}`
-                      : p.variants?.length > 0
-                        ? `${p.variants.length} variantes`
+                      : p.variantes?.length > 0
+                        ? `${p.variantes.length} variantes`
                         : 'Ver detalle'}
                     <IconChevronDown className={`w-3 h-3 transition-transform ${expandedId === p._id ? 'rotate-180' : ''}`} strokeWidth={2.2} />
                   </span>
@@ -1084,7 +1084,7 @@ const Productos = () => {
                   <div className="mt-3 pt-3 border-t border-ios-separator/40 text-xs leading-relaxed space-y-1 animate-slideDown">
                     {p.colores?.length > 0
                       ? p.colores.map((color) => {
-                          const vars = (p.variants || []).filter((v) => v.color === color);
+                          const vars = (p.variantes || []).filter((v) => v.color === color);
                           return (
                             <div key={color}>
                               <span className="font-semibold text-ios-secondary">{color}: </span>
@@ -1098,10 +1098,10 @@ const Productos = () => {
                             </div>
                           );
                         })
-                      : p.variants?.length > 0
-                        ? p.variants.map((v, i) => (
+                      : p.variantes?.length > 0
+                        ? p.variantes.map((v, i) => (
                             <span key={i} className="text-ios-tertiary">
-                              {variantShortLabel(v)}:{v.cantidad}{v.deposito ? ` (dep ${v.deposito})` : ''}{i < p.variants.length - 1 ? ', ' : ''}
+                              {variantShortLabel(v)}:{v.cantidad}{v.deposito ? ` (dep ${v.deposito})` : ''}{i < p.variantes.length - 1 ? ', ' : ''}
                             </span>
                           ))
                         : <span className="text-ios-tertiary">—</span>}

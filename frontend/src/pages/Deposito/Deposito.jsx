@@ -20,10 +20,10 @@ import { IconArrowUp, IconChevronDown, IconHistory, IconPencil, IconPlus, IconPr
 const variantLabel = (v) => [v.talle, v.color].filter(Boolean).join(' / ') || 'Base';
 
 const depositoTotal = (p) =>
-  p.variants?.length > 0 ? p.variants.reduce((s, v) => s + (v.deposito || 0), 0) : (p.deposito || 0);
+  p.variantes?.length > 0 ? p.variantes.reduce((s, v) => s + (v.deposito || 0), 0) : (p.deposito || 0);
 
 const salonTotal = (p) =>
-  p.variants?.length > 0 ? p.variants.reduce((s, v) => s + (v.cantidad || 0), 0) : (p.cantidad || 0);
+  p.variantes?.length > 0 ? p.variantes.reduce((s, v) => s + (v.cantidad || 0), 0) : (p.cantidad || 0);
 
 const TIPOS = {
   ingreso_deposito: { label: 'Ingreso a depósito', cls: 'bg-violet-500/15 text-violet-300' },
@@ -311,14 +311,14 @@ const Deposito = () => {
   const abrirModal = (producto, modo) => {
     setStockModal({ producto, modo });
     setModalCantidad('1');
-    setModalVariantIdx(producto.variants?.length === 1 ? '0' : '');
+    setModalVariantIdx(producto.variantes?.length === 1 ? '0' : '');
     setModalNuevoTalle('');
     setModalNuevoColor('');
     setModalFijar(false);
   };
 
   const modalProducto = stockModal?.producto;
-  const modalVariants = modalProducto?.variants || [];
+  const modalVariants = modalProducto?.variantes || [];
   const modalVariant = modalVariants[Number(modalVariantIdx)] || null;
   const modalEsNueva = stockModal?.modo === 'cargar' && modalVariants.length > 0 && modalVariantIdx === '__nueva__';
 
@@ -381,8 +381,8 @@ const Deposito = () => {
   const pasarTodoAlSalon = async (p) => {
     cerrarDropdown();
     if (pasarTodoSaving) return;
-    const variantes = (p.variants || []).filter((v) => (v.deposito || 0) > 0);
-    const total = p.variants?.length > 0
+    const variantes = (p.variantes || []).filter((v) => (v.deposito || 0) > 0);
+    const total = p.variantes?.length > 0
       ? variantes.reduce((s, v) => s + (v.deposito || 0), 0)
       : (p.deposito || 0);
     if (total <= 0) {
@@ -398,7 +398,7 @@ const Deposito = () => {
     if (!confirmed) return;
     setPasarTodoSaving(true);
     try {
-      const items = p.variants?.length > 0
+      const items = p.variantes?.length > 0
         ? variantes.map((v) => ({ producto: p._id, cantidad: v.deposito, talle: v.talle || '', color: v.color || '' }))
         : [{ producto: p._id, cantidad: total, talle: '', color: '' }];
       await pasarSalon(items);
@@ -426,7 +426,7 @@ const Deposito = () => {
         TIPOS[m.tipo]?.label || m.tipo || '',
         m.cantidad,
         m.empleado || '',
-        m.createdAt ? new Date(m.createdAt).toISOString() : '',
+        m.fechaCreacion ? new Date(m.fechaCreacion).toISOString() : '',
       ]);
     }
     const csv = filas
@@ -473,9 +473,9 @@ const Deposito = () => {
   );
 
   const detalleVariantes = (p) =>
-    p.variants?.length > 0 ? (
+    p.variantes?.length > 0 ? (
       <div className="text-xs text-ios-tertiary space-y-0.5">
-        {p.variants.map((v, i) => (
+        {p.variantes.map((v, i) => (
           <div key={i} className="flex items-center gap-2">
             <span className="text-ios-secondary font-medium">{variantLabel(v)}</span>
             <span>Dep: {v.deposito || 0}</span>
@@ -606,7 +606,7 @@ const Deposito = () => {
                       >
                         <td className="px-5 py-3.5">
                           <div className="flex items-center gap-2">
-                            {p.variants?.length > 0 && (
+                            {p.variantes?.length > 0 && (
                               <IconChevronDown
                                 className={`w-3 h-3 text-ios-tertiary transition-transform ${expandedId === p._id ? 'rotate-180' : ''}`}
                                 strokeWidth={2.2}
@@ -671,7 +671,7 @@ const Deposito = () => {
                       </button>
                       <div className="shrink-0">{botonAcciones(p)}</div>
                     </div>
-                    {expandedId === p._id && p.variants?.length > 0 && (
+                    {expandedId === p._id && p.variantes?.length > 0 && (
                       <div className="mt-3 pt-3 border-t border-ios-separator/40">{detalleVariantes(p)}</div>
                     )}
                   </div>
@@ -755,7 +755,7 @@ const Deposito = () => {
                             </span>
                           </div>
                           <p className="text-xs text-ios-tertiary mt-0.5">
-                            {variante ? `${variante} · ` : ''}{m.empleado || '—'} · {formatDate(m.createdAt)}
+                            {variante ? `${variante} · ` : ''}{m.empleado || '—'} · {formatDate(m.fechaCreacion)}
                           </p>
                         </div>
                         <span className="text-ios-label font-bold tabular-nums shrink-0">{m.cantidad} u.</span>
@@ -798,8 +798,8 @@ const Deposito = () => {
               <IconArrowUp className="w-4 h-4" />
               Pasar al salón
             </button>
-            {((dropdown.product?.variants?.length > 0 && dropdown.product.variants.some((v) => (v.deposito || 0) > 0))
-              || (dropdown.product?.variants?.length === 0 && (dropdown.product?.deposito || 0) > 0)) && (
+            {((dropdown.product?.variantes?.length > 0 && dropdown.product.variantes.some((v) => (v.deposito || 0) > 0))
+              || (dropdown.product?.variantes?.length === 0 && (dropdown.product?.deposito || 0) > 0)) && (
               <button
                 onClick={() => pasarTodoAlSalon(dropdown.product)}
                 disabled={pasarTodoSaving}

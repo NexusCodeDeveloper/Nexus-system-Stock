@@ -6,7 +6,7 @@ import IosButton from '../../components/ui/IosButton';
 import { IconEye, IconEyeOff } from '../../components/ui/icons';
 
 const LoginModal = () => {
-  const [form, setForm] = useState({ email: '', password: '' });
+  const [form, setForm] = useState({ email: '', clave: '' });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [showPw, setShowPw] = useState(false);
@@ -78,8 +78,8 @@ const LoginModal = () => {
               <input
                 type={showPw ? 'text' : 'password'}
                 required
-                value={form.password}
-                onChange={(e) => setForm({ ...form, password: e.target.value })}
+                value={form.clave}
+                onChange={(e) => setForm({ ...form, clave: e.target.value })}
                 className="w-full px-4 py-3 pr-11 bg-ios-surface2 rounded-ios-control text-ios-label placeholder:text-ios-tertiary focus:outline-none focus:ring-2 focus:ring-ios-tint/40 transition-all"
                 placeholder="••••••••"
               />

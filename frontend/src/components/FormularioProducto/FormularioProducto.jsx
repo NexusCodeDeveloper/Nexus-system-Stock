@@ -18,16 +18,16 @@ const stockPorColor = (colores, variants) => {
 const FormularioProducto = ({ initial, onSubmit, onCancel, isSubmitting: externalSubmitting }) => {
   const extractColores = (prod) => {
     if (prod?.colores?.length) return prod.colores;
-    const fromVariants = [...new Set((prod?.variants ?? []).map((v) => v.color).filter(Boolean))];
-    return fromVariants.length ? fromVariants : [];
+    const fromVariantes = [...new Set((prod?.variantes ?? []).map((v) => v.color).filter(Boolean))];
+    return fromVariantes.length ? fromVariantes : [];
   };
 
   const [form, setForm] = useState({
     nombre: initial?.nombre || '',
     precio: initial?.precio ?? '',
     colores: extractColores(initial),
-    variants: initial?.variants?.length
-      ? initial.variants.map((v) => ({ ...v }))
+    variants: initial?.variantes?.length
+      ? initial.variantes.map((v) => ({ ...v }))
       : [],
     categoria: initial?.categoria || '',
     proveedor: initial?.proveedor || '',
@@ -143,7 +143,7 @@ const FormularioProducto = ({ initial, onSubmit, onCancel, isSubmitting: externa
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!validate()) return;
-    const variantsValidos = form.variants
+    const variantesValidos = form.variants
       .filter((v) => (v.talle || '').trim())
       .map((v) => ({
         talle: (v.talle || '').trim(),
@@ -155,7 +155,7 @@ const FormularioProducto = ({ initial, onSubmit, onCancel, isSubmitting: externa
       codigo: form.codigo.trim(),
       precio: Number(form.precio),
       colores: form.colores,
-      variants: variantsValidos,
+      variantes: variantesValidos,
       deposito: Number(form.deposito) || 0,
       stockMinimo: Number(form.stockMinimo),
     });

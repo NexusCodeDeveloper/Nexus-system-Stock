@@ -120,9 +120,9 @@ export const CarritoProvider = ({ children }) => {
         return { ...item, precio, nombre: p.nombre };
       }
       let disponible;
-      if (p.variants?.length > 0) {
+      if (p.variantes?.length > 0) {
         const norm = (v) => String(v ?? '').trim().toLowerCase();
-        const v = p.variants.find(
+        const v = p.variantes.find(
           (x) => norm(x.talle) === norm(item.talle) && norm(x.color) === norm(item.color)
         );
         disponible = v?.cantidad ?? 0;
@@ -187,7 +187,7 @@ export const CarritoProvider = ({ children }) => {
           ]
         : [{ metodo: sellMetodoPago, monto: Math.round(finalTotal * 100) / 100 }];
       const res = await crearVenta({
-        items: cart.map((i) => ({ producto: i.producto, cantidad: Number(i.cantidad), talle: i.talle, color: i.color || '' })),
+        articulos: cart.map((i) => ({ producto: i.producto, cantidad: Number(i.cantidad), talle: i.talle, color: i.color || '' })),
         pagos,
         descuento: descuentoNum,
         offset: new Date().getTimezoneOffset(),
