@@ -1,7 +1,7 @@
 import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
 
-const userSchema = new mongoose.Schema(
+const usuarioSchema = new mongoose.Schema(
   {
     nombre: {
       type: String,
@@ -25,6 +25,10 @@ const userSchema = new mongoose.Schema(
       enum: ['admin', 'user'],
       default: 'user',
     },
+    activo: {
+      type: Boolean,
+      default: true,
+    },
     versionToken: {
       type: Number,
       default: 0,
@@ -33,21 +37,21 @@ const userSchema = new mongoose.Schema(
   { timestamps: { createdAt: 'fechaCreacion', updatedAt: 'fechaActualizacion' } }
 );
 
-userSchema.pre('save', async function (next) {
+usuarioSchema.pre('save', async function (next) {
   if (!this.isModified('clave')) return next();
   const salt = await bcrypt.genSalt(12);
   this.clave = await bcrypt.hash(this.clave, salt);
   next();
 });
 
-userSchema.methods.comparePassword = async function (candidatePassword) {
+usuarioSchema.methods.comparePassword = async function (candidatePassword) {
   return bcrypt.compare(candidatePassword, this.clave);
 };
 
-userSchema.methods.toJSON = function () {
+usuarioSchema.methods.toJSON = function () {
   const obj = this.toObject();
   delete obj.clave;
   return obj;
 };
 
-export default mongoose.model('Usuario', userSchema, 'usuarios');
+export default mongoose.model('Usuario', usuarioSchema, 'usuarios');
