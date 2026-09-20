@@ -222,7 +222,7 @@ export const obtenerVentas = async (req, res, next) => {
         .select('_id')
         .lean();
       if (!product) {
-        return res.json({ sales: [], total: 0 });
+        return res.json({ ventas: [], total: 0 });
       }
       or.push({ 'articulos.producto': product._id }, { producto: product._id });
     }
@@ -244,14 +244,14 @@ export const obtenerVentas = async (req, res, next) => {
       filter.$or = or;
     }
 
-    const sales = await Venta.find(filter)
+    const ventas = await Venta.find(filter)
       .populate('articulos.producto', 'nombre categoria codigo')
       .populate('producto', 'nombre categoria codigo')
       .sort({ fechaCreacion: -1 });
 
-    const total = Math.round(sales.reduce((sum, s) => sum + totalNetoVenta(s), 0) * 100) / 100;
+    const total = Math.round(ventas.reduce((sum, s) => sum + totalNetoVenta(s), 0) * 100) / 100;
 
-    res.json({ sales, total });
+    res.json({ ventas, total });
   } catch (error) {
     next(error);
   }
@@ -811,6 +811,7 @@ export const migrarArticulosVenta = async () => {
   for await (const venta of cursor) {
     const articulos = obtenerArticulos(venta);
     if (!articulos.length || !articulos[0].producto) continue;
+    const fechaOriginal = venta.fechaCreacion || venta.createdAt;
     venta.articulos = articulos.map((i) => ({
       producto: i.producto,
       cantidad: i.cantidad,
@@ -820,6 +821,9 @@ export const migrarArticulosVenta = async () => {
       subtotal: i.subtotal ?? venta.total,
     }));
     await venta.save();
+    if (fechaOriginal) {
+      await Venta.updateOne({ _id: venta._id }, { $set: { fechaCreacion: fechaOriginal } });
+    }
     count++;
   }
   return count;

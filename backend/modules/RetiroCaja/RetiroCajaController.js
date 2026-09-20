@@ -158,10 +158,10 @@ export const obtenerRetirosCaja = async (req, res, next) => {
       filter.fechaCreacion = obtenerRango(desde, hasta, offset);
     }
 
-    const withdrawals = await RetiroCaja.find(filter).sort({ fechaCreacion: -1 });
-    const total = Math.round(withdrawals.reduce((sum, w) => sum + w.monto, 0) * 100) / 100;
+    const retiros = await RetiroCaja.find(filter).sort({ fechaCreacion: -1 });
+    const total = Math.round(retiros.reduce((sum, w) => sum + w.monto, 0) * 100) / 100;
 
-    res.json({ withdrawals, total });
+    res.json({ retiros, total });
   } catch (error) {
     next(error);
   }
