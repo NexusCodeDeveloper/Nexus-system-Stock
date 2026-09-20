@@ -11,7 +11,7 @@ import { formatMoney } from '../../utils/format';
 const PanelCarrito = () => {
   const { confirm } = useIosAlert();
   const { caja, cierreHoy, esDeHoy, openAbrir, openReabrir } = useCaja();
-  const { usuario } = useAutenticacion();
+  const { esAdmin } = useAutenticacion();
   const {
     cart,
     removeFromCart,
@@ -189,7 +189,7 @@ const PanelCarrito = () => {
         {!caja && cierreHoy && (
           <div className="rounded-2xl px-3.5 py-3 bg-amber-500/10 border border-amber-500/25 text-amber-300 text-xs leading-relaxed">
             La caja está cerrada.
-            {usuario?.rol === 'admin' ? (
+            {esAdmin ? (
               <button
                 type="button"
                 onClick={openReabrir}
