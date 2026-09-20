@@ -98,7 +98,7 @@ const Productos = () => {
   const [retirarVariantIdx, setRetirarVariantIdx] = useState('');
   const [retirarSaving, setRetirarSaving] = useState(false);
 
-  const { usuario } = useAutenticacion();
+  const { esAdmin } = useAutenticacion();
   const { show: alert, confirm, toast } = useIosAlert();
   const {
     cart,
@@ -372,7 +372,7 @@ const Productos = () => {
       openQuickAdd(producto);
     } catch (err) {
       if (err.response?.status === 404) {
-        if (usuario?.rol !== 'admin') {
+        if (!esAdmin) {
           toast({
             message: `No existe un producto con el código "${codigo}". Comunicate con el dueño del negocio para que lo cargue al depósito.`,
             duration: 3200,
@@ -593,7 +593,7 @@ const Productos = () => {
         {!caja && cierreHoy && (
           <div className="mb-3 rounded-2xl px-3.5 py-3 bg-amber-500/10 border border-amber-500/25 text-amber-300 text-xs leading-relaxed">
             La caja está cerrada.
-            {usuario?.rol === 'admin' ? (
+            {esAdmin ? (
               <button
                 type="button"
                 onClick={openReabrir}
@@ -1128,7 +1128,7 @@ const Productos = () => {
               <IconCart className="w-4 h-4" />
               Vender
             </button>
-            {usuario?.rol === 'admin' && (
+            {esAdmin && (
               <button
                 onClick={() => handleDropdownAction('retirar')}
                 className="flex items-center gap-2.5 w-full px-3.5 py-2.5 text-sm text-amber-400 hover:bg-ios-hover/5 rounded-xl transition-colors font-medium"
@@ -1151,7 +1151,7 @@ const Productos = () => {
               <IconRefresh className="w-4 h-4" />
               Cambiar
             </button>
-            {usuario?.rol === 'admin' && (
+            {esAdmin && (
               <button
                 onClick={() => handleDropdownAction('eliminar')}
                 className="flex items-center gap-2.5 w-full px-3.5 py-2.5 text-sm text-ios-red hover:bg-ios-hover/5 rounded-xl transition-colors font-medium"
