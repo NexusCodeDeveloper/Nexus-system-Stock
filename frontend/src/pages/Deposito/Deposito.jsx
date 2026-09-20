@@ -49,9 +49,8 @@ const ETIQUETA_PREFS_KEY = 'deposito-etiqueta-prefs';
 const LIMITE_PRODUCTOS = 1000;
 
 const Deposito = () => {
-  const { usuario } = useAutenticacion();
+  const { esAdmin } = useAutenticacion();
   const { show: alert, confirm, toast } = useIosAlert();
-  const esAdmin = usuario?.rol === 'admin';
   const location = useLocation();
   const navigate = useNavigate();
 
