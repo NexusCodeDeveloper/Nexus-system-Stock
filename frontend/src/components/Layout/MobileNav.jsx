@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom';
-import { IconBox, IconChart, IconUsers, IconReturn, IconBell, IconTicket, IconWarehouse } from '../ui/icons';
+import { IconBox, IconChart, IconUsers, IconUserPlus, IconReturn, IconBell, IconTicket, IconWarehouse } from '../ui/icons';
 import { useNotificaciones } from '../../context/NotificacionContext';
 import { useAutenticacion } from '../../context/AutenticacionContext';
 
@@ -11,15 +11,16 @@ const links = [
   { to: '/proveedores', label: 'Proveedores', icon: IconUsers, gradient: 'from-indigo-500 to-purple-600', adminOnly: true },
   { to: '/devoluciones', label: 'Devoluciones', icon: IconReturn, gradient: 'from-orange-500 to-rose-600' },
   { to: '/notificaciones', label: 'Avisos', icon: IconBell, gradient: 'from-cyan-500 to-sky-600' },
+  { to: '/empleados', label: 'Empleados', icon: IconUserPlus, gradient: 'from-rose-500 to-pink-600', adminOnly: true },
 ];
 
 const MobileNav = () => {
   const { pendingCount } = useNotificaciones();
-  const { usuario } = useAutenticacion();
-  const visibleLinks = links.filter((link) => !link.adminOnly || usuario?.rol === 'admin');
+  const { esAdmin } = useAutenticacion();
+  const visibleLinks = links.filter((link) => !link.adminOnly || esAdmin);
   return (
     <nav className="fixed bottom-0 inset-x-0 z-40 md:hidden bg-ios-surface/90 backdrop-blur-2xl border-t border-ios-separator/50 safe-bottom">
-      <div className="grid grid-cols-7">
+      <div className="grid grid-cols-8">
         {visibleLinks.map((link) => (
           <NavLink
             key={link.to}
