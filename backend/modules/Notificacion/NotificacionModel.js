@@ -22,6 +22,16 @@ const notificationSchema = new mongoose.Schema(
       ref: 'Usuario',
       required: true,
     },
+    destinatario: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Usuario',
+      default: null,
+    },
+    destinatarioNombre: {
+      type: String,
+      trim: true,
+      default: '',
+    },
     realizadoPor: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Usuario',
@@ -51,5 +61,6 @@ const notificationSchema = new mongoose.Schema(
 
 notificationSchema.index({ fechaCreacion: -1 });
 notificationSchema.index({ estado: 1, fechaCreacion: -1 });
+notificationSchema.index({ destinatario: 1, fechaCreacion: -1 });
 
 export default mongoose.model('Notificacion', notificationSchema, 'notificaciones');
