@@ -1,4 +1,5 @@
 import Notificacion from './NotificacionModel.js';
+import Usuario from '../Autenticacion/UsuarioModel.js';
 import {
   schemaCrearNotificacion,
   schemaActualizarNotificacion,
@@ -9,12 +10,31 @@ import { enviarEvento } from '../../services/PushService.js';
 const poblarUsuarios = (query) =>
   query
     .populate('creadoPor', 'nombre')
-    .populate('realizadoPor', 'nombre');
+    .populate('realizadoPor', 'nombre')
+    .populate('destinatario', 'nombre');
+
+const resolverDestinatario = async (destinatario) => {
+  if (!destinatario) return { destinatario: null, destinatarioNombre: '' };
+  const empleado = await Usuario.findOne(
+    { _id: destinatario, activo: true, rol: 'user' },
+    'nombre'
+  );
+  if (!empleado) {
+    const error = new Error('El empleado seleccionado no existe o no está activo');
+    error.statusCode = 400;
+    throw error;
+  }
+  return { destinatario: empleado._id, destinatarioNombre: empleado.nombre };
+};
 
 export const obtenerNotificaciones = async (req, res, next) => {
   try {
+    const filtro =
+      req.usuario.rol === 'admin'
+        ? {}
+        : { $or: [{ destinatario: null }, { destinatario: req.usuario.id }] };
     const notificaciones = await poblarUsuarios(
-      Notificacion.find().sort({ fechaCreacion: -1 })
+      Notificacion.find(filtro).sort({ fechaCreacion: -1 })
     );
     res.json(notificaciones);
   } catch (error) {
@@ -25,8 +45,10 @@ export const obtenerNotificaciones = async (req, res, next) => {
 export const crearNotificacion = async (req, res, next) => {
   try {
     const data = schemaCrearNotificacion.parse(req.body);
+    const asignacion = await resolverDestinatario(data.destinatario);
     const notificacion = await Notificacion.create({
       ...data,
+      ...asignacion,
       creadoPor: req.usuario.id,
     });
 
@@ -35,7 +57,9 @@ export const crearNotificacion = async (req, res, next) => {
       titulo: 'Nuevo aviso',
       mensaje: data.titulo,
       url: '/notificaciones',
-      para: 'empleados',
+      para: asignacion.destinatario
+        ? { usuarioId: asignacion.destinatario, nombre: asignacion.destinatarioNombre }
+        : 'empleados',
     });
 
     res.status(201).json(notificacion);
@@ -47,7 +71,11 @@ export const crearNotificacion = async (req, res, next) => {
 export const actualizarNotificacion = async (req, res, next) => {
   try {
     const data = schemaActualizarNotificacion.parse(req.body);
-    const notificacion = await Notificacion.findByIdAndUpdate(req.params.id, data, {
+    const cambios = { ...data };
+    if ('destinatario' in data) {
+      Object.assign(cambios, await resolverDestinatario(data.destinatario));
+    }
+    const notificacion = await Notificacion.findByIdAndUpdate(req.params.id, cambios, {
       new: true,
       runValidators: true,
     });
@@ -75,8 +103,15 @@ export const eliminarNotificacion = async (req, res, next) => {
 export const completarNotificacion = async (req, res, next) => {
   try {
     const data = schemaCompletarNotificacion.parse(req.body);
+    const esAdmin = req.usuario.rol === 'admin';
     const notificacion = await Notificacion.findOneAndUpdate(
-      { _id: req.params.id, estado: { $ne: 'realizado' } },
+      {
+        _id: req.params.id,
+        estado: { $ne: 'realizado' },
+        ...(esAdmin
+          ? {}
+          : { $or: [{ destinatario: null }, { destinatario: req.usuario.id }] }),
+      },
       {
         $set: {
           estado: 'realizado',
@@ -84,17 +119,20 @@ export const completarNotificacion = async (req, res, next) => {
           realizadoNombre: req.usuario.nombre,
           realizadoPor: req.usuario.id,
           realizadoEn: new Date(),
-          nuevaParaAdmin: req.usuario.rol === 'admin' ? false : true,
+          nuevaParaAdmin: esAdmin ? false : true,
         },
       },
       { new: true }
     );
     if (!notificacion) {
-      const existe = await Notificacion.exists({ _id: req.params.id });
+      const existe = await Notificacion.findById(req.params.id);
       if (!existe) {
         return res.status(404).json({ message: 'Aviso no encontrado' });
       }
-      return res.status(400).json({ message: 'Este aviso ya fue marcado como realizado' });
+      if (existe.estado === 'realizado') {
+        return res.status(400).json({ message: 'Este aviso ya fue marcado como realizado' });
+      }
+      return res.status(403).json({ message: 'Este aviso está asignado a otro empleado' });
     }
     const pobladas = await poblarUsuarios(
       Notificacion.findById(notificacion._id)
