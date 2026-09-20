@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { iniciarSesion } from '../../api/autenticacion';
 import { useAutenticacion } from '../../context/AutenticacionContext';
 import { obtenerMensajeErrorApi } from '../../utils/apiError';
+import { useIosAlert } from '../../components/alerts';
 import IosButton from '../../components/ui/IosButton';
 import { IconEye, IconEyeOff } from '../../components/ui/icons';
 
@@ -11,6 +12,7 @@ const LoginModal = () => {
   const [loading, setLoading] = useState(false);
   const [showPw, setShowPw] = useState(false);
   const { login } = useAutenticacion();
+  const { toast, show } = useIosAlert();
   const mountedRef = useRef(true);
 
   useEffect(() => {
@@ -29,7 +31,17 @@ const LoginModal = () => {
       const res = await iniciarSesion({ ...form, email: form.email.trim() });
       login(res.data);
     } catch (err) {
-      if (mountedRef.current) setError(obtenerMensajeErrorApi(err, 'Error al iniciar sesión'));
+      if (mountedRef.current) {
+        setError(obtenerMensajeErrorApi(err, 'Error al iniciar sesión'));
+        if (err.response?.data?.codigo === 'CUENTA_DESACTIVADA') {
+          toast({ message: 'Tu cuenta está desactivada', type: 'error' });
+          show({
+            icon: 'error',
+            title: 'Acceso denegado',
+            message: 'Un administrador te negó el acceso al sistema',
+          });
+        }
+      }
     } finally {
       if (mountedRef.current) setLoading(false);
     }
