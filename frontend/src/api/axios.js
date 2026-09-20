@@ -35,8 +35,9 @@ api.interceptors.response.use(
         return Promise.reject(error);
       }
 
+      const desactivada = error.response?.data?.codigo === 'CUENTA_DESACTIVADA';
       removeItem('token');
-      window.dispatchEvent(new Event('auth-unauthorized'));
+      window.dispatchEvent(new CustomEvent('auth-unauthorized', { detail: { desactivada } }));
     }
     return Promise.reject(error);
   }
