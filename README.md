@@ -32,18 +32,18 @@ npm run dev            # backend (nodemon, puerto 5000) + frontend (Vite, puerto
 | `npm start` | Arranca el backend (sirve `frontend/dist` si `NODE_ENV=production`) |
 | `npm run lint` | Lint del frontend (oxlint) |
 | `npm test` | Tests del backend (node:test) |
-| `npm run migrate:money --prefix backend` | Dry-run de la migración de montos a centavos |
-| `npm run migrate:money:apply --prefix backend` | Aplica la migración (hace backup antes) |
-| `npm run audit:data --prefix backend` | Diagnóstico de datos (solo lectura): legacy, huérfanos, descuadres |
-| `npm run repair:data --prefix backend` | Dry-run de reparación de datos |
-| `npm run repair:data:apply --prefix backend` | Aplica la reparación (hace backup antes) |
+| `npm run migrar:dinero --prefix backend` | Dry-run de la migración de montos a centavos |
+| `npm run migrar:dinero:aplicar --prefix backend` | Aplica la migración (hace backup antes) |
+| `npm run auditoria:datos --prefix backend` | Diagnóstico de datos (solo lectura): legacy, huérfanos, descuadres |
+| `npm run reparar:datos --prefix backend` | Dry-run de reparación de datos |
+| `npm run reparar:datos:aplicar --prefix backend` | Aplica la reparación (hace backup antes) |
 
 ## Integridad de datos
 
 - **Tests de integración**: `npm test` levanta una base MongoDB en memoria y ejecuta los flujos
   críticos (venta, borrado, devolución total y su reversión, cambio con ticket legacy, cierre,
   disponible de caja, migración de ventas). La CI los corre en cada push.
-- **Ventas legacy**: al arrancar, las ventas sin `items[]` se migran solas al formato nuevo.
+- **Ventas legacy**: al arrancar, las ventas sin `articulos[]` se migran solas al formato nuevo.
 - **Cierres**: no se pueden borrar ventas, retiros ni devoluciones que ya forman parte de una caja
   cerrada; primero hay que eliminar el cierre (solo admin). El cierre descuenta retiros y reintegros
   en efectivo, y muestra el total de devoluciones.
@@ -54,7 +54,7 @@ npm run dev            # backend (nodemon, puerto 5000) + frontend (Vite, puerto
   perder unidades) ni eliminar productos con ventas, devoluciones o movimientos asociados.
 - **Migración de dinero**: el marcador se reclama antes de tocar datos y se saltan los documentos
   creados después de iniciada, evitando la doble conversión ×100. **Detené el servidor antes de
-  aplicar la migración.** Verificación: `node scripts/migrate-money.js --verify` (parado en
+  aplicar la migración.** Verificación: `node scripts/migrar-dinero.js --verify` (parado en
   `backend/`).
 
 ## Caja del día
@@ -76,17 +76,17 @@ La caja funciona con **una apertura y un cierre por día**:
 - **Efectivo disponible** = fondo inicial + ventas en efectivo − retiros − reintegros.
 - El historial de Cierres muestra solo cajas cerradas, con estado, quién abrió/cerró y los totales.
   Los cierres viejos (mañana/tarde) se siguen viendo igual.
-- Endpoints: `POST /api/sales/caja/abrir`, `GET /api/sales/caja/abierta`,
-  `POST /api/sales/caja/cerrar` y `POST /api/sales/caja/reabrir` (admin).
+- Endpoints: `POST /api/ventas/caja/abrir`, `GET /api/ventas/caja/abierta`,
+  `POST /api/ventas/caja/cerrar` y `POST /api/ventas/caja/reabrir` (admin).
 
 ## Migración de montos a centavos
 
 Los montos se guardan en la base como **enteros en centavos** y la API los expone como
 decimales (getters de Mongoose). La migración ya fue aplicada a la base de desarrollo.
 
-- Script: `backend/scripts/migrate-money.js`
-- Dry-run: `npm run migrate:money --prefix backend`
-- Aplicar: `npm run migrate:money:apply --prefix backend` (requiere confirmación implícita del flag)
+- Script: `backend/scripts/migrar-dinero.js`
+- Dry-run: `npm run migrar:dinero --prefix backend`
+- Aplicar: `npm run migrar:dinero:aplicar --prefix backend` (requiere confirmación implícita del flag)
 - Antes de aplicar, el script guarda un backup JSON en `backend/backups/`
 - Es idempotente: usa el marcador `migrations._id = "money-cents-v1"`
 
@@ -127,15 +127,15 @@ Ejemplo de error en desarrollo:
    La base de datos no soporta transacciones
    Motivo       La operación requiere un replica set de MongoDB.
    Detalle      Transaction numbers are only allowed on a replica set member or mongos
-   Petición     POST /api/sales
+   Petición     POST /api/ventas
    Código       500
-   Dónde        SaleController.js:77:5 → createSale
+   Dónde        VentaController.js:77:5 → crearVenta
    Seguimiento  petición 3f2b9c1a
    Quién        admin@nexus.com (admin)
    Qué revisar  Usá un clúster de MongoDB Atlas (replica set) o revisá MONGO_URI.
 ```
 
-Peticiones normales (en una línea): `[OK] 21:39:01 · GET /api/sales → 200 · 45 ms · quién=admin@nexus.com · petición 3f2b9c1a`
+Peticiones normales (en una línea): `[OK] 21:39:01 · GET /api/ventas → 200 · 45 ms · quién=admin@nexus.com · petición 3f2b9c1a`
 
 En producción los logs salen como JSON con claves en español (`fecha`, `nivel`, `mensaje`, `motivo`,
 `peticion`, `codigo`, `donde`, `queRevisar`…) para poder filtrarlos en los logs del servidor.
@@ -163,8 +163,8 @@ Todo el stock entra al depósito y desde ahí se carga el salón:
   salón y, si el catálogo supera los 1000 productos, un aviso para usar la búsqueda.
 - Cada movimiento queda registrado en la pestaña **Movimientos** del depósito (producto, variante,
   cantidad, tipo, quién y cuándo), con filtros por tipo, fecha y producto, paginación y **export CSV**.
-- Endpoints: `PUT /api/products/:id/deposito` (admin), `POST /api/products/:id/reponer` (admin y
-  empleado), `POST /api/products/:id/retirar` (admin) y `GET /api/stock-movements` (admin).
+- Endpoints: `PUT /api/productos/:id/deposito` (admin), `POST /api/productos/:id/reponer` (admin y
+  empleado), `POST /api/productos/:id/retirar` (admin) y `GET /api/movimientos-stock` (admin).
 
 ## Códigos de barras y QR
 
@@ -187,8 +187,8 @@ Cada producto tiene un **código interno** único (`NC-000001`) que se genera au
   diferencia y el método de pago). Las devoluciones sin ticket ya no modifican ventas existentes.
 - **Número de ticket:** se genera solo, como código aleatorio único `T-XXXXXXXX` (letras y números, sin
   caracteres ambiguos). Antes de asignarlo el servidor verifica que no exista y el índice único de la
-  base impide cualquier repetición. Para regenerar los tickets viejos: `npm run migrate:tickets --prefix backend`
-  (dry-run) y `npm run migrate:tickets:apply --prefix backend` (aplica, con backup).
+  base impide cualquier repetición. Para regenerar los tickets viejos: `npm run migrar:tickets --prefix backend`
+  (dry-run) y `npm run migrar:tickets:aplicar --prefix backend` (aplica, con backup).
 - **Etiquetas:** desde el menú de acciones del producto en Depósito elegís el formato, la medida y la
   cantidad (1–100):
   - **Etiqueta:** una por página con la medida elegida (60×40 por defecto; ideal para rollo troquelado
@@ -199,7 +199,7 @@ Cada producto tiene un **código interno** único (`NC-000001`) que se genera au
   desactivar con los interruptores "Mostrar QR" y "Mostrar precio". En el diálogo de impresión
   conviene usar márgenes en 0, escala 100% y sin encabezados.
 
-Endpoints: `GET /api/products/codigo/:codigo` (buscar por código) y `GET /api/products/siguiente-codigo`
+Endpoints: `GET /api/productos/codigo/:codigo` (buscar por código) y `GET /api/productos/siguiente-codigo`
 (admin; lo usa el formulario para mostrar el código al crear).
 
 ## Carrito y sidebar
@@ -210,7 +210,7 @@ Endpoints: `GET /api/products/codigo/:codigo` (buscar por código) y `GET /api/p
   derecha con el checkout completo (items, empleado, descuento, pago, total y Confirmar Venta). Se
   ve en todas las páginas y desaparece al vaciar el carrito.
 - **Mobile:** el carrito se sigue abriendo como modal desde el botón "Carrito" de Salón.
-- El estado del carrito es global (`CartContext`), así que la venta no se pierde al cambiar de página.
+- El estado del carrito es global (`CarritoContext.jsx`), así que la venta no se pierde al cambiar de página.
 
 ## Documentación
 

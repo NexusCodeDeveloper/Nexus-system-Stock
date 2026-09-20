@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { aCentavos, deCentavos, campoCentavos, campoCentavosPositivo } from '../utils/money.js';
+import { aCentavos, deCentavos, campoCentavos, campoCentavosPositivo } from '../utils/DineroUtils.js';
 
 test('aCentavos convierte decimales a enteros', () => {
   assert.equal(aCentavos(123.45), 12345);

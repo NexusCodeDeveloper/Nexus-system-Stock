@@ -1,9 +1,9 @@
-import { useAuth } from '../../context/AuthContext';
+import { useAutenticacion } from '../../context/AutenticacionContext';
 
 const ProtectedRoute = ({ children }) => {
-  const { user, loading } = useAuth();
+  const { usuario, loading } = useAutenticacion();
 
-  if (loading || !user) {
+  if (loading || !usuario) {
     return null;
   }
 

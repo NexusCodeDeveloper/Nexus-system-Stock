@@ -1,29 +1,29 @@
 import { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { getProducts, createProduct, updateProduct, deleteProduct, addDeposito, reponerStock, pasarSalon } from '../../api/products';
-import { getStockMovements } from '../../api/stockMovements';
-import { getApiErrorMessage } from '../../utils/apiError';
+import { obtenerProductos, crearProducto, actualizarProducto, eliminarProducto, addDeposito, reponerStock, pasarSalon } from '../../api/productos';
+import { obtenerMovimientosStock } from '../../api/movimientosStock';
+import { obtenerMensajeErrorApi } from '../../utils/apiError';
 import { printLabel } from '../../utils/printLabel';
 import { formatDate, formatMoney } from '../../utils/format';
 import { getItem, setItem } from '../../utils/storage';
-import { useAuth } from '../../context/AuthContext';
+import { useAutenticacion } from '../../context/AutenticacionContext';
 import { useIosAlert } from '../../components/alerts';
 import IosButton from '../../components/ui/IosButton';
 import IosModal from '../../components/ui/IosModal';
 import IosSearch from '../../components/ui/IosSearch';
 import IosToggle from '../../components/ui/IosToggle';
 import { IosField, IosInput, IosSelect } from '../../components/ui/IosForm';
-import ProductForm from '../../components/ProductForm/ProductForm';
+import FormularioProducto from '../../components/FormularioProducto/FormularioProducto';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
 import { IconArrowUp, IconChevronDown, IconHistory, IconPencil, IconPlus, IconPrint, IconRefresh, IconTrash, IconWarehouse } from '../../components/ui/icons';
 
 const variantLabel = (v) => [v.talle, v.color].filter(Boolean).join(' / ') || 'Base';
 
 const depositoTotal = (p) =>
-  p.variants?.length > 0 ? p.variants.reduce((s, v) => s + (v.deposito || 0), 0) : (p.deposito || 0);
+  p.variantes?.length > 0 ? p.variantes.reduce((s, v) => s + (v.deposito || 0), 0) : (p.deposito || 0);
 
 const salonTotal = (p) =>
-  p.variants?.length > 0 ? p.variants.reduce((s, v) => s + (v.cantidad || 0), 0) : (p.cantidad || 0);
+  p.variantes?.length > 0 ? p.variantes.reduce((s, v) => s + (v.cantidad || 0), 0) : (p.cantidad || 0);
 
 const TIPOS = {
   ingreso_deposito: { label: 'Ingreso a depósito', cls: 'bg-violet-500/15 text-violet-300' },
@@ -49,9 +49,9 @@ const ETIQUETA_PREFS_KEY = 'deposito-etiqueta-prefs';
 const LIMITE_PRODUCTOS = 1000;
 
 const Deposito = () => {
-  const { user } = useAuth();
+  const { usuario } = useAutenticacion();
   const { show: alert, confirm, toast } = useIosAlert();
-  const esAdmin = user?.rol === 'admin';
+  const esAdmin = usuario?.rol === 'admin';
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -107,12 +107,12 @@ const Deposito = () => {
     setError('');
     try {
       const term = String(buscar || '').trim();
-      const res = await getProducts(term ? { search: term } : undefined);
+      const res = await obtenerProductos(term ? { search: term } : undefined);
       if (seq !== productosSeqRef.current) return;
       setProductos(Array.isArray(res.data) ? res.data : []);
     } catch (err) {
       if (seq !== productosSeqRef.current) return;
-      setError(getApiErrorMessage(err, 'Error al cargar productos'));
+      setError(obtenerMensajeErrorApi(err, 'Error al cargar productos'));
     } finally {
       if (seq === productosSeqRef.current) setLoading(false);
     }
@@ -129,12 +129,12 @@ const Deposito = () => {
       if (movDesde) params.desde = movDesde;
       if (movHasta) params.hasta = movHasta;
       if (movDesde || movHasta) params.tz = new Date().getTimezoneOffset();
-      const res = await getStockMovements(params);
+      const res = await obtenerMovimientosStock(params);
       if (seq !== movSeqRef.current) return;
       setMovimientos(Array.isArray(res.data) ? res.data : []);
     } catch (err) {
       if (seq !== movSeqRef.current) return;
-      setMovError(getApiErrorMessage(err, 'Error al cargar movimientos'));
+      setMovError(obtenerMensajeErrorApi(err, 'Error al cargar movimientos'));
     } finally {
       if (seq === movSeqRef.current) setMovLoading(false);
     }
@@ -145,16 +145,16 @@ const Deposito = () => {
     setIsSubmitting(true);
     try {
       if (editing) {
-        await updateProduct(editing._id, data);
+        await actualizarProducto(editing._id, data);
       } else {
-        await createProduct(data);
+        await crearProducto(data);
       }
       setShowForm(false);
       setEditing(null);
       fetchProductos();
       toast({ message: editing ? 'Producto actualizado' : 'Producto creado' });
     } catch (err) {
-      alert({ icon: 'error', title: 'Error', message: getApiErrorMessage(err, 'Error al guardar producto') });
+      alert({ icon: 'error', title: 'Error', message: obtenerMensajeErrorApi(err, 'Error al guardar producto') });
     } finally {
       setIsSubmitting(false);
     }
@@ -223,11 +223,11 @@ const Deposito = () => {
     });
     if (!confirmed) return;
     try {
-      await deleteProduct(p._id);
+      await eliminarProducto(p._id);
       fetchProductos();
       toast({ message: 'Producto eliminado' });
     } catch (err) {
-      alert({ icon: 'error', title: 'Error', message: getApiErrorMessage(err, 'Error al eliminar producto') });
+      alert({ icon: 'error', title: 'Error', message: obtenerMensajeErrorApi(err, 'Error al eliminar producto') });
     }
   };
 
@@ -302,7 +302,7 @@ const Deposito = () => {
         alert({ icon: 'warning', title: 'No se pudo imprimir', message: 'Habilitá las ventanas emergentes para imprimir' });
       }
     } catch (err) {
-      alert({ icon: 'error', title: 'Error', message: getApiErrorMessage(err, 'No se pudo imprimir la etiqueta') });
+      alert({ icon: 'error', title: 'Error', message: obtenerMensajeErrorApi(err, 'No se pudo imprimir la etiqueta') });
     } finally {
       setEtiquetaSaving(false);
     }
@@ -311,14 +311,14 @@ const Deposito = () => {
   const abrirModal = (producto, modo) => {
     setStockModal({ producto, modo });
     setModalCantidad('1');
-    setModalVariantIdx(producto.variants?.length === 1 ? '0' : '');
+    setModalVariantIdx(producto.variantes?.length === 1 ? '0' : '');
     setModalNuevoTalle('');
     setModalNuevoColor('');
     setModalFijar(false);
   };
 
   const modalProducto = stockModal?.producto;
-  const modalVariants = modalProducto?.variants || [];
+  const modalVariants = modalProducto?.variantes || [];
   const modalVariant = modalVariants[Number(modalVariantIdx)] || null;
   const modalEsNueva = stockModal?.modo === 'cargar' && modalVariants.length > 0 && modalVariantIdx === '__nueva__';
 
@@ -372,7 +372,7 @@ const Deposito = () => {
       setStockModal(null);
       fetchProductos();
     } catch (err) {
-      alert({ icon: 'error', title: 'Error', message: getApiErrorMessage(err, 'No se pudo mover el stock') });
+      alert({ icon: 'error', title: 'Error', message: obtenerMensajeErrorApi(err, 'No se pudo mover el stock') });
     } finally {
       setModalSaving(false);
     }
@@ -381,8 +381,8 @@ const Deposito = () => {
   const pasarTodoAlSalon = async (p) => {
     cerrarDropdown();
     if (pasarTodoSaving) return;
-    const variantes = (p.variants || []).filter((v) => (v.deposito || 0) > 0);
-    const total = p.variants?.length > 0
+    const variantes = (p.variantes || []).filter((v) => (v.deposito || 0) > 0);
+    const total = p.variantes?.length > 0
       ? variantes.reduce((s, v) => s + (v.deposito || 0), 0)
       : (p.deposito || 0);
     if (total <= 0) {
@@ -398,14 +398,14 @@ const Deposito = () => {
     if (!confirmed) return;
     setPasarTodoSaving(true);
     try {
-      const items = p.variants?.length > 0
+      const items = p.variantes?.length > 0
         ? variantes.map((v) => ({ producto: p._id, cantidad: v.deposito, talle: v.talle || '', color: v.color || '' }))
         : [{ producto: p._id, cantidad: total, talle: '', color: '' }];
       await pasarSalon(items);
       fetchProductos();
       toast({ message: `Pasado al salón: ${total} u.` });
     } catch (err) {
-      alert({ icon: 'error', title: 'Error', message: getApiErrorMessage(err, 'No se pudo pasar el stock') });
+      alert({ icon: 'error', title: 'Error', message: obtenerMensajeErrorApi(err, 'No se pudo pasar el stock') });
       fetchProductos();
     } finally {
       setPasarTodoSaving(false);
@@ -426,7 +426,7 @@ const Deposito = () => {
         TIPOS[m.tipo]?.label || m.tipo || '',
         m.cantidad,
         m.empleado || '',
-        m.createdAt ? new Date(m.createdAt).toISOString() : '',
+        m.fechaCreacion ? new Date(m.fechaCreacion).toISOString() : '',
       ]);
     }
     const csv = filas
@@ -473,9 +473,9 @@ const Deposito = () => {
   );
 
   const detalleVariantes = (p) =>
-    p.variants?.length > 0 ? (
+    p.variantes?.length > 0 ? (
       <div className="text-xs text-ios-tertiary space-y-0.5">
-        {p.variants.map((v, i) => (
+        {p.variantes.map((v, i) => (
           <div key={i} className="flex items-center gap-2">
             <span className="text-ios-secondary font-medium">{variantLabel(v)}</span>
             <span>Dep: {v.deposito || 0}</span>
@@ -606,7 +606,7 @@ const Deposito = () => {
                       >
                         <td className="px-5 py-3.5">
                           <div className="flex items-center gap-2">
-                            {p.variants?.length > 0 && (
+                            {p.variantes?.length > 0 && (
                               <IconChevronDown
                                 className={`w-3 h-3 text-ios-tertiary transition-transform ${expandedId === p._id ? 'rotate-180' : ''}`}
                                 strokeWidth={2.2}
@@ -671,7 +671,7 @@ const Deposito = () => {
                       </button>
                       <div className="shrink-0">{botonAcciones(p)}</div>
                     </div>
-                    {expandedId === p._id && p.variants?.length > 0 && (
+                    {expandedId === p._id && p.variantes?.length > 0 && (
                       <div className="mt-3 pt-3 border-t border-ios-separator/40">{detalleVariantes(p)}</div>
                     )}
                   </div>
@@ -755,7 +755,7 @@ const Deposito = () => {
                             </span>
                           </div>
                           <p className="text-xs text-ios-tertiary mt-0.5">
-                            {variante ? `${variante} · ` : ''}{m.empleado || '—'} · {formatDate(m.createdAt)}
+                            {variante ? `${variante} · ` : ''}{m.empleado || '—'} · {formatDate(m.fechaCreacion)}
                           </p>
                         </div>
                         <span className="text-ios-label font-bold tabular-nums shrink-0">{m.cantidad} u.</span>
@@ -798,8 +798,8 @@ const Deposito = () => {
               <IconArrowUp className="w-4 h-4" />
               Pasar al salón
             </button>
-            {((dropdown.product?.variants?.length > 0 && dropdown.product.variants.some((v) => (v.deposito || 0) > 0))
-              || (dropdown.product?.variants?.length === 0 && (dropdown.product?.deposito || 0) > 0)) && (
+            {((dropdown.product?.variantes?.length > 0 && dropdown.product.variantes.some((v) => (v.deposito || 0) > 0))
+              || (dropdown.product?.variantes?.length === 0 && (dropdown.product?.deposito || 0) > 0)) && (
               <button
                 onClick={() => pasarTodoAlSalon(dropdown.product)}
                 disabled={pasarTodoSaving}
@@ -986,7 +986,7 @@ const Deposito = () => {
         <h2 className="text-[17px] font-semibold text-ios-label mb-4">
           {editing ? 'Editar Producto' : 'Nuevo Producto'}
         </h2>
-        <ProductForm
+        <FormularioProducto
           key={editing?._id ?? 'nuevo'}
           initial={editing}
           onSubmit={handleGuardar}

@@ -27,7 +27,7 @@ build de producción OK, 21 tests unitarios del backend OK y arranque del servid
 | 2 | `CashWithdrawalController.js` | Guard del día con doble descuento: `monto <= efectivoVendido - 2*retirado`; rechazaba retiros válidos. | Corregido |
 | 3 | `SaleController.js` (deleteSale) | No chequeaba `Return.ventaDiferenciaId`: borrar la venta de diferencia duplicaba stock. | Corregido |
 | 4 | `Products.jsx` (devolución inline) | El backend elegía la venta más reciente y mutaba un ticket no elegido. | Corregido |
-| 5 | `migrate-money.js` / `migrate-tickets.js` | Migraciones no idempotentes ante crash: re-ejecutar volvía a multiplicar ×100. | Corregido |
+| 5 | `migrar-dinero.js` / `migrar-tickets.js` | Migraciones no idempotentes ante crash: re-ejecutar volvía a multiplicar ×100. | Corregido |
 
 **Detalle de las correcciones:**
 

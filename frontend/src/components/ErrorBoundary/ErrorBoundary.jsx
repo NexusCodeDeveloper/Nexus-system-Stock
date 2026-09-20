@@ -1,5 +1,5 @@
 import { Component } from 'react';
-import { reportarError } from '../../utils/errorReporter';
+import { reportarError } from '../../utils/ReporteroErrores';
 
 class ErrorBoundary extends Component {
   constructor(props) {

@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef, useLayoutEffect } from 'react';
-import { getSales as getTickets } from '../../api/sales';
+import { obtenerVentas as obtenerTickets } from '../../api/ventas';
 import Ticket, { printTicket } from '../../components/Ticket/Ticket';
-import ReturnForm from '../../components/ReturnForm/ReturnForm';
-import { getApiErrorMessage } from '../../utils/apiError';
+import FormularioDevolucion from '../../components/FormularioDevolucion/FormularioDevolucion';
+import { obtenerMensajeErrorApi } from '../../utils/apiError';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
 import IosModal from '../../components/ui/IosModal';
 import IosSearch from '../../components/ui/IosSearch';
@@ -17,7 +17,7 @@ const getPagos = (s) =>
   (s.pagos && s.pagos.length > 0 ? s.pagos : [{ metodo: s.metodoPago || 'efectivo', monto: s.total }]);
 
 const getItems = (s) =>
-  (s.items && s.items.length > 0 ? s.items : [{ producto: s.producto, cantidad: s.cantidad, precio: s.precio, talle: s.talle }]);
+  (s.articulos && s.articulos.length > 0 ? s.articulos : [{ producto: s.producto, cantidad: s.cantidad, precio: s.precio, talle: s.talle }]);
 
 const pagoBadge = (metodo) => {
   if (metodo === 'efectivo') return 'bg-green-500/15 text-green-400';
@@ -111,15 +111,15 @@ const Tickets = () => {
     const params = { offset: new Date().getTimezoneOffset() };
     const termino = busqueda.trim();
     if (termino) params.buscar = termino;
-    getTickets(params)
+    obtenerTickets(params)
       .then((res) => {
         if (seq !== fetchSeqRef.current) return;
-        const sales = res.data?.sales;
-        setData(Array.isArray(sales) ? sales : []);
+        const ventas = res.data?.ventas;
+        setData(Array.isArray(ventas) ? ventas : []);
       })
       .catch((err) => {
         if (seq !== fetchSeqRef.current) return;
-        setFetchError(getApiErrorMessage(err, 'Error al cargar tickets'));
+        setFetchError(obtenerMensajeErrorApi(err, 'Error al cargar tickets'));
       })
       .finally(() => {
         if (seq === fetchSeqRef.current) setLoading(false);
@@ -234,7 +234,7 @@ const Tickets = () => {
                             ))}
                           </div>
                         </td>
-                        <td className="px-4 py-3.5 text-ios-tertiary text-xs">{formatDate(s.createdAt)}</td>
+                        <td className="px-4 py-3.5 text-ios-tertiary text-xs">{formatDate(s.fechaCreacion)}</td>
                         <td className="px-5 py-3.5 text-right">
                           <button
                             onClick={(e) => openDropdown(e, s)}
@@ -303,7 +303,7 @@ const Tickets = () => {
                     </div>
                     <div className="flex items-center justify-between mt-3 pt-3 border-t border-ios-separator/40">
                       <p className="text-xs text-ios-tertiary truncate min-w-0 flex-1">
-                        {formatDate(s.createdAt)} · {s.empleado}
+                        {formatDate(s.fechaCreacion)} · {s.empleado}
                       </p>
                       {isExpanded ? (
                         <button
@@ -424,7 +424,7 @@ const Tickets = () => {
         )}
       </IosModal>
 
-      <ReturnForm
+      <FormularioDevolucion
         sale={returnSale}
         open={!!returnSale}
         defaultExchange={returnIsCambio}

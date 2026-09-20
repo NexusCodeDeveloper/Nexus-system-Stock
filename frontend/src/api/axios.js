@@ -1,6 +1,6 @@
 import axios from 'axios';
 import { getItem, removeItem } from '../utils/storage';
-import { reportarError } from '../utils/errorReporter';
+import { reportarError } from '../utils/ReporteroErrores';
 import { API_BASE_URL } from '../utils/apiBase';
 
 const api = axios.create({

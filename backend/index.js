@@ -6,24 +6,24 @@ import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import { connectDB } from './config/db.js';
-import logger from './utils/logger.js';
-import { describirError } from './utils/mensajesError.js';
-import { requestContext, requestLogger } from './middlewares/RequestLogger.js';
-import { errorHandler } from './middlewares/ErrorMiddleware.js';
-import AuthRoutes from './modules/Auth/AuthRoutes.js';
-import SupplierRoutes from './modules/Supplier/SupplierRoutes.js';
-import ProductRoutes from './modules/Product/ProductRoutes.js';
-import StockMovementRoutes from './modules/StockMovement/StockMovementRoutes.js';
-import ReturnRoutes from './modules/Return/ReturnRoutes.js';
-import SaleRoutes from './modules/Sale/SaleRoutes.js';
-import NotificationRoutes from './modules/Notification/NotificationRoutes.js';
-import CashWithdrawalRoutes from './modules/CashWithdrawal/CashWithdrawalRoutes.js';
+import logger from './utils/LoggerUtils.js';
+import { describirError } from './utils/MensajesErrorUtils.js';
+import { contextoPeticion, registradorPeticiones } from './middlewares/RequestLogger.js';
+import { manejadorErrores } from './middlewares/ErrorMiddleware.js';
+import AutenticacionRoutes from './modules/Autenticacion/AutenticacionRoutes.js';
+import ProveedorRoutes from './modules/Proveedor/ProveedorRoutes.js';
+import ProductoRoutes from './modules/Producto/ProductoRoutes.js';
+import MovimientoStockRoutes from './modules/MovimientoStock/MovimientoStockRoutes.js';
+import DevolucionRoutes from './modules/Devolucion/DevolucionRoutes.js';
+import VentaRoutes from './modules/Venta/VentaRoutes.js';
+import NotificacionRoutes from './modules/Notificacion/NotificacionRoutes.js';
+import RetiroCajaRoutes from './modules/RetiroCaja/RetiroCajaRoutes.js';
 import PushRoutes from './modules/Push/PushRoutes.js';
-import ErrorReportRoutes from './modules/ErrorReport/ErrorReportRoutes.js';
-import User from './modules/Auth/AuthModel.js';
-import Sale from './modules/Sale/SaleModel.js';
-import DailyClose from './modules/Sale/DailyCloseModel.js';
-import { ensureTicketNumbers, migrateSaleItems } from './modules/Sale/SaleController.js';
+import ReporteErrorRoutes from './modules/ReporteError/ReporteErrorRoutes.js';
+import Usuario from './modules/Autenticacion/UsuarioModel.js';
+import Venta from './modules/Venta/VentaModel.js';
+import CierreCaja from './modules/Venta/CierreCajaModel.js';
+import { asegurarNumerosTicket, migrarArticulosVenta } from './modules/Venta/VentaController.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -73,11 +73,11 @@ const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'http://localhost:5173,ht
   .map((origin) => origin.trim())
   .filter(Boolean);
 
-app.use(requestContext);
+app.use(contextoPeticion);
 app.use(cors({ origin: allowedOrigins }));
 app.use(helmet());
 app.use(express.json({ limit: '1mb' }));
-app.use(requestLogger);
+app.use(registradorPeticiones);
 
 const rateLimitBase = {
   windowMs: 15 * 60 * 1000,
@@ -121,16 +121,16 @@ app.get('/api/health', (req, res) => {
 app.use('/api', globalLimiter);
 app.use('/api', soloEscrituras(writeLimiter));
 app.use('/api/auth/login', authLimiter);
-app.use('/api/auth', AuthRoutes);
-app.use('/api/suppliers', SupplierRoutes);
-app.use('/api/products', ProductRoutes);
-app.use('/api/stock-movements', StockMovementRoutes);
-app.use('/api/returns', ReturnRoutes);
-app.use('/api/sales', SaleRoutes);
-app.use('/api/notifications', NotificationRoutes);
-app.use('/api/cash-withdrawals', CashWithdrawalRoutes);
+app.use('/api/auth', AutenticacionRoutes);
+app.use('/api/proveedores', ProveedorRoutes);
+app.use('/api/productos', ProductoRoutes);
+app.use('/api/movimientos-stock', MovimientoStockRoutes);
+app.use('/api/devoluciones', DevolucionRoutes);
+app.use('/api/ventas', VentaRoutes);
+app.use('/api/notificaciones', NotificacionRoutes);
+app.use('/api/retiros-caja', RetiroCajaRoutes);
 app.use('/api/push', PushRoutes);
-app.use('/api/errors', errorLimiter, ErrorReportRoutes);
+app.use('/api/errores', errorLimiter, ReporteErrorRoutes);
 
 app.use('/api', (req, res) => {
   res.status(404).json({ message: 'Ruta no encontrada' });
@@ -147,25 +147,25 @@ if (!isDev) {
   });
 }
 
-app.use(errorHandler);
+app.use(manejadorErrores);
 
-const seedUser = async (nombre, email, password, rol) => {
+const sembrarUsuario = async (nombre, email, clave, rol) => {
   const emailNormalizado = String(email || '').trim().toLowerCase();
-  const exists = await User.exists({ email: emailNormalizado });
-  if (exists) return;
+  const existe = await Usuario.exists({ email: emailNormalizado });
+  if (existe) return;
   try {
-    await User.create({ nombre, email: emailNormalizado, password, rol });
+    await Usuario.create({ nombre, email: emailNormalizado, clave, rol });
   } catch (error) {
     if (error.code !== 11000) throw error;
   }
 };
 
-const seedUsers = async () => {
+const sembrarUsuarios = async () => {
   try {
-    await seedUser('Admin', process.env.ADMIN_EMAIL, process.env.ADMIN_PASSWORD, 'admin');
+    await sembrarUsuario('Admin', process.env.ADMIN_EMAIL, process.env.ADMIN_PASSWORD, 'admin');
     logger.debug('Usuario admin verificado');
 
-    await seedUser('Empleado', process.env.EMPLEADO_EMAIL, process.env.EMPLEADO_PASSWORD, 'user');
+    await sembrarUsuario('Empleado', process.env.EMPLEADO_EMAIL, process.env.EMPLEADO_PASSWORD, 'user');
     logger.debug('Usuario empleado verificado');
   } catch (error) {
     const d = describirError(error);
@@ -207,13 +207,13 @@ process.on('uncaughtException', (error) => {
 
 connectDB()
   .then(async () => {
-    await seedUsers();
+    await sembrarUsuarios();
     try {
-      await Sale.init();
-      await DailyClose.init();
-      const itemsMigrados = await migrateSaleItems();
-      if (itemsMigrados > 0) logger.info(`Ventas legacy migradas al formato items[]: ${itemsMigrados}`);
-      const migradas = await ensureTicketNumbers();
+      await Venta.init();
+      await CierreCaja.init();
+      const itemsMigrados = await migrarArticulosVenta();
+      if (itemsMigrados > 0) logger.info(`Ventas legacy migradas al formato articulos[]: ${itemsMigrados}`);
+      const migradas = await asegurarNumerosTicket();
       if (migradas > 0) logger.info(`Números de ticket asignados a ${migradas} ventas existentes`);
     } catch (error) {
       const d = describirError(error);

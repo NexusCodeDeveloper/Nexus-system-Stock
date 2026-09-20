@@ -1,8 +1,8 @@
 import './alerts.css';
 import AlertProvider, { useIosAlert } from './AlertProvider';
-import NewNotificationAlert from './NewNotificationAlert';
+import AvisoNuevaNotificacion from './AvisoNuevaNotificacion';
 import { IconAlert } from './alertIcons';
 
-export { AlertProvider, useIosAlert, NewNotificationAlert, IconAlert };
+export { AlertProvider, useIosAlert, AvisoNuevaNotificacion, IconAlert };
 
 export default AlertProvider;

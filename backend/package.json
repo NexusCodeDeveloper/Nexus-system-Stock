@@ -8,14 +8,14 @@
   "scripts": {
     "dev": "nodemon index.js",
     "start": "node index.js",
-    "migrate:money": "node scripts/migrate-money.js",
-    "migrate:money:apply": "node scripts/migrate-money.js --apply",
-    "migrate:tickets": "node scripts/migrate-tickets.js",
-    "migrate:tickets:apply": "node scripts/migrate-tickets.js --apply",
-    "audit:data": "node scripts/audit-data.js",
-    "repair:data": "node scripts/repair-data.js",
-    "repair:data:apply": "node scripts/repair-data.js --apply",
-    "test": "node scripts/run-tests.js"
+    "migrar:dinero": "node scripts/migrar-dinero.js",
+    "migrar:dinero:aplicar": "node scripts/migrar-dinero.js --apply",
+    "migrar:tickets": "node scripts/migrar-tickets.js",
+    "migrar:tickets:aplicar": "node scripts/migrar-tickets.js --apply",
+    "auditoria:datos": "node scripts/auditoria-datos.js",
+    "reparar:datos": "node scripts/reparar-datos.js",
+    "reparar:datos:aplicar": "node scripts/reparar-datos.js --apply",
+    "test": "node scripts/ejecutar-tests.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

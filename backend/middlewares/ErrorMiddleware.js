@@ -1,6 +1,6 @@
 import { ZodError } from 'zod';
-import logger, { lugarDesdeStack } from '../utils/logger.js';
-import { describirError } from '../utils/mensajesError.js';
+import logger, { lugarDesdePila } from '../utils/LoggerUtils.js';
+import { describirError } from '../utils/MensajesErrorUtils.js';
 
 const isDev = process.env.NODE_ENV !== 'production';
 
@@ -16,7 +16,7 @@ const esErrorDeBase = (err) => [
 
 const esWriteConflict = (err) => err?.code === 112 || err?.codeName === 'WriteConflict';
 
-export const errorHandler = (err, req, res, next) => {
+export const manejadorErrores = (err, req, res, next) => {
   if (res.headersSent) return next(err);
 
   const esZod = err instanceof ZodError;
@@ -33,9 +33,9 @@ export const errorHandler = (err, req, res, next) => {
     detalle: descripcion.detalle,
     peticion: `${req.method} ${req.originalUrl}`,
     codigo: status,
-    donde: lugarDesdeStack(err.stack),
+    donde: lugarDesdePila(err.stack),
     seguimiento: req.id,
-    quien: req.user ? `${req.user.email} (${req.user.rol})` : undefined,
+    quien: req.usuario ? `${req.usuario.email} (${req.usuario.rol})` : undefined,
     ip: req.ip,
     navegador: req.headers?.['user-agent'] || undefined,
     queRevisar: descripcion.queRevisar,

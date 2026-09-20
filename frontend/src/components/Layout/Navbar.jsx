@@ -1,11 +1,11 @@
 import { useState } from 'react';
-import { useAuth } from '../../context/AuthContext';
+import { useAutenticacion } from '../../context/AutenticacionContext';
 import { useTheme } from '../../context/ThemeContext';
 import { IconLogout, IconChevronDown, IconSun, IconMoon } from '../ui/icons';
 import IosToggle from '../ui/IosToggle';
 
 const Navbar = () => {
-  const { user, logout } = useAuth();
+  const { usuario, logout } = useAutenticacion();
   const { theme, toggleTheme } = useTheme();
   const [showDropdown, setShowDropdown] = useState(false);
 
@@ -17,17 +17,17 @@ const Navbar = () => {
           <IosToggle checked={theme === 'light'} onChange={toggleTheme} />
           <IconMoon className={`w-4 h-4 transition-colors ${theme === 'dark' ? 'text-ios-tint' : 'text-ios-tertiary'}`} strokeWidth={1.9} />
         </div>
-        {user && (
+        {usuario && (
           <div className="relative">
             <button
               onClick={() => setShowDropdown(!showDropdown)}
               className="flex items-center gap-2.5 px-2 py-1.5 rounded-ios-pill transition-all hover:bg-ios-hover/5 active:bg-ios-hover/10"
             >
               <div className="w-9 h-9 rounded-full bg-gradient-to-br from-ios-tint to-blue-600 flex items-center justify-center text-sm font-bold text-white shadow-[0_3px_10px_rgba(10,132,255,0.4)] ring-2 ring-white/10">
-                {user.nombre?.charAt(0).toUpperCase()}
+                {usuario.nombre?.charAt(0).toUpperCase()}
               </div>
               <div className="text-left hidden sm:block">
-                <p className="text-[14px] font-semibold text-ios-label leading-tight">{user.nombre}</p>
+                <p className="text-[14px] font-semibold text-ios-label leading-tight">{usuario.nombre}</p>
 
               </div>
               <IconChevronDown className={`w-3.5 h-3.5 text-ios-tertiary transition-transform duration-200 ${showDropdown ? 'rotate-180' : ''}`} />
@@ -39,7 +39,7 @@ const Navbar = () => {
                 <div className="absolute right-0 top-full mt-1.5 z-50 w-64 bg-ios-surface/95 backdrop-blur-2xl border border-ios-separator/40 rounded-2xl shadow-ios-alert overflow-hidden p-1.5 animate-ios-modal">
                   <div className="px-4 py-3">
                     <p className="text-[11px] text-ios-tertiary uppercase tracking-wide font-medium">Conectado como</p>
-                    <p className="text-[13px] font-semibold text-ios-label mt-0.5 truncate">{user.email}</p>
+                    <p className="text-[13px] font-semibold text-ios-label mt-0.5 truncate">{usuario.email}</p>
                   </div>
                   <div className="h-px bg-ios-separator/40 my-1" />
                   <button
