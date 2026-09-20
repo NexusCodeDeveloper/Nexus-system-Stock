@@ -15,6 +15,7 @@
     "auditoria:datos": "node scripts/auditoria-datos.js",
     "reparar:datos": "node scripts/reparar-datos.js",
     "reparar:datos:aplicar": "node scripts/reparar-datos.js --apply",
+    "reset:admin": "node scripts/reset-admin.js",
     "test": "node scripts/ejecutar-tests.js"
   },
   "dependencies": {
