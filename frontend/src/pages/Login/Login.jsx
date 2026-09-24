@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { iniciarSesion } from '../../api/autenticacion';
-import { useAutenticacion } from '../../context/AutenticacionContext';
+import { useAutenticacion } from '../../context/autenticacionContexto';
 import { obtenerMensajeErrorApi } from '../../utils/apiError';
 import { useIosAlert } from '../../components/alerts';
 import IosButton from '../../components/ui/IosButton';
@@ -73,8 +73,9 @@ const LoginModal = () => {
 
         <form onSubmit={handleSubmit} className="space-y-3.5">
           <div className="space-y-1.5">
-            <label className="text-[13px] text-ios-secondary font-medium ml-1">Email</label>
+            <label htmlFor="login-email" className="text-[13px] text-ios-secondary font-medium ml-1">Email</label>
             <input
+              id="login-email"
               type="email"
               required
               value={form.email}
@@ -85,9 +86,10 @@ const LoginModal = () => {
             />
           </div>
           <div className="space-y-1.5">
-            <label className="text-[13px] text-ios-secondary font-medium ml-1">Contraseña</label>
+            <label htmlFor="login-clave" className="text-[13px] text-ios-secondary font-medium ml-1">Contraseña</label>
             <div className="relative">
               <input
+                id="login-clave"
                 type={showPw ? 'text' : 'password'}
                 required
                 value={form.clave}
