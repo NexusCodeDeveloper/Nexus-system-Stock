@@ -1,4 +1,5 @@
 import Usuario from '../Autenticacion/UsuarioModel.js';
+import SuscripcionPush from '../Push/PushModel.js';
 import {
   crearUsuarioSchema,
   actualizarUsuarioSchema,
@@ -139,6 +140,10 @@ export const cambiarActivo = async (req, res, next) => {
     usuario.activo = activo;
     await usuario.save();
 
+    if (!activo) {
+      await SuscripcionPush.deleteMany({ usuarioId: usuario._id });
+    }
+
     res.json({ _id: usuario._id, activo: usuario.activo });
   } catch (error) {
     next(error);
@@ -164,6 +169,7 @@ export const eliminarUsuario = async (req, res, next) => {
       return res.status(400).json({ message: 'No podés eliminar al último administrador activo' });
     }
 
+    await SuscripcionPush.deleteMany({ usuarioId: usuario._id });
     await usuario.deleteOne();
     res.json({ message: 'Usuario eliminado' });
   } catch (error) {
