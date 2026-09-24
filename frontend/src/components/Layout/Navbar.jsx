@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { useAutenticacion } from '../../context/AutenticacionContext';
-import { useTheme } from '../../context/ThemeContext';
+import { useAutenticacion } from '../../context/autenticacionContexto';
+import { useTheme } from '../../context/themeContexto';
 import { IconLogout, IconChevronDown, IconSun, IconMoon } from '../ui/icons';
 import IosToggle from '../ui/IosToggle';
 

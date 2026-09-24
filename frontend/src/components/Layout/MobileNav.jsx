@@ -1,7 +1,7 @@
 import { NavLink } from 'react-router-dom';
 import { IconBox, IconChart, IconUsers, IconUserPlus, IconReturn, IconBell, IconTicket, IconWarehouse } from '../ui/icons';
-import { useNotificaciones } from '../../context/NotificacionContext';
-import { useAutenticacion } from '../../context/AutenticacionContext';
+import { useNotificaciones } from '../../context/notificacionContexto';
+import { useAutenticacion } from '../../context/autenticacionContexto';
 
 const links = [
   { to: '/productos', label: 'Productos', icon: IconBox, gradient: 'from-sky-500 to-blue-600' },

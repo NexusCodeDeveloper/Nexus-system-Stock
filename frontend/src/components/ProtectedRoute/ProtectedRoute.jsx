@@ -1,5 +1,5 @@
 import { Navigate } from 'react-router-dom';
-import { useAutenticacion } from '../../context/AutenticacionContext';
+import { useAutenticacion } from '../../context/autenticacionContexto';
 
 const ProtectedRoute = ({ children, soloAdmin }) => {
   const { usuario, loading, esAdmin } = useAutenticacion();
