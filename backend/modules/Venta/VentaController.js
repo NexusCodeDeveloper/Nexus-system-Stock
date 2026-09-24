@@ -9,6 +9,7 @@ import { schemaCrearVenta, schemaAbrirCaja, schemaCerrarCaja, schemaReabrirCaja 
 import { generarTicketNumero, guardarConTicketUnico } from './TicketUtils.js';
 import { enviarCierreDeCaja, enviarCorreoPrueba, verificarCorreo } from '../../services/CorreoService.js';
 import { enviarEvento, enviarStockBajo } from '../../services/PushService.js';
+import { enSegundoPlano } from '../../utils/TareasUtils.js';
 import { parsearFecha, obtenerRango, inicioDeDia } from '../../utils/FechasUtils.js';
 import { indiceDeVariante, extraDeposito } from '../../utils/VariantesUtils.js';
 import { obtenerArticulos, unidadesNetasVenta, totalNetoVenta } from '../../utils/VentasUtils.js';
@@ -538,14 +539,13 @@ export const cerrarCaja = async (req, res, next) => {
       return res.status(409).json({ message: 'La caja ya fue cerrada por otra operación' });
     }
 
-    enviarCierreDeCaja({ ventas: resumen.sales, close: actualizada, offset, turno: 'dia', totalDia: null }).catch((err) =>
-      logger.error('No se pudo enviar el mail del cierre de caja', {
-        motivo: err.message,
-        queRevisar: 'Revisá la configuración MAIL_* o BREVO_API_KEY.',
-        origen: 'backend',
+    enSegundoPlano(
+      enviarCierreDeCaja({ ventas: resumen.sales, close: actualizada, offset, turno: 'dia', totalDia: null }),
+      {
+        mensaje: 'No se pudo enviar el mail del cierre de caja',
         lugar: 'VentaController.js → cerrarCaja',
-        stack: err.stack,
-      })
+        queRevisar: 'Revisá la configuración MAIL_* o BREVO_API_KEY.',
+      }
     );
 
     void enviarEvento({

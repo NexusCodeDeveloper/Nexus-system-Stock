@@ -1,3 +1,4 @@
+import { waitUntil } from '@vercel/functions';
 import webpush from 'web-push';
 import SuscripcionPush from '../modules/Push/PushModel.js';
 import Usuario from '../modules/Autenticacion/UsuarioModel.js';
@@ -106,7 +107,7 @@ export const limpiarSuscripcionesHuerfanas = async () => {
   return eliminar.length;
 };
 
-export const enviarEvento = async ({ tipo, titulo, mensaje, url = '/', para = 'todos' }) => {
+const ejecutarEnvio = async ({ tipo, titulo, mensaje, url = '/', para = 'todos' }) => {
   if (!pushActivo) return;
   try {
     const subs = await SuscripcionPush.find(construirFiltro(para));
@@ -160,6 +161,14 @@ export const enviarEvento = async ({ tipo, titulo, mensaje, url = '/', para = 't
       stack: error.stack,
     });
   }
+};
+
+export const enviarEvento = (opciones) => {
+  const tarea = ejecutarEnvio(opciones);
+  if (process.env.VERCEL) {
+    waitUntil(tarea);
+  }
+  return tarea;
 };
 
 export const enviarStockBajo = async (productos = []) => {
