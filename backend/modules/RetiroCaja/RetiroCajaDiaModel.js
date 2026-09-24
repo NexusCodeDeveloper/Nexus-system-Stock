@@ -1,8 +1,9 @@
 import mongoose from 'mongoose';
 
-const cashWithdrawalDaySchema = new mongoose.Schema({
-  fecha: {
-    type: String,
+const cashWithdrawalCounterSchema = new mongoose.Schema({
+  caja: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'CierreCaja',
     required: true,
     unique: true,
   },
@@ -12,4 +13,4 @@ const cashWithdrawalDaySchema = new mongoose.Schema({
   },
 });
 
-export default mongoose.model('RetiroCajaDia', cashWithdrawalDaySchema, 'retirosCajaDias');
+export default mongoose.model('RetiroCajaDia', cashWithdrawalCounterSchema, 'retirosCajaContadores');

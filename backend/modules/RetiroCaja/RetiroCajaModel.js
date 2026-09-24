@@ -3,6 +3,11 @@ import { campoCentavos } from '../../utils/DineroUtils.js';
 
 const cashWithdrawalSchema = new mongoose.Schema(
   {
+    caja: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'CierreCaja',
+      index: true,
+    },
     monto: {
       ...campoCentavos,
       required: true,
