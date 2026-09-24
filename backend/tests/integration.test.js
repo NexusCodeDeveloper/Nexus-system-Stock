@@ -5,11 +5,21 @@ import mongoose from 'mongoose';
 import { startTestDB, stopTestDB, clearDB, runHandler } from './helpers/db.js';
 import Producto from '../modules/Producto/ProductoModel.js';
 import Venta from '../modules/Venta/VentaModel.js';
-import { crearVenta, eliminarVenta, abrirCaja, cerrarCaja, reabrirCaja, obtenerCajaAbierta, obtenerCierresCaja, migrarArticulosVenta } from '../modules/Venta/VentaController.js';
+import { crearVenta, eliminarVenta, abrirCaja, cerrarCaja, reabrirCaja, obtenerCajaAbierta, obtenerCierresCaja, migrarArticulosVenta, eliminarCierreCaja, reenviarMailCierre } from '../modules/Venta/VentaController.js';
 import CierreCaja from '../modules/Venta/CierreCajaModel.js';
 import { crearDevolucion, eliminarDevolucion } from '../modules/Devolucion/DevolucionController.js';
+import Devolucion from '../modules/Devolucion/DevolucionModel.js';
 import { actualizarProducto, intercambiarProducto, pasarAlSalon } from '../modules/Producto/ProductoController.js';
-import { obtenerDisponibleCaja, crearRetiroCaja } from '../modules/RetiroCaja/RetiroCajaController.js';
+import { obtenerDisponibleCaja, crearRetiroCaja, eliminarRetiroCaja } from '../modules/RetiroCaja/RetiroCajaController.js';
+import RetiroCajaDia from '../modules/RetiroCaja/RetiroCajaDiaModel.js';
+import { inicioDeDia } from '../utils/FechasUtils.js';
+import Usuario from '../modules/Autenticacion/UsuarioModel.js';
+import SuscripcionPush from '../modules/Push/PushModel.js';
+import { registrarSuscripcion, limpiarSuscripcionesHuerfanas } from '../services/PushService.js';
+import { cambiarActivo } from '../modules/Usuario/UsuarioController.js';
+import { iniciarSesion, cerrarSesion } from '../modules/Autenticacion/AutenticacionController.js';
+import { proteger } from '../middlewares/AutenticacionMiddleware.js';
+import { crearNotificacion, completarNotificacion, marcarVistasAdmin, obtenerNotificaciones } from '../modules/Notificacion/NotificacionController.js';
 
 before(async () => {
   await startTestDB();
@@ -568,4 +578,396 @@ test('el cierre guarda los montos en centavos una sola vez (sin ×100)', async (
   assert.equal(raw.transferencia.total, 10000);
   assert.equal(raw.totalRetiros, 3000);
   assert.equal(raw.retiros[0].monto, 3000);
+});
+
+test('una caja en cierre bloquea ventas y el cierre se reanuda', async () => {
+  await abrirCajaHoy();
+  const product = await crearProducto();
+  await runHandler(crearVenta, {
+    body: { articulos: [{ producto: String(product._id), cantidad: 1 }], pagos: [{ metodo: 'efectivo', monto: 100 }] },
+  });
+
+  await CierreCaja.updateOne({ estado: 'abierto' }, { $set: { estado: 'cerrando', cerradaEn: new Date() } });
+
+  const bloqueada = await runHandler(crearVenta, {
+    body: { articulos: [{ producto: String(product._id), cantidad: 1 }], pagos: [{ metodo: 'efectivo', monto: 100 }] },
+  });
+  assert.equal(bloqueada.status, 409, 'no se puede vender con la caja en cierre');
+  assert.equal(bloqueada.body.code, 'SIN_CAJA');
+
+  const cierre = await runHandler(cerrarCaja, { body: { nombre: 'Admin', offset: 0 } });
+  assert.equal(cierre.status, 200);
+  assert.equal(cierre.body.estado, 'cerrado');
+  assert.equal(Number(cierre.body.total), 100, 'la venta anterior al cierre debe quedar incluida');
+});
+
+test('no se puede borrar una venta mientras la caja se está cerrando', async () => {
+  await abrirCajaHoy();
+  const product = await crearProducto();
+  const venta = await runHandler(crearVenta, {
+    body: { articulos: [{ producto: String(product._id), cantidad: 1 }], pagos: [{ metodo: 'efectivo', monto: 100 }] },
+  });
+
+  await CierreCaja.updateOne({ estado: 'abierto' }, { $set: { estado: 'cerrando', cerradaEn: new Date() } });
+
+  const borrado = await runHandler(eliminarVenta, { params: { id: String(venta.body._id) } });
+  assert.equal(borrado.status, 409);
+  assert.equal(await Venta.countDocuments({ _id: venta.body._id }), 1);
+});
+
+test('el efectivo esperado se persiste en el cierre', async () => {
+  await abrirCajaHoy('Juan', 500);
+  const product = await crearProducto({ precio: 50 });
+  await runHandler(crearVenta, {
+    body: { articulos: [{ producto: String(product._id), cantidad: 1 }], pagos: [{ metodo: 'efectivo', monto: 50 }] },
+  });
+  await runHandler(crearRetiroCaja, { body: { monto: 30, motivo: 'prueba' } });
+
+  const cierre = await runHandler(cerrarCaja, { body: { nombre: 'Juan', offset: 0 } });
+  assert.equal(cierre.status, 200);
+  assert.equal(Number(cierre.body.efectivoEsperado), 520, 'fondo 500 + venta 50 - retiro 30');
+
+  const doc = await CierreCaja.findOne({ turno: 'dia' });
+  assert.equal(Number(doc.efectivoEsperado), 520);
+});
+
+test('dos retiros de la misma caja no superan el efectivo disponible', async () => {
+  await abrirCajaHoy('Juan', 100);
+
+  const primero = await runHandler(crearRetiroCaja, { body: { monto: 60, motivo: 'x' } });
+  assert.equal(primero.status, 201);
+
+  const segundo = await runHandler(crearRetiroCaja, { body: { monto: 60, motivo: 'y' } });
+  assert.equal(segundo.status, 400, 'solo quedan 40 disponibles');
+
+  const disponible = await runHandler(obtenerDisponibleCaja, { query: { offset: '0' } });
+  assert.equal(disponible.body.disponible, 40);
+});
+
+test('eliminar un retiro devuelve el efectivo al disponible', async () => {
+  await abrirCajaHoy('Juan', 100);
+  const retiro = await runHandler(crearRetiroCaja, { body: { monto: 80, motivo: 'x' } });
+  assert.equal(retiro.status, 201);
+
+  const borrado = await runHandler(eliminarRetiroCaja, { params: { id: String(retiro.body._id) } });
+  assert.equal(borrado.status, 200);
+
+  const otro = await runHandler(crearRetiroCaja, { body: { monto: 80, motivo: 'y' } });
+  assert.equal(otro.status, 201, 'el disponible debe volver a 100');
+
+  const contador = await RetiroCajaDia.findOne({});
+  assert.equal(Number(contador.retirado), 80);
+});
+
+test('eliminar el cierre limpia el contador de retiros de la caja', async () => {
+  await abrirCajaHoy('Juan', 100);
+  await runHandler(crearRetiroCaja, { body: { monto: 100, motivo: 'x' } });
+  const cierre = await runHandler(cerrarCaja, { body: { nombre: 'Juan', offset: 0 } });
+  assert.equal(cierre.status, 200);
+  assert.equal(await RetiroCajaDia.countDocuments({}), 1);
+
+  const doc = await CierreCaja.findOne({ turno: 'dia' });
+  const borrado = await runHandler(eliminarCierreCaja, { params: { id: String(doc._id) } });
+  assert.equal(borrado.status, 200);
+  assert.equal(await RetiroCajaDia.countDocuments({}), 0, 'el contador de la caja eliminada no debe quedar');
+
+  const reabrir = await abrirCajaHoy('Juan', 100);
+  assert.equal(reabrir.status, 201);
+  const retiro = await runHandler(crearRetiroCaja, { body: { monto: 100, motivo: 'y' } });
+  assert.equal(retiro.status, 201, 'la caja nueva no debe heredar retiros de la caja anterior');
+});
+
+test('reenviar el mail de una caja abierta se rechaza', async () => {
+  await abrirCajaHoy();
+  const doc = await CierreCaja.findOne({ estado: 'abierto' });
+  const res = await runHandler(reenviarMailCierre, { params: { id: String(doc._id) } });
+  assert.equal(res.status, 409);
+});
+
+test('migrarArticulosVenta netea la cantidad ya devuelta', async () => {
+  const product = await crearProducto({ cantidad: 10 });
+  await mongoose.connection.db.collection('ventas').insertOne({
+    producto: product._id,
+    cantidad: 2,
+    precio: 10000,
+    talle: '',
+    total: 20000,
+    empleado: 'Viejo',
+    cantidadDevuelta: 1,
+    montoDevuelto: 10000,
+    fechaCreacion: new Date(),
+    fechaActualizacion: new Date(),
+  });
+
+  const migradas = await migrarArticulosVenta();
+  assert.equal(migradas, 1);
+
+  const venta = await Venta.findOne({ empleado: 'Viejo' });
+  assert.equal(venta.articulos.length, 1);
+  assert.equal(venta.articulos[0].cantidad, 1, 'no debe volver a contar la unidad devuelta');
+  assert.equal(venta.total, 100);
+  assert.equal(venta.estado, 'activa');
+});
+
+test('la devolución con líneas duplicadas en el ticket solo consume las unidades devueltas', async () => {
+  await abrirCajaHoy();
+  const product = await crearProducto({ cantidad: 10 });
+  const venta = await runHandler(crearVenta, {
+    body: {
+      articulos: [
+        { producto: String(product._id), cantidad: 2 },
+        { producto: String(product._id), cantidad: 3 },
+      ],
+      pagos: [{ metodo: 'efectivo', monto: 500 }],
+    },
+  });
+  assert.equal(venta.status, 201);
+
+  const devolucion = await runHandler(crearDevolucion, {
+    body: { producto: String(product._id), cantidad: 2, motivo: 'parcial', venta: String(venta.body._id), offset: 0 },
+  });
+  assert.equal(devolucion.status, 201);
+  assert.equal(Number(devolucion.body.montoDevuelto), 200);
+
+  const doc = await Venta.findById(venta.body._id);
+  assert.equal(doc.estado, 'activa', 'no debe quedar totalmente devuelta');
+  assert.equal(doc.articulos.length, 1, 'solo se elimina la línea consumida');
+  assert.equal(doc.articulos[0].cantidad, 3);
+  assert.equal(doc.total, 300);
+  assert.equal((await Producto.findById(product._id)).cantidad, 7);
+});
+
+test('eliminar una devolución ya revendida se rechaza en vez de recortar el stock', async () => {
+  await abrirCajaHoy();
+  const product = await crearProducto({ cantidad: 3 });
+  const venta = await runHandler(crearVenta, {
+    body: { articulos: [{ producto: String(product._id), cantidad: 1 }], pagos: [{ metodo: 'efectivo', monto: 100 }] },
+  });
+  const devolucion = await runHandler(crearDevolucion, {
+    body: { producto: String(product._id), cantidad: 1, motivo: 'x', venta: String(venta.body._id), offset: 0 },
+  });
+  assert.equal(devolucion.status, 201);
+
+  await runHandler(crearVenta, {
+    body: { articulos: [{ producto: String(product._id), cantidad: 3 }], pagos: [{ metodo: 'efectivo', monto: 300 }] },
+  });
+  assert.equal((await Producto.findById(product._id)).cantidad, 0);
+
+  const borrado = await runHandler(eliminarDevolucion, { params: { id: String(devolucion.body._id) } });
+  assert.equal(borrado.status, 409);
+  assert.equal((await Producto.findById(product._id)).cantidad, 0, 'el stock no debe recortarse en silencio');
+  assert.equal(await Devolucion.countDocuments({ _id: devolucion.body._id }), 1);
+});
+
+test('la devolución de una línea completa de un ticket multilínea guarda los pagos originales', async () => {
+  await abrirCajaHoy();
+  const a = await Producto.create({ nombre: 'A', precio: 100, cantidad: 5, categoria: 'x' });
+  const b = await Producto.create({ nombre: 'B', precio: 50, cantidad: 5, categoria: 'x' });
+  const ayer = new Date(Date.now() - 86400000);
+  const ventaAyer = await mongoose.connection.db.collection('ventas').insertOne({
+    ticketNumero: 'T-MIXTA001',
+    articulos: [
+      { producto: a._id, cantidad: 1, precio: 10000, talle: '', color: '', subtotal: 10000 },
+      { producto: b._id, cantidad: 1, precio: 5000, talle: '', color: '', subtotal: 5000 },
+    ],
+    producto: a._id,
+    cantidad: 1,
+    precio: 10000,
+    talle: '',
+    total: 15000,
+    empleado: 'Viejo',
+    pagos: [{ metodo: 'efectivo', monto: 5000 }, { metodo: 'tarjeta', monto: 10000 }],
+    metodoPago: 'efectivo',
+    estado: 'activa',
+    fechaCreacion: ayer,
+    fechaActualizacion: ayer,
+  });
+
+  const devolucion = await runHandler(crearDevolucion, {
+    body: { producto: String(b._id), cantidad: 1, motivo: 'x', venta: String(ventaAyer.insertedId), offset: 0 },
+  });
+  assert.equal(devolucion.status, 201);
+  assert.equal(devolucion.body.pagosOriginales.length, 2, 'debe guardar el snapshot de los pagos');
+  assert.equal(Number(devolucion.body.efectivoDevuelto), 16.67, 'solo la parte de efectivo del pago dividido');
+
+  const doc = await Venta.findById(ventaAyer.insertedId);
+  assert.equal(doc.estado, 'activa');
+  assert.equal(doc.articulos.length, 1);
+  assert.equal(String(doc.articulos[0].producto), String(a._id));
+});
+
+test('el cambio de un ticket de otro día con diferencia a favor registra la venta del producto entregado', async () => {
+  await abrirCajaHoy();
+  const caro = await Producto.create({ nombre: 'Campera', precio: 100, cantidad: 5, categoria: 'Ropa' });
+  const barato = await Producto.create({ nombre: 'Bufanda', precio: 60, cantidad: 5, categoria: 'Accesorios' });
+  const ayer = new Date(Date.now() - 86400000);
+  const ventaAyer = await mongoose.connection.db.collection('ventas').insertOne({
+    ticketNumero: 'T-VIEJO01',
+    articulos: [{ producto: caro._id, cantidad: 1, precio: 10000, talle: '', color: '', subtotal: 10000 }],
+    producto: caro._id,
+    cantidad: 1,
+    precio: 10000,
+    talle: '',
+    total: 10000,
+    empleado: 'Viejo',
+    pagos: [{ metodo: 'efectivo', monto: 10000 }],
+    metodoPago: 'efectivo',
+    estado: 'activa',
+    fechaCreacion: ayer,
+    fechaActualizacion: ayer,
+  });
+
+  const cambio = await runHandler(intercambiarProducto, {
+    body: {
+      productoDevolver: String(caro._id),
+      cantidadDevolver: 1,
+      productoCargar: String(barato._id),
+      cantidadCargar: 1,
+      motivo: 'precio',
+      venta: String(ventaAyer.insertedId),
+      metodoPago: 'efectivo',
+      offset: 0,
+    },
+  });
+  assert.equal(cambio.status, 200);
+  assert.equal(Number(cambio.body.diferencia), -40);
+  assert.ok(cambio.body.ventaDiferenciaId, 'debe existir la venta del producto entregado');
+
+  const ventaNueva = await Venta.findById(cambio.body.ventaDiferenciaId);
+  assert.equal(ventaNueva.total, 60, 'la venta vale el producto entregado');
+  assert.equal(ventaNueva.articulos[0].cantidad, 1);
+  assert.equal(ventaNueva.articulos[0].subtotal, 60);
+
+  const cierre = await runHandler(cerrarCaja, { body: { nombre: 'Admin', offset: 0 } });
+  assert.equal(Number(cierre.body.efectivo.total), 0, 'no entró efectivo nuevo');
+  assert.equal(Number(cierre.body.efectivoDevuelto), 40, 'se devolvieron $40 en efectivo');
+  assert.equal(Number(cierre.body.efectivoEsperado), 0);
+
+  const stockCaro = await Producto.findById(caro._id);
+  const stockBarato = await Producto.findById(barato._id);
+  assert.equal(stockCaro.cantidad, 6);
+  assert.equal(stockBarato.cantidad, 4);
+});
+
+const protegerConToken = async (token) => {
+  let status = null;
+  const req = { headers: { authorization: `Bearer ${token}` } };
+  const res = {
+    status(code) {
+      status = code;
+      return this;
+    },
+    json() {
+      return this;
+    },
+  };
+  await proteger(req, res, () => {
+    status = 200;
+  });
+  return { status };
+};
+
+test('el logout revoca el token en el servidor', async () => {
+  const usuario = await Usuario.create({ nombre: 'Emp', email: 'emp@x.com', clave: 'secreto123', rol: 'user' });
+
+  const login = await runHandler(iniciarSesion, { body: { email: 'emp@x.com', clave: 'secreto123' } });
+  assert.equal(login.status, 200);
+  const token = login.body.token;
+
+  const antes = await protegerConToken(token);
+  assert.equal(antes.status, 200);
+
+  const logout = await runHandler(cerrarSesion, { usuario: { id: String(usuario._id), rol: 'user' } });
+  assert.equal(logout.status, 200);
+
+  const despues = await protegerConToken(token);
+  assert.equal(despues.status, 401, 'el token viejo ya no debe servir');
+
+  const actualizado = await Usuario.findById(usuario._id);
+  assert.equal(actualizado.versionToken, 1);
+});
+
+test('desactivar un usuario borra sus suscripciones push', async () => {
+  const usuario = await Usuario.create({ nombre: 'Emp', email: 'emp2@x.com', clave: 'secreto123', rol: 'user' });
+  await registrarSuscripcion(
+    { endpoint: 'https://fcm.googleapis.com/fcm/send/abc', keys: { p256dh: 'k', auth: 'a' } },
+    { id: String(usuario._id), email: usuario.email, nombre: usuario.nombre, rol: 'user' }
+  );
+  assert.equal(await SuscripcionPush.countDocuments(), 1);
+
+  const res = await runHandler(cambiarActivo, { params: { id: String(usuario._id) }, body: { activo: false } });
+  assert.equal(res.status, 200);
+  assert.equal(await SuscripcionPush.countDocuments(), 0);
+});
+
+test('limpiarSuscripcionesHuerfanas borra las de usuarios inactivos o eliminados', async () => {
+  const activo = await Usuario.create({ nombre: 'A', email: 'a@x.com', clave: 'secreto123', rol: 'user' });
+  const inactivo = await Usuario.create({ nombre: 'B', email: 'b@x.com', clave: 'secreto123', rol: 'user', activo: false });
+  const eliminado = await Usuario.create({ nombre: 'C', email: 'c@x.com', clave: 'secreto123', rol: 'user' });
+
+  const suscripcion = (endpoint, id, email, nombre) =>
+    registrarSuscripcion({ endpoint, keys: { p256dh: 'k', auth: 'a' } }, { id, email, nombre, rol: 'user' });
+
+  await suscripcion('https://fcm.googleapis.com/fcm/send/a', String(activo._id), 'a@x.com', 'A');
+  await suscripcion('https://fcm.googleapis.com/fcm/send/b', String(inactivo._id), 'b@x.com', 'B');
+  await suscripcion('https://fcm.googleapis.com/fcm/send/c', String(eliminado._id), 'c@x.com', 'C');
+  await eliminado.deleteOne();
+
+  const borradas = await limpiarSuscripcionesHuerfanas();
+  assert.equal(borradas, 2);
+  assert.equal(await SuscripcionPush.countDocuments(), 1);
+});
+
+test('registrar una suscripción con endpoint no permitido se rechaza', async () => {
+  await assert.rejects(
+    () =>
+      registrarSuscripcion(
+        { endpoint: 'https://169.254.169.254/push', keys: { p256dh: 'k', auth: 'a' } },
+        { id: '507f1f77bcf86cd799439011', email: 'x@x.com', nombre: 'X', rol: 'user' }
+      ),
+    (error) => error.statusCode === 400
+  );
+  assert.equal(await SuscripcionPush.countDocuments(), 0);
+});
+
+test('marcar vistas admin no oculta el aviso nuevo para los demás admins', async () => {
+  const adminA = await Usuario.create({ nombre: 'AdminA', email: 'a@x.com', clave: 'secreto123', rol: 'admin' });
+  const adminB = await Usuario.create({ nombre: 'AdminB', email: 'b@x.com', clave: 'secreto123', rol: 'admin' });
+  const empleado = await Usuario.create({ nombre: 'Emp', email: 'e@x.com', clave: 'secreto123', rol: 'user' });
+
+  const creada = await runHandler(crearNotificacion, {
+    body: { titulo: 'Limpiar', descripcion: 'x' },
+    usuario: { id: String(adminA._id), nombre: 'AdminA', rol: 'admin' },
+  });
+  assert.equal(creada.status, 201);
+
+  const completada = await runHandler(completarNotificacion, {
+    params: { id: String(creada.body._id) },
+    body: { comentario: 'ok' },
+    usuario: { id: String(empleado._id), nombre: 'Emp', rol: 'user' },
+  });
+  assert.equal(completada.status, 200);
+
+  const vistaA = await runHandler(obtenerNotificaciones, { usuario: { id: String(adminA._id), rol: 'admin' } });
+  assert.equal(vistaA.body[0].nuevaParaAdmin, true);
+
+  await runHandler(marcarVistasAdmin, { usuario: { id: String(adminA._id), rol: 'admin' } });
+
+  const trasA = await runHandler(obtenerNotificaciones, { usuario: { id: String(adminA._id), rol: 'admin' } });
+  assert.equal(trasA.body[0].nuevaParaAdmin, false, 'el admin que la vio no la ve como nueva');
+
+  const trasB = await runHandler(obtenerNotificaciones, { usuario: { id: String(adminB._id), rol: 'admin' } });
+  assert.equal(trasB.body[0].nuevaParaAdmin, true, 'el otro admin todavía la ve como nueva');
+});
+
+test('un cierre legacy sin turno del mismo día bloquea abrir caja', async () => {
+  await mongoose.connection.db.collection('cierresCaja').insertOne({
+    fecha: inicioDeDia(0),
+    estado: 'cerrado',
+    total: 0,
+    cantidad: 0,
+  });
+
+  const res = await abrirCajaHoy();
+  assert.equal(res.status, 409, 'un cierre sin turno también debe considerarse el cierre del día');
 });
