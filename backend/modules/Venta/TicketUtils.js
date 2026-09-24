@@ -24,7 +24,9 @@ export const generarTicketNumero = async () => {
 };
 
 export const guardarConTicketUnico = async (venta, session) => {
-  venta.ticketNumero = await generarTicketNumero();
+  if (!venta.ticketNumero) {
+    venta.ticketNumero = await generarTicketNumero();
+  }
   return await venta.save({ session });
 };
 
@@ -48,43 +50,68 @@ export const anularDevolucionEnVenta = (venta, { cantidad, monto }) => {
       .pop()?.i;
     if (idx !== undefined) {
       venta.devoluciones.splice(idx, 1);
-    } else {
-      venta.devoluciones.pop();
     }
   }
   sumarAPagos(venta, montoRound);
 };
 
+const redondear = (valor) => Math.round((Number(valor) || 0) * 100) / 100;
+
+const repartirProporcional = (montos, monto, conTope) => {
+  const partes = montos.map(() => 0);
+  const objetivo = redondear(monto);
+  if (objetivo <= 0 || montos.length === 0) return partes;
+
+  const total = montos.reduce((s, m) => s + m, 0);
+  if (total <= 0) {
+    partes[montos.length - 1] = objetivo;
+    return partes;
+  }
+
+  let asignado = 0;
+  for (let i = 0; i < montos.length; i += 1) {
+    const esUltimo = i === montos.length - 1;
+    let parte = esUltimo
+      ? redondear(objetivo - asignado)
+      : redondear((montos[i] / total) * objetivo);
+    if (conTope) parte = Math.min(parte, montos[i]);
+    partes[i] = Math.max(0, parte);
+    asignado = redondear(asignado + partes[i]);
+  }
+
+  let resto = redondear(objetivo - asignado);
+  if (resto === 0) return partes;
+
+  if (!conTope) {
+    const i = montos.length - 1;
+    partes[i] = Math.max(0, redondear(partes[i] + resto));
+    return partes;
+  }
+
+  for (let i = 0; i < montos.length && resto > 0; i += 1) {
+    const espacio = redondear(montos[i] - partes[i]);
+    if (espacio <= 0) continue;
+    const agregar = Math.min(espacio, resto);
+    partes[i] = redondear(partes[i] + agregar);
+    resto = redondear(resto - agregar);
+  }
+  return partes;
+};
+
 const restarDePagos = (venta, montoRound) => {
   if (!venta.pagos || venta.pagos.length === 0) return;
-  const totalPagado = venta.pagos.reduce((s, p) => s + p.monto, 0);
-  if (totalPagado <= 0) return;
-  let restante = montoRound;
-  for (const p of venta.pagos) {
-    if (restante <= 0) break;
-    const parte = Math.min(p.monto, Math.round((p.monto / totalPagado) * montoRound * 100) / 100);
-    p.monto = Math.max(0, Math.round((p.monto - parte) * 100) / 100);
-    restante = Math.round((restante - parte) * 100) / 100;
-  }
-  for (const p of venta.pagos) {
-    if (restante <= 0) break;
-    const quitar = Math.min(p.monto, restante);
-    p.monto = Math.max(0, Math.round((p.monto - quitar) * 100) / 100);
-    restante = Math.round((restante - quitar) * 100) / 100;
-  }
+  const montos = venta.pagos.map((p) => redondear(p.monto));
+  const partes = repartirProporcional(montos, montoRound, true);
+  venta.pagos.forEach((p, i) => {
+    p.monto = Math.max(0, redondear(montos[i] - partes[i]));
+  });
 };
 
 const sumarAPagos = (venta, montoRound) => {
   if (!venta.pagos || venta.pagos.length === 0) return;
-  const totalPagado = venta.pagos.reduce((s, p) => s + p.monto, 0);
-  let restante = montoRound;
-  for (const p of venta.pagos) {
-    if (restante <= 0) break;
-    const parte = totalPagado > 0 ? Math.round((p.monto / totalPagado) * montoRound * 100) / 100 : 0;
-    p.monto = Math.round((p.monto + parte) * 100) / 100;
-    restante = Math.round((restante - parte) * 100) / 100;
-  }
-  if (restante > 0 && venta.pagos.length > 0) {
-    venta.pagos[0].monto = Math.round((venta.pagos[0].monto + restante) * 100) / 100;
-  }
+  const montos = venta.pagos.map((p) => redondear(p.monto));
+  const partes = repartirProporcional(montos, montoRound, false);
+  venta.pagos.forEach((p, i) => {
+    p.monto = redondear(montos[i] + partes[i]);
+  });
 };
