@@ -57,15 +57,10 @@ export const reportarError = (error, contexto = {}) => {
 
   try {
     const url = `${API_BASE_URL}/errores`;
-    const body = JSON.stringify(payload);
-    if (navigator.sendBeacon) {
-      const enviado = navigator.sendBeacon(url, new Blob([body], { type: 'application/json' }));
-      if (enviado) return;
-    }
     fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body,
+      body: JSON.stringify(payload),
       keepalive: true,
     }).catch(() => {});
   } catch {
