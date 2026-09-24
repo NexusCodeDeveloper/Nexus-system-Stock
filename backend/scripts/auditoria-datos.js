@@ -1,12 +1,6 @@
 import mongoose from 'mongoose';
 import '../config/env.js';
 
-const OFFSET = (() => {
-  const arg = process.argv.find((a) => a.startsWith('--offset='));
-  const val = arg ? Number(arg.split('=')[1]) : Number(process.env.AUDIT_OFFSET);
-  return Number.isFinite(val) ? val : 0;
-})();
-
 const seccion = (titulo) => console.log(`\n=== ${titulo} ===`);
 
 const run = async () => {
@@ -17,7 +11,8 @@ const run = async () => {
   const productos = db.collection('productos');
   const devoluciones = db.collection('devoluciones');
   const retiros = db.collection('retirosCaja');
-  const dias = db.collection('retirosCajaDias');
+  const contadoresRetiros = db.collection('retirosCajaContadores');
+  const diasLegacy = db.collection('retirosCajaDias');
   const cierres = db.collection('cierresCaja');
   const movimientos = db.collection('movimientosStock');
 
@@ -116,28 +111,28 @@ const run = async () => {
   }
   console.log('Los documentos creados después de la migración no llevan marca por diseño (ya están en centavos).');
 
-  seccion('Contadores de retiros vs retiros reales');
-  console.log(`Zona horaria usada (offset): ${OFFSET} minutos. Usá --offset=180 para Argentina si ves falsos descuadres.`);
-  const todosDias = await dias.find({}).toArray();
+  seccion('Contadores de retiros por caja vs retiros reales');
+  const contadores = await contadoresRetiros.find({}).toArray();
   let descuadres = 0;
   const detalleDescuadres = [];
-  for (const day of todosDias) {
-    const [y, m, d] = String(day.fecha).split('-').map(Number);
-    if (!y || !m || !d) continue;
-    const desde = new Date(Date.UTC(y, m - 1, d) + OFFSET * 60000);
-    const hasta = new Date(desde.getTime() + 86400000);
-    const reales = await retiros
-      .find({ fechaCreacion: { $gte: desde, $lt: hasta } })
-      .toArray();
+  for (const contadorDoc of contadores) {
+    const reales = await retiros.find({ caja: contadorDoc.caja }).toArray();
     const suma = Math.round(reales.reduce((s, w) => s + (w.monto || 0), 0) / 100 * 100) / 100;
-    const contador = Math.round((day.retirado || 0) * 100) / 100;
+    const contador = Math.round((contadorDoc.retirado || 0) * 100) / 100;
     if (Math.abs(suma - contador) > 0.01) {
       descuadres++;
-      detalleDescuadres.push({ fecha: day.fecha, contador, sumaReal: suma, diferencia: Math.round((contador - suma) * 100) / 100 });
+      detalleDescuadres.push({
+        caja: String(contadorDoc.caja),
+        contador,
+        sumaReal: suma,
+        diferencia: Math.round((contador - suma) * 100) / 100,
+      });
     }
   }
-  console.log(`Días descuadrados: ${descuadres}`);
+  console.log(`Cajas descuadradas: ${descuadres}`);
   if (detalleDescuadres.length > 0) console.log(JSON.stringify(detalleDescuadres.slice(0, 10), null, 2));
+  const legacyDias = await diasLegacy.countDocuments();
+  console.log(`Contadores legacy sin uso (retirosCajaDias): ${legacyDias}`);
 
   seccion('Cierres con ventanas inválidas o duplicadas');
   const todosCierres = await cierres.find({}).toArray();
