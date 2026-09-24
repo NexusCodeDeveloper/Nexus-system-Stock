@@ -1,8 +1,8 @@
-import { useState, useEffect, useRef } from 'react';
 import { obtenerDevoluciones, eliminarDevolucion } from '../../api/devoluciones';
 import { obtenerMensajeErrorApi } from '../../utils/apiError';
+import { useApi } from '../../hooks/useApi';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
-import { useAutenticacion } from '../../context/AutenticacionContext';
+import { useAutenticacion } from '../../context/autenticacionContexto';
 import { useIosAlert } from '../../components/alerts';
 import { IconReturn } from '../../components/ui/icons';
 import { formatMoney, formatDate } from '../../utils/format';
@@ -10,29 +10,15 @@ import { formatMoney, formatDate } from '../../utils/format';
 const Devoluciones = () => {
   const { esAdmin } = useAutenticacion();
   const { confirm, toast, show: alert } = useIosAlert();
-  const [returns, setReturns] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const seqRef = useRef(0);
-
-  useEffect(() => {
-    fetchReturns();
-  }, []);
-
-  const fetchReturns = async () => {
-    const seq = ++seqRef.current;
-    setError('');
-    try {
+  const devolucionesApi = useApi(
+    async () => {
       const res = await obtenerDevoluciones();
-      if (seq !== seqRef.current) return;
-      setReturns(Array.isArray(res.data) ? res.data : []);
-    } catch (err) {
-      if (seq !== seqRef.current) return;
-      setError(obtenerMensajeErrorApi(err, 'Error al cargar devoluciones'));
-    } finally {
-      if (seq === seqRef.current) setLoading(false);
-    }
-  };
+      return Array.isArray(res.data) ? res.data : [];
+    },
+    { mensajeError: 'Error al cargar devoluciones' }
+  );
+  const { run: fetchReturns, loading, error } = devolucionesApi;
+  const returns = devolucionesApi.data || [];
 
   const handleDelete = async (id) => {
     const confirmed = await confirm({
@@ -68,7 +54,7 @@ const Devoluciones = () => {
         </div>
       )}
 
-      {error ? null : returns.length === 0 ? (
+      {returns.length === 0 ? (
         <div className="bg-ios-surface border border-ios-separator/30 rounded-3xl py-14 flex flex-col items-center shadow-ios-card">
           <div className="w-16 h-16 bg-ios-surface2 rounded-full flex items-center justify-center mb-4 border border-ios-separator/40">
             <IconReturn className="w-7 h-7 text-ios-tertiary" strokeWidth={1.5} />
@@ -95,7 +81,14 @@ const Devoluciones = () => {
               <tbody>
                 {returns.map((r) => (
                   <tr key={r._id} className="border-t border-ios-separator/30 hover:bg-ios-hover/[0.03] transition-colors">
-                    <td className="px-5 py-3.5 font-semibold text-ios-label">{r.producto?.nombre || 'Producto eliminado'}</td>
+                    <td className="px-5 py-3.5 font-semibold text-ios-label">
+                      {r.producto?.nombre || 'Producto eliminado'}
+                      {r.productoCargar && (
+                        <span className="block text-[11px] font-normal text-ios-tint mt-0.5">
+                          Cambiado por: {r.productoCargar.nombre} × {r.cantidadCargar}
+                        </span>
+                      )}
+                    </td>
                     <td className="px-4 py-3.5 text-ios-secondary">{r.producto?.categoria || '—'}</td>
                     <td className="px-4 py-3.5 text-ios-label">{r.cantidad}</td>
                     <td className="px-4 py-3.5 text-ios-secondary">{r.talle || '—'}</td>
@@ -143,6 +136,11 @@ const Devoluciones = () => {
                         {r.producto?.categoria || '—'}
                         {r.talle ? ` · Talle ${r.talle}` : ''}
                       </p>
+                      {r.productoCargar && (
+                        <p className="text-xs text-ios-tint mt-0.5">
+                          Cambiado por: {r.productoCargar.nombre} × {r.cantidadCargar}
+                        </p>
+                      )}
                     </div>
                     {esAdmin && (
                       <button
