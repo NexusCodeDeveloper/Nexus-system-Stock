@@ -49,9 +49,22 @@ export const iniciarSesion = async (req, res, next) => {
   }
 };
 
+export const cerrarSesion = async (req, res, next) => {
+  try {
+    const usuario = await Usuario.findById(req.usuario.id);
+    if (usuario) {
+      usuario.versionToken = (usuario.versionToken || 0) + 1;
+      await usuario.save();
+    }
+    res.json({ message: 'Sesión cerrada' });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const obtenerPerfil = async (req, res, next) => {
   try {
-    const usuario = await Usuario.findById(req.usuario.id).select('-clave');
+    const usuario = await Usuario.findById(req.usuario.id).select('-clave -versionToken');
     if (!usuario) {
       return res.status(404).json({ message: 'Usuario no encontrado' });
     }
