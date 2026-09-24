@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { IconX, IconSun } from '../ui/icons';
-import { pushModal, popModal, esTopModal } from '../ui/IosModal';
+import { pushModal, popModal, esTopModal } from '../ui/iosModalStack';
 
 const beep = () => {
   try {
@@ -154,7 +154,12 @@ const ScannerModal = ({ open, onClose, onLeer, continuo = false, titulo = 'Escan
 
   return (
     <div className="fixed inset-0 z-[110] bg-black/80 backdrop-blur-sm flex items-center justify-center px-4">
-      <div className="w-full max-w-md bg-ios-surface rounded-[28px] overflow-hidden border border-ios-separator/40 shadow-ios-alert">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={titulo}
+        className="w-full max-w-md bg-ios-surface rounded-[28px] overflow-hidden border border-ios-separator/40 shadow-ios-alert"
+      >
         <div className="flex items-center justify-between px-5 py-4 border-b border-ios-separator/40">
           <p className="text-ios-label font-semibold">{titulo}</p>
           <button
