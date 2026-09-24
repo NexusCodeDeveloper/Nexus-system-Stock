@@ -31,25 +31,39 @@ npm run dev            # backend (nodemon, puerto 5000) + frontend (Vite, puerto
 | `npm run build` | Compila el frontend en `frontend/dist` |
 | `npm start` | Arranca el backend (sirve `frontend/dist` si `NODE_ENV=production`) |
 | `npm run lint` | Lint del frontend (oxlint) |
-| `npm test` | Tests del backend (node:test) |
+| `npm test` | Tests del backend (node:test) y del frontend (vitest) |
+| `npm test --prefix backend` | Solo tests del backend |
+| `npm test --prefix frontend` | Solo tests del frontend |
 | `npm run migrar:dinero --prefix backend` | Dry-run de la migración de montos a centavos |
 | `npm run migrar:dinero:aplicar --prefix backend` | Aplica la migración (hace backup antes) |
 | `npm run auditoria:datos --prefix backend` | Diagnóstico de datos (solo lectura): legacy, huérfanos, descuadres |
 | `npm run reparar:datos --prefix backend` | Dry-run de reparación de datos |
 | `npm run reparar:datos:aplicar --prefix backend` | Aplica la reparación (hace backup antes) |
 
+Si `npm test` falla con `Cannot find package 'mongodb-memory-server'`, faltan las dependencias de
+desarrollo del backend: corré `npm ci --include=dev --prefix backend`. En Windows, los tests de
+integración también requieren el Visual C++ Redistributable 2015-2022 x64 (si `mongod` falla con el
+código `3221225781` / `0xC0000135`, instalalo desde https://aka.ms/vs/17/release/vc_redist.x64.exe).
+
 ## Integridad de datos
 
-- **Tests de integración**: `npm test` levanta una base MongoDB en memoria y ejecuta los flujos
-  críticos (venta, borrado, devolución total y su reversión, cambio con ticket legacy, cierre,
-  disponible de caja, migración de ventas). La CI los corre en cada push.
+- **Tests de integración**: `npm test --prefix backend` levanta una base MongoDB en memoria y ejecuta
+  los flujos críticos (venta, borrado, devolución total y su reversión, cambio con ticket legacy,
+  cierre, disponible de caja, migración de ventas, seguridad y avisos). Los tests del frontend
+  (`npm test --prefix frontend`, Vitest) cubren helpers de formato, totales y stock por variante.
+  La CI corre ambos en cada push.
 - **Ventas legacy**: al arrancar, las ventas sin `articulos[]` se migran solas al formato nuevo.
 - **Cierres**: no se pueden borrar ventas, retiros ni devoluciones que ya forman parte de una caja
   cerrada; primero hay que eliminar el cierre (solo admin). El cierre descuenta retiros y reintegros
   en efectivo, y muestra el total de devoluciones.
 - **Devoluciones**: guardan snapshot del precio y de los pagos originales para poder revertirse sin
   perder información. Las devoluciones sin ticket registran el efectivo devuelto y bajan el
-  disponible de la caja.
+  disponible de la caja. Un ticket con líneas repetidas del mismo producto devuelve solo las
+  unidades pedidas (no todas las líneas), y si el stock ya se revendió no se puede deshacer la
+  devolución (avisa en vez de recortar unidades).
+- **Cambios**: un cambio con ticket de otro día siempre registra la venta del producto entregado
+  (aunque la diferencia sea a favor o cero); el efectivo de la caja refleja solo la diferencia
+  cobrada o reintegrada.
 - **Productos**: no se pueden agregar variantes a un producto con stock general (se rechaza para no
   perder unidades) ni eliminar productos con ventas, devoluciones o movimientos asociados.
 - **Migración de dinero**: el marcador se reclama antes de tocar datos y se saltan los documentos
@@ -66,18 +80,40 @@ La caja funciona con **una apertura y un cierre por día**:
   cambiar ni retirar efectivo**.
 - **Cerrar caja**: pide el nombre de quien cierra, muestra un resumen previo y al confirmar guarda
   los totales y **envía el mail del día** (apertura y cierre con nombres y horarios, totales por
-  método, unidades, devoluciones, retiros, reintegros y efectivo esperado).
+  método, unidades, devoluciones, retiros, reintegros y efectivo esperado). El cierre es atómico:
+  reclama la caja y **mientras se está cerrando no se puede vender, retirar ni borrar operaciones**
+  (si el servidor se cae a mitad del cierre, al reintentar el cierre se reanuda solo). El
+  **efectivo esperado** queda guardado en el cierre, así el historial no lo recalcula.
 - **Reabrir caja** (solo admin): si la caja de hoy ya fue cerrada, el admin puede reabrirla las
   veces que necesite, cargando su nombre. Cada reapertura queda registrada y al volver a cerrar se
   recalculan los totales y se envía un mail actualizado ("Caja reabierta · actualizado").
 - **Caja de un día anterior**: si quedó una caja abierta, vender, devolver, cambiar y retirar
   quedan bloqueados hasta cerrarla (el aviso indica la fecha). La caja se cierra con aviso si es de
   un día anterior.
-- **Efectivo disponible** = fondo inicial + ventas en efectivo − retiros − reintegros.
+- **Efectivo disponible** = fondo inicial + ventas en efectivo − retiros − reintegros. El tope de
+  retiros se lleva **por caja** (no por día), así no depende de la zona horaria del navegador y no
+  se puede retirar de más con operaciones simultáneas.
 - El historial de Cierres muestra solo cajas cerradas, con estado, quién abrió/cerró y los totales.
   Los cierres viejos (mañana/tarde) se siguen viendo igual.
 - Endpoints: `POST /api/ventas/caja/abrir`, `GET /api/ventas/caja/abierta`,
   `POST /api/ventas/caja/cerrar` y `POST /api/ventas/caja/reabrir` (admin).
+
+## Sesiones y seguridad
+
+- **Logout con revocación**: `POST /api/auth/logout` incrementa el `versionToken` del usuario, así
+  el token deja de servir al instante (no espera las 8 h de vencimiento). El frontend lo llama al
+  cerrar sesión.
+- **Push validado**: solo se aceptan endpoints HTTPS de servicios de push conocidos (FCM, Apple,
+  Mozilla, Windows, Opera, Samsung). Para agregar otro host, definí `PUSH_ALLOWED_HOSTS` (separados
+  por coma). El envío tiene timeout de 10 s.
+- **Push por usuario**: al iniciar sesión, si el navegador ya tenía permiso de notificaciones, la
+  suscripción se reasocia al usuario que entró; al cerrar sesión se da de baja. Desactivar o
+  eliminar un empleado borra sus suscripciones (y al arrancar se limpian las huérfanas).
+- **Configuración**: `TRUST_PROXY` define cuántos proxies confiar (default 1, para Render; usar 0 si
+  el servidor está expuesto directo). `ALLOWED_ORIGINS` no acepta `*`. El backend carga `.env` y,
+  en producción, `.env.production` lo sobreescribe.
+- **Logs**: las claves, tokens, contraseñas, cookies y suscripciones se redactan como
+  `[REDACTADO]`. El reporte de errores del navegador ya no puede falsificar el campo "quién".
 
 ## Migración de montos a centavos
 
@@ -108,7 +144,7 @@ los logs del servidor.
 - `LOG_LEVEL`: `debug` (default en dev) | `info` | `warn` | `error`.
 - Cada request lleva `X-Request-Id` (visible en DevTools → Network) y aparece en los logs como
   `requestId=...`, para reconstruir todo lo que pasó con una sola búsqueda.
-- Los errores del navegador se envían a `POST /api/errors` y se ven en la misma consola del
+- Los errores del navegador se envían a `POST /api/errores` y se ven en la misma consola del
   backend con `origen=frontend`. Se pueden desactivar con `VITE_ERROR_REPORTING=false`.
 
 Cómo ver los logs en desarrollo:
@@ -218,3 +254,5 @@ Endpoints: `GET /api/productos/codigo/:codigo` (buscar por código) y `GET /api/
 - `docs/reporte-auditoria-2.md`: segunda auditoría (críticos de integridad, correcciones fases 1–4,
   tests y pendientes de upgrade).
 - `docs/reporte-auditoria-3.md`: tercera auditoría (depósito, carrito, notificaciones y accesibilidad).
+- `docs/reporte-auditoria-4.md`: cuarta auditoría (integridad de plata, devoluciones, seguridad,
+  frontend, estructura) con las correcciones de las fases 0–5, decisiones y pendientes.
