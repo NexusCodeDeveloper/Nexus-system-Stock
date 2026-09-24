@@ -12,10 +12,19 @@ export const buscarCajaAbierta = async (session = null) => {
 export const respuestaSinCaja = (res, extra = {}) =>
   res.status(409).json({ message: MENSAJE_SIN_CAJA, code: 'SIN_CAJA', ...extra });
 
-export const cajaEsDeHoy = (caja, offset = 0) => {
+export const cajaEsDeHoy = (caja, offsetPedido = null) => {
   if (!caja) return false;
-  const hoy = inicioDeDia(offset);
-  return new Date(caja.fecha).getTime() === hoy.getTime();
+  const offset = caja.offset != null
+    ? Number(caja.offset) || 0
+    : Number.isFinite(Number(offsetPedido))
+      ? Number(offsetPedido)
+      : 0;
+  const fechaCaja = new Date(caja.fecha);
+  if (Number.isNaN(fechaCaja.getTime())) return false;
+  const inicioCaja = new Date(
+    Date.UTC(fechaCaja.getUTCFullYear(), fechaCaja.getUTCMonth(), fechaCaja.getUTCDate()) + offset * 60000
+  );
+  return inicioCaja.getTime() === inicioDeDia(offset).getTime();
 };
 
 export const mensajeCajaAnterior = (caja) => {
