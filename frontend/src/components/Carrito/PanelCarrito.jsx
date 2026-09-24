@@ -1,6 +1,6 @@
-import { useCarrito } from '../../context/CarritoContext';
-import { useCaja } from '../../context/CajaContext';
-import { useAutenticacion } from '../../context/AutenticacionContext';
+import { useCarrito } from '../../context/carritoContexto';
+import { useCaja } from '../../context/cajaContexto';
+import { useAutenticacion } from '../../context/autenticacionContexto';
 import IosButton from '../ui/IosButton';
 import IosToggle from '../ui/IosToggle';
 import { IosField, IosInput, IosSelect } from '../ui/IosForm';
@@ -169,7 +169,7 @@ const PanelCarrito = () => {
                 value={sellMonto2}
                 onChange={(e) => {
                   const v = e.target.value;
-                  if (v === '' || /^\d*\.?\d{0,2}$/.test(v)) setSellMonto2(v);
+                  if (v === '' || /^\d+(\.\d{0,2})?$/.test(v)) setSellMonto2(v);
                 }}
                 className="w-20 px-2 py-2 bg-ios-surface2 rounded-ios-control text-ios-label text-sm text-right focus:outline-none focus:ring-2 focus:ring-ios-tint/40 transition-all [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
               />
