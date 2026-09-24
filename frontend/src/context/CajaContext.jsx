@@ -1,12 +1,12 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { CajaContext } from './cajaContexto';
 import { abrirCaja, cerrarCaja, obtenerCajaAbierta, reabrirCaja } from '../api/ventas';
 import { useIosAlert } from '../components/alerts';
 import { obtenerMensajeErrorApi } from '../utils/apiError';
 import IosModal from '../components/ui/IosModal';
 import { IosField, IosInput } from '../components/ui/IosForm';
-import { formatMoney } from '../utils/format';
-
-const CajaContext = createContext(null);
+import { formatMoney, formatDateShort } from '../utils/format';
 
 const hora = (fecha) =>
   fecha ? new Date(fecha).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }) : '';
@@ -37,6 +37,7 @@ const ResumenCaja = ({ resumen }) => (
 
 export const CajaProvider = ({ children }) => {
   const { show: alert, toast } = useIosAlert();
+  const navigate = useNavigate();
   const [caja, setCaja] = useState(null);
   const [resumen, setResumen] = useState(null);
   const [cierreHoy, setCierreHoy] = useState(null);
@@ -48,6 +49,7 @@ export const CajaProvider = ({ children }) => {
   const [nombre, setNombre] = useState('');
   const [fondo, setFondo] = useState('');
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState(null);
   const seqRef = useRef(0);
 
   const refresh = useCallback(async () => {
@@ -59,12 +61,10 @@ export const CajaProvider = ({ children }) => {
       setResumen(res.data?.resumen || null);
       setCierreHoy(res.data?.cierreHoy || null);
       setEsDeHoy(res.data?.esDeHoy !== false);
-    } catch {
+      setError(null);
+    } catch (err) {
       if (seq !== seqRef.current) return;
-      setCaja(null);
-      setResumen(null);
-      setCierreHoy(null);
-      setEsDeHoy(true);
+      setError(obtenerMensajeErrorApi(err, 'No se pudo consultar el estado de la caja'));
     } finally {
       if (seq === seqRef.current) setLoading(false);
     }
@@ -147,7 +147,7 @@ export const CajaProvider = ({ children }) => {
       await alert({
         icon: 'success',
         title: 'Cierre de caja',
-        buttons: [{ text: 'Ver en historial', style: 'default' }],
+        buttons: [{ text: 'Ver en historial', style: 'default', action: () => navigate('/ventas', { state: { tab: 'cierres' } }) }],
         content: (
           <div className="space-y-3">
             <div className="text-center pt-1">
@@ -177,11 +177,11 @@ export const CajaProvider = ({ children }) => {
     } finally {
       setSaving(false);
     }
-  }, [saving, nombre, refresh, alert]);
+  }, [saving, nombre, refresh, alert, navigate]);
 
   const value = useMemo(
-    () => ({ caja, resumen, cierreHoy, esDeHoy, loading, refresh, openAbrir, openCerrar, openReabrir }),
-    [caja, resumen, cierreHoy, esDeHoy, loading, refresh, openAbrir, openCerrar, openReabrir]
+    () => ({ caja, resumen, cierreHoy, esDeHoy, loading, error, refresh, openAbrir, openCerrar, openReabrir }),
+    [caja, resumen, cierreHoy, esDeHoy, loading, error, refresh, openAbrir, openCerrar, openReabrir]
   );
 
   return (
@@ -214,7 +214,7 @@ export const CajaProvider = ({ children }) => {
               value={fondo}
               onChange={(e) => {
                 const v = e.target.value;
-                if (v === '' || /^\d*\.?\d{0,2}$/.test(v)) setFondo(v);
+                if (v === '' || /^\d+(\.\d{0,2})?$/.test(v)) setFondo(v);
               }}
               placeholder="0.00"
             />
@@ -270,7 +270,7 @@ export const CajaProvider = ({ children }) => {
 
           {caja && !esDeHoy && (
             <div className="rounded-2xl px-4 py-3 bg-amber-500/10 border border-amber-500/25 text-amber-300 text-xs leading-relaxed">
-              Esta caja es del <span className="font-semibold">{new Date(caja.fecha).toLocaleDateString('es-AR')}</span> (día
+              Esta caja es del <span className="font-semibold">{formatDateShort(caja.fecha)}</span> (día
               anterior). Al cerrarla, las ventas posteriores a la medianoche quedarán incluidas en ese día.
             </div>
           )}
@@ -291,8 +291,4 @@ export const CajaProvider = ({ children }) => {
   );
 };
 
-export const useCaja = () => {
-  const ctx = useContext(CajaContext);
-  if (!ctx) throw new Error('useCaja debe usarse dentro de <CajaProvider>');
-  return ctx;
-};
+

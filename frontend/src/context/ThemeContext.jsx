@@ -1,7 +1,6 @@
-import { createContext, useContext, useEffect, useState, useCallback, useMemo } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import { getItem, setItem } from '../utils/storage';
-
-const ThemeContext = createContext(null);
+import { ThemeContext } from './themeContexto';
 
 const getInitialTheme = () => {
   return getItem('theme') === 'light' ? 'light' : 'dark';
@@ -26,8 +25,4 @@ export const ThemeProvider = ({ children }) => {
   );
 };
 
-export const useTheme = () => {
-  const ctx = useContext(ThemeContext);
-  if (!ctx) throw new Error('useTheme debe usarse dentro de ThemeProvider');
-  return ctx;
-};
+

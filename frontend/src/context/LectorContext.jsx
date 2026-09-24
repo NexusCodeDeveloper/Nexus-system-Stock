@@ -1,6 +1,5 @@
-import { createContext, useCallback, useContext, useEffect, useRef } from 'react';
-
-const LectorContext = createContext(null);
+import { useCallback, useEffect, useRef } from 'react';
+import { LectorContext } from './lectorContexto';
 
 const MIN_LARGO = 6;
 const MAX_LARGO = 128;
@@ -75,13 +74,4 @@ export const LectorProvider = ({ children }) => {
   return <LectorContext.Provider value={{ registrar }}>{children}</LectorContext.Provider>;
 };
 
-export const useLector = (handler, activo = true) => {
-  const ctx = useContext(LectorContext);
-  const handlerRef = useRef(handler);
-  handlerRef.current = handler;
 
-  useEffect(() => {
-    if (!ctx || !activo) return undefined;
-    return ctx.registrar(handlerRef);
-  }, [ctx, activo]);
-};

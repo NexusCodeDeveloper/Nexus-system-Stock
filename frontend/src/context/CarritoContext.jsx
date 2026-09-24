@@ -1,19 +1,12 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { CarritoContext, METODOS_PAGO } from './carritoContexto';
 import { crearVenta } from '../api/ventas';
 import { obtenerProducto } from '../api/productos';
-import { useAutenticacion } from './AutenticacionContext';
+import { useAutenticacion } from './autenticacionContexto';
 import { useIosAlert } from '../components/alerts';
 import { obtenerMensajeErrorApi } from '../utils/apiError';
 import IosModal from '../components/ui/IosModal';
 import Ticket, { printTicket } from '../components/Ticket/Ticket';
-
-const CarritoContext = createContext(null);
-
-export const METODOS_PAGO = [
-  { key: 'efectivo', label: 'Efectivo', activeCls: 'bg-ios-green/15 text-ios-green border-ios-green/30' },
-  { key: 'transferencia', label: 'Transferencia', activeCls: 'bg-ios-tint/15 text-ios-tint border-ios-tint/30' },
-  { key: 'tarjeta', label: 'Tarjeta', activeCls: 'bg-ios-purple/15 text-ios-purple border-ios-purple/30' },
-];
 
 export const CarritoProvider = ({ children }) => {
   const { usuario } = useAutenticacion();
@@ -32,11 +25,14 @@ export const CarritoProvider = ({ children }) => {
   const [showTicketModal, setShowTicketModal] = useState(false);
   const [saleVersion, setSaleVersion] = useState(0);
 
-  const cartTotal = Math.round(cart.reduce((s, i) => s + i.precio * (Number(i.cantidad) || 0), 0) * 100) / 100;
+  const redondear = (n) => Math.round((Number(n) || 0) * 100) / 100;
+  const cartTotal = redondear(
+    cart.reduce((s, i) => s + redondear(redondear(i.precio) * (Number(i.cantidad) || 0)), 0)
+  );
   const descuentoNum = sellDescuento === '' ? 0 : Number(sellDescuento);
-  const finalTotal = Math.round(cartTotal * (1 - descuentoNum / 100) * 100) / 100;
+  const finalTotal = redondear(cartTotal * (1 - descuentoNum / 100));
   const sellMonto2Num = sellMonto2 === '' ? 0 : Number(sellMonto2);
-  const sellMonto1 = sellSplit ? Math.round((finalTotal - sellMonto2Num) * 100) / 100 : finalTotal;
+  const sellMonto1 = sellSplit ? redondear(finalTotal - sellMonto2Num) : finalTotal;
 
   const resetSell = useCallback(() => {
     setSellEmpleado(usuario?.nombre || '');
@@ -168,7 +164,13 @@ export const CarritoProvider = ({ children }) => {
       try {
         const { actualizados, problemas } = await validarCarrito();
         if (problemas.length > 0) {
-          setCart(actualizados);
+          setCart((prev) =>
+            prev.map((item, idx) => {
+              const act = actualizados[idx];
+              if (!act) return item;
+              return { ...item, precio: act.precio, nombre: act.nombre };
+            })
+          );
           alert({
             icon: 'warning',
             title: 'El carrito cambió',
@@ -273,8 +275,4 @@ export const CarritoProvider = ({ children }) => {
   );
 };
 
-export const useCarrito = () => {
-  const ctx = useContext(CarritoContext);
-  if (!ctx) throw new Error('useCarrito debe usarse dentro de <CarritoProvider>');
-  return ctx;
-};
+

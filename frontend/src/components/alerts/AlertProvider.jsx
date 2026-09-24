@@ -1,8 +1,7 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { AlertContext } from './alertContexto';
 import IosAlert from './IosAlert';
 import Toast from './Toast';
-
-const AlertContext = createContext(null);
 
 const AlertProvider = ({ children }) => {
   const [queue, setQueue] = useState([]);
@@ -118,10 +117,6 @@ const AlertProvider = ({ children }) => {
   }
 };
 
-export const useIosAlert = () => {
-  const ctx = useContext(AlertContext);
-  if (!ctx) throw new Error('useIosAlert debe usarse dentro de <AlertProvider>');
-  return ctx;
-};
+
 
 export default AlertProvider;

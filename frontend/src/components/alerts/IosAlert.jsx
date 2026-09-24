@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { IconCheck, IconX, IconAlert } from './alertIcons';
-import { pushModal, popModal, esTopModal } from '../ui/IosModal';
+import { pushModal, popModal, esTopModal } from '../ui/iosModalStack';
 
 const IosAlert = ({ alert, onClose }) => {
   const onCloseRef = useRef(onClose);

@@ -1,20 +1,10 @@
-import {
-  createContext,
-  useContext,
-  useState,
-  useEffect,
-  useCallback,
-  useMemo,
-  useRef,
-} from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { AutenticacionContext } from './autenticacionContexto';
 import { useNavigate } from 'react-router-dom';
-import { obtenerPerfil } from '../api/autenticacion';
+import { obtenerPerfil, cerrarSesion } from '../api/autenticacion';
 import { getItem, setItem, removeItem } from '../utils/storage';
+import { desactivarPush, sincronizarPush } from '../services/GestorPush';
 import { useIosAlert } from '../components/alerts';
-
-const AutenticacionContext = createContext();
-
-export const useAutenticacion = () => useContext(AutenticacionContext);
 
 export const AutenticacionProvider = ({ children }) => {
   const [usuario, setUsuario] = useState(null);
@@ -57,31 +47,66 @@ export const AutenticacionProvider = ({ children }) => {
   }, [clearSession, toast, show]);
 
   useEffect(() => {
-    const token = getItem('token');
-    if (token) {
-      obtenerPerfil()
-        .then((res) => setUsuario(res.data))
-        .catch((err) => {
+    let cancelado = false;
+    const cargarPerfil = async () => {
+      const token = getItem('token');
+      if (!token) {
+        if (!cancelado) setLoading(false);
+        return;
+      }
+      for (let intento = 0; intento < 2; intento += 1) {
+        try {
+          const res = await obtenerPerfil();
+          if (cancelado) return;
+          setUsuario(res.data);
+          setLoading(false);
+          return;
+        } catch (err) {
           const status = err.response?.status;
-          if (status === 401 || status === 404) clearSession();
-        })
-        .finally(() => setLoading(false));
-    } else {
-      setLoading(false);
-    }
-  }, [clearSession]);
+          if (status === 401 || status === 404) {
+            clearSession();
+            if (!cancelado) setLoading(false);
+            return;
+          }
+          if (intento === 0) {
+            if (!cancelado) {
+              toast({ message: 'No se pudo conectar con el servidor. Reintentando…', type: 'info', duration: 2500 });
+            }
+            await new Promise((resolve) => setTimeout(resolve, 1500));
+          } else if (!cancelado) {
+            toast({
+              message: 'No se pudo conectar con el servidor. Revisá que el backend esté corriendo.',
+              type: 'error',
+              duration: 4500,
+            });
+            setLoading(false);
+          }
+        }
+      }
+    };
+    cargarPerfil();
+    return () => {
+      cancelado = true;
+    };
+  }, [clearSession, toast]);
 
   const login = useCallback(
     (data) => {
       setItem('token', data.token);
       setUsuario(data);
       navigate('/', { replace: true });
+      void sincronizarPush();
     },
     [navigate]
   );
 
   const logout = useCallback(() => {
+    const token = getItem('token');
     clearSession();
+    if (token) {
+      void cerrarSesion(token).catch(() => {});
+      void desactivarPush(token);
+    }
   }, [clearSession]);
 
   const esAdmin = usuario?.rol === 'admin';

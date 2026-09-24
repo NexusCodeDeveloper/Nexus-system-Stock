@@ -1,11 +1,10 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { NotificacionContext } from './notificacionContexto';
 import { obtenerNotificaciones, marcarVistasAdminApi } from '../api/notificaciones';
-import { useAutenticacion } from './AutenticacionContext';
+import { useAutenticacion } from './autenticacionContexto';
 import { escucharPush } from '../services/GestorPush';
 
 const POLL_MS = 30000;
-
-const NotificacionContext = createContext(null);
 
 export const NotificacionProvider = ({ children }) => {
   const { usuario } = useAutenticacion();
@@ -83,8 +82,3 @@ export const NotificacionProvider = ({ children }) => {
   );
 };
 
-export const useNotificaciones = () => {
-  const ctx = useContext(NotificacionContext);
-  if (!ctx) throw new Error('useNotificaciones debe usarse dentro de <NotificacionProvider>');
-  return ctx;
-};

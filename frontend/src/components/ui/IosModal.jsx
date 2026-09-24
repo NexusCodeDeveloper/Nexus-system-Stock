@@ -1,23 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import IosButton from './IosButton';
 import { IconX } from './icons';
+import { pushModal, popModal, esTopModal, modalStackVacio } from './iosModalStack';
 
 const isMobileViewport = () => window.matchMedia('(max-width: 767px)').matches;
-
-const modalStack = [];
-
-export const pushModal = (onClose) => {
-  const entrada = { onClose };
-  modalStack.push(entrada);
-  return entrada;
-};
-
-export const popModal = (entrada) => {
-  const idx = modalStack.indexOf(entrada);
-  if (idx !== -1) modalStack.splice(idx, 1);
-};
-
-export const esTopModal = (entrada) => modalStack[modalStack.length - 1] === entrada;
 
 const IosModal = ({
   open,
@@ -60,7 +46,7 @@ const IosModal = ({
     return () => {
       window.removeEventListener('keydown', onKey, true);
       popModal(entrada);
-      if (modalStack.length === 0) document.body.style.overflow = '';
+      if (modalStackVacio()) document.body.style.overflow = '';
     };
   }, [open]);
 
