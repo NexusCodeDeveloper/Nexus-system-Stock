@@ -7,7 +7,8 @@ import PanelCarrito from '../Carrito/PanelCarrito';
 import { IconCart } from '../ui/icons';
 import { NotificacionProvider } from '../../context/NotificacionContext';
 import { CajaProvider } from '../../context/CajaContext';
-import { CarritoProvider, useCarrito } from '../../context/CarritoContext';
+import { CarritoProvider } from '../../context/CarritoContext';
+import { useCarrito } from '../../context/carritoContexto';
 
 const LayoutInner = () => {
   const { cart, openCart } = useCarrito();
