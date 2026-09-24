@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import {
   obtenerUsuarios,
   crearUsuario,
@@ -8,9 +8,10 @@ import {
   eliminarUsuario,
 } from '../../api/usuarios';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
-import { useAutenticacion } from '../../context/AutenticacionContext';
+import { useAutenticacion } from '../../context/autenticacionContexto';
 import { useIosAlert, IconAlert } from '../../components/alerts';
 import { obtenerMensajeErrorApi } from '../../utils/apiError';
+import { useApi } from '../../hooks/useApi';
 import IosButton from '../../components/ui/IosButton';
 import IosModal from '../../components/ui/IosModal';
 import IosSegmented from '../../components/ui/IosSegmented';
@@ -27,10 +28,6 @@ const formularioVacio = () => ({
 const Empleados = () => {
   const { usuario, esAdmin } = useAutenticacion();
   const { show: alerta, confirm: confirmar, toast } = useIosAlert();
-  const [empleados, setEmpleados] = useState([]);
-  const [cargando, setCargando] = useState(true);
-  const [error, setError] = useState('');
-  const seqRef = useRef(0);
   const [mostrarForm, setMostrarForm] = useState(false);
   const [editando, setEditando] = useState(null);
   const [guardando, setGuardando] = useState(false);
@@ -39,25 +36,19 @@ const Empleados = () => {
   const [claveNueva, setClaveNueva] = useState('');
   const [guardandoClave, setGuardandoClave] = useState(false);
 
-  const cargarEmpleados = async () => {
-    const seq = ++seqRef.current;
-    setError('');
-    try {
+  const empleadosApi = useApi(
+    async () => {
       const res = await obtenerUsuarios();
-      if (seq !== seqRef.current) return;
-      setEmpleados(Array.isArray(res.data) ? res.data : []);
-    } catch (err) {
-      if (seq !== seqRef.current) return;
-      setError(obtenerMensajeErrorApi(err, 'Error al cargar empleados'));
-    } finally {
-      if (seq === seqRef.current) setCargando(false);
-    }
-  };
+      return Array.isArray(res.data) ? res.data : [];
+    },
+    { auto: false, mensajeError: 'Error al cargar empleados' }
+  );
+  const { run: cargarEmpleados, loading: cargando, error } = empleadosApi;
+  const empleados = empleadosApi.data || [];
 
   useEffect(() => {
     if (esAdmin) cargarEmpleados();
-    else setCargando(false);
-  }, [esAdmin]);
+  }, [esAdmin, cargarEmpleados]);
 
   const resetForm = () => {
     setForm(formularioVacio());
@@ -94,6 +85,15 @@ const Empleados = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (guardando) return;
+    if (editando && form.rol === 'admin' && editando.rol !== 'admin') {
+      const ok = await confirmar({
+        icon: 'warning',
+        title: '¿Convertir en administrador?',
+        message: 'Un administrador no se puede volver a degradar, desactivar ni eliminar desde la app.',
+        confirmText: 'Convertir',
+      });
+      if (!ok) return;
+    }
     setGuardando(true);
     try {
       if (editando) {
