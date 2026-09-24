@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useAutenticacion } from '../context/AutenticacionContext';
+import { useAutenticacion } from '../context/autenticacionContexto';
 import { pushSoportado, getPushEstado, activarPush } from '../services/GestorPush';
 import { IconBell } from './ui/icons';
 import { getItem, setItem } from '../utils/storage';
@@ -76,8 +76,8 @@ const BannerPermisoPush = () => {
 
   if (estado === 'denegado') {
     return (
-      <div className="fixed bottom-20 md:bottom-6 inset-x-4 z-[70] flex justify-center">
-        <div className="max-w-md w-full bg-ios-surface/95 backdrop-blur-2xl border border-ios-separator/40 rounded-2xl shadow-ios-alert px-4 py-3.5 flex items-center gap-3">
+      <div className="pointer-events-none fixed bottom-20 md:bottom-6 inset-x-4 z-[70] flex justify-center">
+        <div className="pointer-events-auto max-w-md w-full bg-ios-surface/95 backdrop-blur-2xl border border-ios-separator/40 rounded-2xl shadow-ios-alert px-4 py-3.5 flex items-center gap-3">
           <span className="w-9 h-9 rounded-full bg-ios-red/15 text-ios-red flex items-center justify-center shrink-0">
             <IconBell className="w-4 h-4" strokeWidth={2} />
           </span>
@@ -96,8 +96,8 @@ const BannerPermisoPush = () => {
   }
 
   return (
-    <div className="fixed bottom-20 md:bottom-6 inset-x-4 z-[70] flex justify-center">
-      <div className="max-w-md w-full bg-ios-surface/95 backdrop-blur-2xl border border-ios-separator/40 rounded-2xl shadow-ios-alert px-4 py-3.5 animate-ios-modal">
+    <div className="pointer-events-none fixed bottom-20 md:bottom-6 inset-x-4 z-[70] flex justify-center">
+      <div className="pointer-events-auto max-w-md w-full bg-ios-surface/95 backdrop-blur-2xl border border-ios-separator/40 rounded-2xl shadow-ios-alert px-4 py-3.5 animate-ios-modal">
         <div className="flex items-start gap-3">
           <span className="w-9 h-9 rounded-full bg-ios-tint/15 text-ios-tint flex items-center justify-center shrink-0">
             <IconBell className="w-4 h-4" strokeWidth={2} />
