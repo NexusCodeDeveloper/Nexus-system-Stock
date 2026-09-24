@@ -9,14 +9,19 @@ const logDir = path.resolve(__dirname, '..', 'logs');
 
 const CAMPOS_SENSIBLES = [
   'clave',
+  'password',
+  'pass',
   'token',
   'authorization',
+  'auth',
+  'cookie',
   'jwt',
   'secret',
   'apikey',
   'api_key',
   'p256dh',
   'privatekey',
+  'subscription',
 ];
 
 const ETIQUETAS_NIVEL = {
