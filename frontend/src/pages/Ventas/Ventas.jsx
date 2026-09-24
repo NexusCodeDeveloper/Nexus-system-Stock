@@ -1,14 +1,16 @@
-import { useState, useEffect, Fragment, useRef } from 'react';
+import { useState, useEffect, Fragment } from 'react';
+import { useLocation } from 'react-router-dom';
 import { obtenerVentas, obtenerEstadisticasVentas, obtenerMasVendidos, eliminarVenta, obtenerCierresCaja, eliminarCierreCaja, reenviarCorreoCierre } from '../../api/ventas';
-import { crearRetiroCaja, obtenerRetirosCaja, eliminarRetiroCaja, obtenerDisponibleCaja } from '../../api/retirosCaja';
+import { useApi } from '../../hooks/useApi';
+import RetiroModal from './RetiroModal';
 import Ticket, { printTicket } from '../../components/Ticket/Ticket';
 import FormularioDevolucion from '../../components/FormularioDevolucion/FormularioDevolucion';
 import { obtenerMensajeErrorApi } from '../../utils/apiError';
 import { formatMoney, formatDate, formatDateSafe, formatDateShort } from '../../utils/format';
 import { escucharPush } from '../../services/GestorPush';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
-import { useAutenticacion } from '../../context/AutenticacionContext';
-import { useCaja } from '../../context/CajaContext';
+import { useAutenticacion } from '../../context/autenticacionContexto';
+import { useCaja } from '../../context/cajaContexto';
 import { useIosAlert } from '../../components/alerts';
 import IosButton from '../../components/ui/IosButton';
 import IosModal from '../../components/ui/IosModal';
@@ -145,9 +147,10 @@ const RetirosInfo = ({ turno }) => {
   const efectivoDevuelto = Number(turno.efectivoDevuelto) || 0;
   const totalDevoluciones = Number(turno.totalDevoluciones) || 0;
   if (totalRetiros <= 0 && efectivoDevuelto <= 0 && totalDevoluciones <= 0) return null;
+  const fondoInicial = Number(turno.fondoInicial) || 0;
   const efectivoEsperado = Number.isFinite(turno.efectivoEsperado)
     ? turno.efectivoEsperado
-    : Math.max(0, Number(turno.efectivo?.total || 0) - totalRetiros - efectivoDevuelto);
+    : Math.max(0, fondoInicial + Number(turno.efectivo?.total || 0) - totalRetiros - efectivoDevuelto);
   return (
     <div className="pt-3 border-t border-ios-separator/40 mt-3 space-y-1.5 px-2.5">
       <p className="text-[11px] text-ios-tertiary uppercase tracking-wider font-semibold">Ajustes de efectivo</p>
@@ -182,101 +185,73 @@ const RetirosInfo = ({ turno }) => {
 const Ventas = () => {
   const { usuario, esAdmin } = useAutenticacion();
   const { show: alert, confirm, toast } = useIosAlert();
+  const location = useLocation();
 
   const imprimirTicket = async (s) => {
     const ok = await printTicket(s);
-    if (!ok) toast({ message: 'Habilitá las ventanas emergentes para imprimir' });
+    if (!ok) toast({ message: 'No se pudo imprimir. Reintentá o revisá la impresora.' });
   };
 
   const [desde, setDesde] = useState(today);
   const [hasta, setHasta] = useState(today);
   const [activePeriodo, setActivePeriodo] = useState('dia');
-  const [data, setData] = useState({ ventas: [], total: 0 });
-  const [stats, setStats] = useState(null);
-  const [mostSold, setMostSold] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [fetchError, setFetchError] = useState('');
 
-  const [activeTab, setActiveTab] = useState('ventas');
+  const [activeTab, setActiveTab] = useState(location.state?.tab === 'cierres' ? 'cierres' : 'ventas');
 
   const [cDesde, setCDesde] = useState(today);
   const [cHasta, setCHasta] = useState(today);
   const [cActivePeriodo, setCActivePeriodo] = useState('dia');
   const [cView, setCView] = useState('turno');
-  const [closes, setCloses] = useState([]);
-  const [closesLoading, setClosesLoading] = useState(false);
-  const [closesError, setClosesError] = useState('');
 
   const [expandedId, setExpandedId] = useState(null);
   const [ticketModal, setTicketModal] = useState(null);
   const [returnSale, setReturnSale] = useState(null);
   const [returnIsCambio, setReturnIsCambio] = useState(false);
   const [resendingId, setResendingId] = useState(null);
+  const [withdrawalOpen, setWithdrawalOpen] = useState(false);
 
   const { caja, refresh: refreshCaja, openAbrir, openCerrar, cierreHoy, esDeHoy, openReabrir } = useCaja();
 
-  const ventasSeqRef = useRef(0);
-  const cierresSeqRef = useRef(0);
-  const retirosSeqRef = useRef(0);
-  const efectivoSeqRef = useRef(0);
-
-  const [withdrawalOpen, setWithdrawalOpen] = useState(false);
-  const [withdrawalMonto, setWithdrawalMonto] = useState('');
-  const [withdrawalMotivo, setWithdrawalMotivo] = useState('');
-  const [withdrawalSaving, setWithdrawalSaving] = useState(false);
-  const [retiros, setRetiros] = useState([]);
-  const [retirosTotal, setRetirosTotal] = useState(0);
-  const [retirosLoading, setRetirosLoading] = useState(false);
-  const [retirosError, setRetirosError] = useState('');
-  const [efectivoDisponible, setEfectivoDisponible] = useState(null);
-  const [efectivoError, setEfectivoError] = useState('');
-
-  const fetchData = () => {
-    const seq = ++ventasSeqRef.current;
-    setLoading(true);
-    setFetchError('');
-    const tz = new Date().getTimezoneOffset();
-    Promise.all([
-      obtenerVentas({ desde, hasta, offset: tz }),
-      obtenerEstadisticasVentas({ desde, hasta, offset: tz }),
-      obtenerMasVendidos({ desde, hasta, offset: tz }),
-    ])
-      .then(([ventasRes, statsRes, mostSoldRes]) => {
-        if (seq !== ventasSeqRef.current) return;
-        const ventas = ventasRes.data?.ventas;
-        setData({ ventas: Array.isArray(ventas) ? ventas : [], total: ventasRes.data?.total || 0 });
-        setStats(statsRes.data);
-        setMostSold(mostSoldRes.data);
-      })
-      .catch((err) => {
-        if (seq !== ventasSeqRef.current) return;
-        setFetchError(obtenerMensajeErrorApi(err, 'Error al cargar ventas'));
-      })
-      .finally(() => {
-        if (seq === ventasSeqRef.current) setLoading(false);
+  const ventasApi = useApi(
+    async () => {
+      const tz = new Date().getTimezoneOffset();
+      const [ventasRes, statsRes, mostSoldRes] = await Promise.all([
+        obtenerVentas({ desde, hasta, offset: tz }),
+        obtenerEstadisticasVentas({ desde, hasta, offset: tz }),
+        obtenerMasVendidos({ desde, hasta, offset: tz }),
+      ]);
+      const ventas = ventasRes.data?.ventas;
+      return {
+        data: { ventas: Array.isArray(ventas) ? ventas : [], total: ventasRes.data?.total || 0 },
+        stats: statsRes.data,
+        mostSold: mostSoldRes.data,
+      };
+    },
+    { deps: [desde, hasta], mensajeError: 'Error al cargar ventas' }
+  );
+  const closesApi = useApi(
+    async () => {
+      const res = await obtenerCierresCaja({
+        desde: cDesde,
+        hasta: cHasta,
+        offset: new Date().getTimezoneOffset(),
+        agrupar: cView,
       });
-  };
+      return Array.isArray(res.data) ? res.data : [];
+    },
+    { auto: false, mensajeError: 'Error al cargar cierres' }
+  );
 
-  const fetchCloses = (d = cDesde, h = cHasta) => {
-    const seq = ++cierresSeqRef.current;
-    setClosesLoading(true);
-    setClosesError('');
-    obtenerCierresCaja({ desde: d, hasta: h, offset: new Date().getTimezoneOffset(), agrupar: cView })
-      .then((res) => {
-        if (seq !== cierresSeqRef.current) return;
-        setCloses(res.data);
-      })
-      .catch((err) => {
-        if (seq !== cierresSeqRef.current) return;
-        setClosesError(obtenerMensajeErrorApi(err, 'Error al cargar cierres'));
-      })
-      .finally(() => {
-        if (seq === cierresSeqRef.current) setClosesLoading(false);
-      });
-  };
+  const { run: fetchData, loading } = ventasApi;
+  const { run: fetchCloses, loading: closesLoading, error: closesError } = closesApi;
+  const data = ventasApi.error ? { ventas: [], total: 0 } : ventasApi.data?.data || { ventas: [], total: 0 };
+  const stats = ventasApi.error ? null : ventasApi.data?.stats ?? null;
+  const mostSold = ventasApi.error ? [] : ventasApi.data?.mostSold || [];
+  const fetchError = ventasApi.error;
+  const closes = closesApi.error ? [] : closesApi.data || [];
 
   const viewCloseDetail = (d) => {
-    const fechaStr = new Date(d.fecha).toLocaleDateString('es-AR');
+    const fechaStr = formatDateShort(d.fecha);
     const esDia = Array.isArray(d.turnos);
     const title = esDia ? `Cierre del ${fechaStr}` : `Cierre de ${turnoLabel(d.turno)} del ${fechaStr}`;
 
@@ -338,100 +313,7 @@ const Ventas = () => {
     });
   };
 
-  const openWithdrawalModal = () => {
-    setWithdrawalOpen(true);
-    setWithdrawalMonto('');
-    setWithdrawalMotivo('');
-    fetchWithdrawals();
-    fetchAvailableCash();
-  };
-
-  const fetchAvailableCash = () => {
-    const seq = ++efectivoSeqRef.current;
-    setEfectivoError('');
-    obtenerDisponibleCaja({ offset: new Date().getTimezoneOffset() })
-      .then((res) => {
-        if (seq !== efectivoSeqRef.current) return;
-        setEfectivoDisponible(Number(res.data.disponible) || 0);
-      })
-      .catch((err) => {
-        if (seq !== efectivoSeqRef.current) return;
-        setEfectivoDisponible(null);
-        setEfectivoError(obtenerMensajeErrorApi(err, 'No se pudo consultar el efectivo disponible'));
-      });
-  };
-
-  const fetchWithdrawals = () => {
-    const seq = ++retirosSeqRef.current;
-    setRetirosLoading(true);
-    setRetirosError('');
-    obtenerRetirosCaja({ desde: today(), hasta: today(), offset: new Date().getTimezoneOffset() })
-      .then((res) => {
-        if (seq !== retirosSeqRef.current) return;
-        setRetiros(res.data.retiros || []);
-        setRetirosTotal(res.data.total || 0);
-      })
-      .catch((err) => {
-        if (seq !== retirosSeqRef.current) return;
-        setRetirosError(obtenerMensajeErrorApi(err, 'No se pudieron cargar los retiros'));
-      })
-      .finally(() => {
-        if (seq === retirosSeqRef.current) setRetirosLoading(false);
-      });
-  };
-
-  const confirmWithdrawal = async () => {
-    if (withdrawalSaving) return;
-    const monto = Number(withdrawalMonto);
-    if (!Number.isFinite(monto) || monto <= 0) {
-      alert({ icon: 'warning', title: 'Monto inválido', message: 'Debe ingresar un monto mayor a $0' });
-      return;
-    }
-    if (efectivoDisponible != null && monto > efectivoDisponible) {
-      alert({ icon: 'warning', title: 'Sin efectivo suficiente', message: `Solo hay ${formatMoney(efectivoDisponible)} disponibles en caja` });
-      return;
-    }
-    if (!withdrawalMotivo.trim()) {
-      alert({ icon: 'warning', title: 'Campo requerido', message: 'Debe ingresar el motivo del retiro' });
-      return;
-    }
-    setWithdrawalSaving(true);
-    try {
-      await crearRetiroCaja({
-        monto: Math.round(monto * 100) / 100,
-        motivo: withdrawalMotivo.trim(),
-        offset: new Date().getTimezoneOffset(),
-      });
-      setWithdrawalMonto('');
-      setWithdrawalMotivo('');
-      toast({ message: 'Retiro registrado' });
-      fetchWithdrawals();
-      fetchAvailableCash();
-    } catch (err) {
-      alert({ icon: 'error', title: 'Error', message: obtenerMensajeErrorApi(err, 'Error al registrar el retiro') });
-    } finally {
-      setWithdrawalSaving(false);
-    }
-  };
-
-  const handleDeleteWithdrawal = async (id) => {
-    const confirmed = await confirm({
-      icon: 'warning',
-      title: '¿Eliminar este retiro?',
-      message: 'El retiro se eliminará del registro',
-      confirmText: 'Eliminar',
-      destructive: true,
-    });
-    if (!confirmed) return;
-    try {
-      await eliminarRetiroCaja(id);
-      toast({ message: 'Retiro eliminado' });
-      fetchWithdrawals();
-      fetchAvailableCash();
-    } catch (err) {
-      alert({ icon: 'error', title: 'Error', message: obtenerMensajeErrorApi(err, 'Error al eliminar el retiro') });
-    }
-  };
+  const openWithdrawalModal = () => setWithdrawalOpen(true);
 
   const handleDelete = async (id) => {
     const confirmed = await confirm({
@@ -465,6 +347,7 @@ const Ventas = () => {
       await eliminarCierreCaja(id);
       toast({ message: 'Cierre eliminado' });
       fetchCloses();
+      refreshCaja();
     } catch (err) {
       alert({ icon: 'error', title: 'Error', message: obtenerMensajeErrorApi(err, 'Error al eliminar cierre') });
     }
@@ -483,13 +366,9 @@ const Ventas = () => {
   };
 
   useEffect(() => {
-    fetchData();
-  }, [desde, hasta]);
-
-  useEffect(() => {
     if (activeTab !== 'cierres') return;
     fetchCloses();
-  }, [activeTab, cDesde, cHasta, cView]);
+  }, [activeTab, cDesde, cHasta, cView, fetchCloses]);
 
   useEffect(() => {
     const off = escucharPush((payload) => {
@@ -503,11 +382,11 @@ const Ventas = () => {
       }
     });
     return off;
-  }, [desde, hasta, cDesde, cHasta, cView, refreshCaja]);
+  }, [fetchData, fetchCloses, refreshCaja]);
 
   useEffect(() => {
     if (activeTab === 'cierres') fetchCloses();
-  }, [caja]);
+  }, [caja, activeTab, fetchCloses]);
 
   const selectPeriodo = (p) => {
     setActivePeriodo(p.key);
@@ -545,7 +424,7 @@ const Ventas = () => {
               <span className={`text-xs font-semibold whitespace-nowrap ${esDeHoy ? 'text-emerald-300' : 'text-amber-300'}`}>
                 {esDeHoy
                   ? `Caja abierta ${new Date(caja.abiertaEn).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })} · ${caja.abiertoPor}`
-                  : `Caja abierta del ${new Date(caja.fecha).toLocaleDateString('es-AR')} · ${caja.abiertoPor}`}
+                  : `Caja abierta del ${formatDateShort(caja.fecha)} · ${caja.abiertoPor}`}
               </span>
               <button
                 onClick={openCerrar}
@@ -583,7 +462,13 @@ const Ventas = () => {
               Abrir caja
             </button>
           )}
-          <IosButton variant="tinted" onClick={openWithdrawalModal} className="flex-1 sm:flex-none" disabled={!caja}>
+          <IosButton
+            variant="tinted"
+            onClick={openWithdrawalModal}
+            className="flex-1 sm:flex-none"
+            disabled={!caja || !esDeHoy}
+            title={!esDeHoy ? 'La caja abierta es de un día anterior' : undefined}
+          >
             <IconCash className="w-4 h-4" />
             Retirar Efectivo
           </IosButton>
@@ -628,7 +513,10 @@ const Ventas = () => {
                 <IosInput
                   type="date"
                   value={desde}
-                  onChange={(e) => setDesde(e.target.value)}
+                  onChange={(e) => {
+                    setDesde(e.target.value);
+                    setActivePeriodo('');
+                  }}
                   className="w-full sm:w-auto"
                 />
               </IosField>
@@ -636,7 +524,10 @@ const Ventas = () => {
                 <IosInput
                   type="date"
                   value={hasta}
-                  onChange={(e) => setHasta(e.target.value)}
+                  onChange={(e) => {
+                    setHasta(e.target.value);
+                    setActivePeriodo('');
+                  }}
                   className="w-full sm:w-auto"
                 />
               </IosField>
@@ -973,14 +864,20 @@ const Ventas = () => {
                   <IosInput
                     type="date"
                     value={cDesde}
-                    onChange={(e) => setCDesde(e.target.value)}
+                    onChange={(e) => {
+                      setCDesde(e.target.value);
+                      setCActivePeriodo('');
+                    }}
                   />
                 </IosField>
                 <IosField label="Hasta">
                   <IosInput
                     type="date"
                     value={cHasta}
-                    onChange={(e) => setCHasta(e.target.value)}
+                    onChange={(e) => {
+                      setCHasta(e.target.value);
+                      setCActivePeriodo('');
+                    }}
                   />
                 </IosField>
               </div>
@@ -1221,104 +1118,13 @@ const Ventas = () => {
         }}
       />
 
-      <IosModal
+      <RetiroModal
         open={withdrawalOpen}
         onClose={() => setWithdrawalOpen(false)}
-        title="Retirar Efectivo"
-        cancelText="Cerrar"
-        confirmText={withdrawalSaving ? 'Guardando…' : 'Registrar retiro'}
-        confirmVariant="tinted"
-        onConfirm={confirmWithdrawal}
-        confirmDisabled={withdrawalSaving}
-        maxWidth="max-w-md"
-      >
-        <div className="space-y-4">
-          <div className={`rounded-2xl px-4 py-3 text-sm font-semibold border flex items-center justify-between ${
-            efectivoDisponible != null && efectivoDisponible > 0
-              ? 'bg-emerald-500/10 border-emerald-500/25 text-emerald-400'
-              : 'bg-amber-500/10 border-amber-500/25 text-amber-400'
-          }`}>
-            <span>Efectivo disponible en caja</span>
-            <span className="tabular-nums">{efectivoDisponible != null ? formatMoney(efectivoDisponible) : '—'}</span>
-          </div>
-          {efectivoError && (
-            <p className="text-amber-400 text-xs">{efectivoError}</p>
-          )}
-
-          <div className="bg-ios-surface rounded-2xl border border-ios-separator/30 p-4 space-y-3">
-            <IosField label="Monto a retirar" required>
-              <IosInput
-                type="text"
-                inputMode="decimal"
-                value={withdrawalMonto}
-                onChange={(e) => {
-                  const v = e.target.value;
-                  if (v === '' || /^\d*\.?\d{0,2}$/.test(v)) setWithdrawalMonto(v);
-                }}
-                placeholder="0.00"
-              />
-            </IosField>
-            <IosField label="Motivo" required>
-              <IosInput
-                type="text"
-                value={withdrawalMotivo}
-                onChange={(e) => setWithdrawalMotivo(e.target.value)}
-                placeholder="Ej: pago a proveedor, gastos menores..."
-              />
-            </IosField>
-            <IosField label="Retira">
-              <div className="px-3.5 py-2.5 bg-ios-surface2 rounded-ios-control text-ios-secondary text-sm truncate">
-                {usuario?.nombre || '—'}
-              </div>
-            </IosField>
-          </div>
-
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-[13px] text-ios-secondary font-medium">Retiros de hoy</p>
-              {retiros.length > 0 && (
-                <span className="text-xs text-ios-tertiary font-semibold">
-                  Total: {formatMoney(retirosTotal)}
-                </span>
-              )}
-            </div>
-            {retirosLoading ? (
-              <div className="flex justify-center py-6">
-                <LoadingSpinner size="h-6 w-6" />
-              </div>
-            ) : retirosError ? (
-              <p className="text-center text-xs text-ios-red py-5 bg-ios-surface2/50 rounded-2xl">
-                {retirosError}
-              </p>
-            ) : retiros.length === 0 ? (
-              <p className="text-center text-xs text-ios-tertiary py-5 bg-ios-surface2/50 rounded-2xl">
-                No hay retiros registrados hoy
-              </p>
-            ) : (
-              <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
-                {retiros.map((w) => (
-                  <div key={w._id} className="flex items-center gap-3 bg-ios-surface2/60 rounded-2xl px-3.5 py-2.5">
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-semibold text-ios-label truncate">{formatMoney(w.monto)}</p>
-                      <p className="text-[11px] text-ios-tertiary truncate">
-                        {w.motivo} · {w.realizadoPor} · {new Date(w.fechaCreacion).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}
-                      </p>
-                    </div>
-                    {esAdmin && (
-                      <button
-                        onClick={() => handleDeleteWithdrawal(w._id)}
-                        className="text-ios-red text-xs border border-ios-red/30 px-2.5 py-1 rounded-ios-pill hover:bg-ios-red/10 transition-all font-semibold shrink-0"
-                      >
-                        Eliminar
-                      </button>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      </IosModal>
+        usuario={usuario}
+        esAdmin={esAdmin}
+        onDone={refreshCaja}
+      />
     </div>
   );
 };
