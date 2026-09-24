@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import {
   obtenerNotificaciones,
   crearNotificacion,
@@ -9,12 +9,13 @@ import {
 } from '../../api/notificaciones';
 import { obtenerMensajeErrorApi } from '../../utils/apiError';
 import { obtenerUsuarios } from '../../api/usuarios';
+import { useApi } from '../../hooks/useApi';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
 import IosButton from '../../components/ui/IosButton';
 import IosModal from '../../components/ui/IosModal';
 import { IosField, IosInput, IosTextArea, IosSelect } from '../../components/ui/IosForm';
-import { useAutenticacion } from '../../context/AutenticacionContext';
-import { useNotificaciones } from '../../context/NotificacionContext';
+import { useAutenticacion } from '../../context/autenticacionContexto';
+import { useNotificaciones } from '../../context/notificacionContexto';
 import { useIosAlert } from '../../components/alerts';
 import { IconBell, IconPlus, IconPencil, IconTrash, IconCheck, IconRefresh, IconChevronRight } from '../../components/ui/icons';
 import { formatDate } from '../../utils/format';
@@ -35,16 +36,11 @@ const Notificaciones = () => {
   const { usuario } = useAutenticacion();
   const { refresh, marcarVistasAdmin } = useNotificaciones();
   const { confirm, toast, show: alert } = useIosAlert();
-  const [notifications, setNotifications] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const seqRef = useRef(0);
-
   const [detail, setDetail] = useState(null);
   const [formOpen, setFormOpen] = useState(false);
   const [savingNotif, setSavingNotif] = useState(false);
   const [editing, setEditing] = useState(null);
-  const [form, setForm] = useState({ titulo: '', descripcion: '', destinatario: '' });
+  const [form, setForm] = useState({ titulo: '', descripcion: '', destinatario: '', destinatarioEliminado: false });
   const [empleados, setEmpleados] = useState([]);
 
   const [completeTarget, setCompleteTarget] = useState(null);
@@ -53,18 +49,15 @@ const Notificaciones = () => {
 
   const isAdmin = usuario?.rol === 'admin';
 
-  const opcionesEmpleados = useMemo(() => {
-    if (form.destinatario && !empleados.some((e) => e._id === form.destinatario)) {
-      const nombre =
-        editing?.destinatarioNombre || editing?.destinatario?.nombre || 'Empleado';
-      return [...empleados, { _id: form.destinatario, nombre: `${nombre} (inactivo)` }];
-    }
-    return empleados;
-  }, [empleados, form.destinatario, editing]);
-
-  useEffect(() => {
-    fetchNotifications();
-  }, []);
+  const notificacionesApi = useApi(
+    async () => {
+      const res = await obtenerNotificaciones();
+      return Array.isArray(res.data) ? res.data : [];
+    },
+    { mensajeError: 'Error al cargar avisos' }
+  );
+  const { run: fetchNotifications, loading, error } = notificacionesApi;
+  const notifications = notificacionesApi.data || [];
 
   useEffect(() => {
     if (isAdmin) marcarVistasAdmin();
@@ -89,33 +82,21 @@ const Notificaciones = () => {
     };
   }, [isAdmin]);
 
-  const fetchNotifications = async () => {
-    const seq = ++seqRef.current;
-    setError('');
-    try {
-      const res = await obtenerNotificaciones();
-      if (seq !== seqRef.current) return;
-      setNotifications(Array.isArray(res.data) ? res.data : []);
-    } catch (err) {
-      if (seq !== seqRef.current) return;
-      setError(obtenerMensajeErrorApi(err, 'Error al cargar avisos'));
-    } finally {
-      if (seq === seqRef.current) setLoading(false);
-    }
-  };
-
   const openCreate = () => {
     setEditing(null);
-    setForm({ titulo: '', descripcion: '', destinatario: '' });
+    setForm({ titulo: '', descripcion: '', destinatario: '', destinatarioEliminado: false });
     setFormOpen(true);
   };
 
   const openEdit = (n) => {
     setEditing(n);
+    const asignado = n.destinatario?._id || n.destinatario || '';
+    const eliminado = !asignado && Boolean(n.destinatarioNombre);
     setForm({
       titulo: n.titulo,
       descripcion: n.descripcion,
-      destinatario: n.destinatario?._id || n.destinatario || '',
+      destinatario: eliminado ? '__eliminado__' : asignado,
+      destinatarioEliminado: eliminado,
     });
     setFormOpen(true);
   };
@@ -123,6 +104,22 @@ const Notificaciones = () => {
   const handleSave = async () => {
     if (!form.titulo.trim() || !form.descripcion.trim()) {
       alert({ icon: 'warning', title: 'Campos requeridos', message: 'Debe completar título y descripción' });
+      return;
+    }
+    if (form.destinatarioEliminado) {
+      alert({
+        icon: 'warning',
+        title: 'Destinatario eliminado',
+        message: 'El empleado asignado ya no existe. Elegí otro destinatario o dejalo en "Todos".',
+      });
+      return;
+    }
+    if (form.destinatario && !empleados.some((e) => e._id === form.destinatario)) {
+      alert({
+        icon: 'warning',
+        title: 'Destinatario inactivo',
+        message: 'El empleado seleccionado ya no está activo. Elegí otro destinatario.',
+      });
       return;
     }
     if (savingNotif) return;
@@ -403,10 +400,15 @@ const Notificaciones = () => {
           >
             <IosSelect
               value={form.destinatario}
-              onChange={(e) => setForm({ ...form, destinatario: e.target.value })}
+              onChange={(e) => setForm({ ...form, destinatario: e.target.value, destinatarioEliminado: false })}
             >
               <option value="">Todos (general)</option>
-              {opcionesEmpleados.map((emp) => (
+              {form.destinatarioEliminado && (
+                <option value="__eliminado__" disabled>
+                  {(editing?.destinatarioNombre || 'Empleado')} (eliminado)
+                </option>
+              )}
+              {empleados.map((emp) => (
                 <option key={emp._id} value={emp._id}>
                   {emp.nombre}
                 </option>
