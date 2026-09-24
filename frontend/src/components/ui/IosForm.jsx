@@ -24,11 +24,11 @@ export const IosInput = ({ className = '', ...props }) => (
   <input {...props} className={`${fieldCls} ${className}`} />
 );
 
-export const IosSelect = ({ className = '', children, ...props }) => (
-  <div className="relative">
+export const IosSelect = ({ className = '', wrapperClassName = '', children, ...props }) => (
+  <div className={`relative ${wrapperClassName || className}`}>
     <select
       {...props}
-      className={`${fieldCls} appearance-none pr-9 cursor-pointer ${className}`}
+      className={`${fieldCls} appearance-none pr-9 cursor-pointer`}
     >
       {children}
     </select>
