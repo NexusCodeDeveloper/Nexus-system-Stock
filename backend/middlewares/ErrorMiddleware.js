@@ -24,8 +24,13 @@ export const manejadorErrores = (err, req, res, next) => {
     || (esZod || err.name === 'ValidationError' || err.name === 'CastError' ? 400 : err.code === 11000 ? 409 : esWriteConflict(err) ? 409 : esErrorDeBase(err) ? 503 : 500);
 
   const descripcion = describirError(err);
-  const datos = isDev && !estaVacio(req.body) && !estaVacio(req.query) && !estaVacio(req.params)
-    ? { body: req.body, query: req.query, params: req.params }
+  const hayDatos = !estaVacio(req.body) || !estaVacio(req.query) || !estaVacio(req.params);
+  const datos = isDev && hayDatos
+    ? {
+        ...(estaVacio(req.body) ? {} : { body: req.body }),
+        ...(estaVacio(req.query) ? {} : { query: req.query }),
+        ...(estaVacio(req.params) ? {} : { params: req.params }),
+      }
     : undefined;
 
   const meta = {
@@ -76,6 +81,12 @@ export const manejadorErrores = (err, req, res, next) => {
 
   if (status === 503) {
     return res.status(503).json({ message: 'Servicio no disponible. Intente de nuevo en unos minutos.' });
+  }
+
+  const esErrorDeParseo = err.name === 'SyntaxError' || err.type === 'entity.parse.failed';
+
+  if (esErrorDeParseo && !isDev) {
+    return res.status(status).json({ message: 'Datos inválidos' });
   }
 
   res.status(status).json({
