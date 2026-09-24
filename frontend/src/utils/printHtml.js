@@ -25,16 +25,19 @@ export const printHtml = (html) =>
       }
 
       const esperarImagenes = () =>
-        Promise.all(
-          Array.from(doc.images || []).map((img) =>
-            img.complete
-              ? Promise.resolve()
-              : new Promise((r) => {
-                  img.addEventListener('load', r, { once: true });
-                  img.addEventListener('error', r, { once: true });
-                })
-          )
-        );
+        Promise.race([
+          Promise.all(
+            Array.from(doc.images || []).map((img) =>
+              img.complete
+                ? Promise.resolve()
+                : new Promise((r) => {
+                    img.addEventListener('load', r, { once: true });
+                    img.addEventListener('error', r, { once: true });
+                  })
+            )
+          ),
+          new Promise((r) => setTimeout(r, 5000)),
+        ]);
 
       const imprimir = () => {
         try {
