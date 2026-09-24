@@ -12,6 +12,7 @@ api.interceptors.request.use((config) => {
   const token = getItem('token');
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
+    config.__tokenUsado = token;
   }
   return config;
 });
@@ -32,6 +33,12 @@ api.interceptors.response.use(
 
     if (status === 401) {
       if (url === '/auth/login') {
+        return Promise.reject(error);
+      }
+
+      const tokenUsado = error.config?.__tokenUsado;
+      const tokenActual = getItem('token');
+      if (tokenUsado && tokenActual && tokenUsado !== tokenActual) {
         return Promise.reject(error);
       }
 
