@@ -74,7 +74,9 @@ const FormularioProducto = ({ initial, onSubmit, onCancel, isSubmitting: externa
     const map = {};
     for (const c of form.colores) map[c] = [];
     for (const v of form.variants) {
-      if (v.color && map[v.color]) map[v.color].push(v);
+      const key = v.color || '';
+      if (!map[key]) map[key] = [];
+      map[key].push(v);
     }
     return map;
   }, [form.colores, form.variants]);
@@ -131,9 +133,8 @@ const FormularioProducto = ({ initial, onSubmit, onCancel, isSubmitting: externa
     if (form.precio === '' || Number(form.precio) <= 0) errs.precio = 'El precio debe ser mayor a $0';
     if (!form.categoria.trim()) errs.categoria = 'La categoría es obligatoria';
     if (form.stockMinimo === '' || Number(form.stockMinimo) < 0) errs.stockMinimo = 'El stock mínimo no puede ser negativo';
-    if (form.colores.length === 0 && form.variants.length > 0) errs.colores = 'Agregue al menos un color';
     if (form.colores.length > 0 && form.variants.length === 0) errs.variants = 'Agregue al menos una variante con talle y cantidad';
-    else if (form.colores.length > 0 && form.variants.some((v) => !(v.talle || '').trim())) {
+    else if (form.variants.length > 0 && form.variants.some((v) => !(v.talle || '').trim())) {
       errs.variants = 'Cada variante debe tener un talle';
     }
     setErrores(errs);
@@ -263,20 +264,20 @@ const FormularioProducto = ({ initial, onSubmit, onCancel, isSubmitting: externa
         {errText('colores')}
       </div>
 
-      {form.colores.length > 0 && (
+      {Object.keys(groups).length > 0 && (
         <div>
           <label className={`${labelCls} mb-2`}>
-            Variantes por color (stock en depósito)
+            Variantes (stock en depósito)
           </label>
           {errText('variants')}
           <div className="space-y-3">
-            {form.colores.map((color) => {
+            {Object.keys(groups).map((color) => {
               const idxs = form.variants
-                .map((v, i) => (v.color === color ? i : -1))
+                .map((v, i) => ((v.color || '') === color ? i : -1))
                 .filter((i) => i !== -1);
               return (
-                <div key={color} className="bg-ios-surface rounded-ios-card border border-ios-separator/30 p-3">
-                  <p className="text-sm font-semibold text-ios-label mb-2">{color}</p>
+                <div key={color || 'base'} className="bg-ios-surface rounded-ios-card border border-ios-separator/30 p-3">
+                  <p className="text-sm font-semibold text-ios-label mb-2">{color || 'Sin color (base)'}</p>
                   {idxs.length === 0 && (
                     <p className="text-xs text-ios-tertiary mb-2">
                       Sin variantes aún — agregue talle y cantidad
