@@ -2,13 +2,13 @@ import { useState, useEffect, useRef, useLayoutEffect } from 'react';
 import { obtenerVentas as obtenerTickets } from '../../api/ventas';
 import Ticket, { printTicket } from '../../components/Ticket/Ticket';
 import FormularioDevolucion from '../../components/FormularioDevolucion/FormularioDevolucion';
-import { obtenerMensajeErrorApi } from '../../utils/apiError';
+import { useApi } from '../../hooks/useApi';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
 import IosModal from '../../components/ui/IosModal';
 import IosSearch from '../../components/ui/IosSearch';
 import ScannerButton from '../../components/scanner/ScannerButton';
 import ScannerModal from '../../components/scanner/ScannerModal';
-import { useLector } from '../../context/LectorContext';
+import { useLector } from '../../context/lectorContexto';
 import { useIosAlert } from '../../components/alerts';
 import { IconTicket, IconTile, IconEye, IconPrint, IconReturn, IconRefresh } from '../../components/ui/icons';
 import { formatMoney, formatDate } from '../../utils/format';
@@ -38,9 +38,7 @@ const getEstadoTicket = (s) => {
 
 const Tickets = () => {
   const [busqueda, setBusqueda] = useState('');
-  const [data, setData] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [fetchError, setFetchError] = useState('');
+  const [busquedaDebounced, setBusquedaDebounced] = useState('');
   const [expandedId, setExpandedId] = useState(null);
   const [ticketModal, setTicketModal] = useState(null);
   const [returnSale, setReturnSale] = useState(null);
@@ -49,7 +47,6 @@ const Tickets = () => {
   const [scannerOpen, setScannerOpen] = useState(false);
   const [dropdown, setDropdown] = useState({ sale: null, x: 0, y: 0 });
   const dropdownRef = useRef(null);
-  const fetchSeqRef = useRef(0);
   const anchorRef = useRef(null);
 
   const { toast } = useIosAlert();
@@ -98,40 +95,30 @@ const Tickets = () => {
     if (action === 'ver') setTicketModal(s);
     else if (action === 'imprimir') {
       const ok = await printTicket(s);
-      if (!ok) toast({ message: 'Habilitá las ventanas emergentes para imprimir' });
+      if (!ok) toast({ message: 'No se pudo imprimir. Reintentá o revisá la impresora.' });
     }
     else if (action === 'devolver' && s.estado !== 'devuelta') abrirReturn(s, false);
     else if (action === 'cambiar' && s.estado !== 'devuelta') abrirReturn(s, true);
   };
 
-  const fetchData = () => {
-    const seq = ++fetchSeqRef.current;
-    setLoading(true);
-    setFetchError('');
-    const params = { offset: new Date().getTimezoneOffset() };
-    const termino = busqueda.trim();
-    if (termino) params.buscar = termino;
-    obtenerTickets(params)
-      .then((res) => {
-        if (seq !== fetchSeqRef.current) return;
-        const ventas = res.data?.ventas;
-        setData(Array.isArray(ventas) ? ventas : []);
-      })
-      .catch((err) => {
-        if (seq !== fetchSeqRef.current) return;
-        setFetchError(obtenerMensajeErrorApi(err, 'Error al cargar tickets'));
-      })
-      .finally(() => {
-        if (seq === fetchSeqRef.current) setLoading(false);
-      });
-  };
-
   useEffect(() => {
-    const t = setTimeout(() => {
-      fetchData();
-    }, 350);
+    const t = setTimeout(() => setBusquedaDebounced(busqueda), 350);
     return () => clearTimeout(t);
   }, [busqueda]);
+
+  const ticketsApi = useApi(
+    async () => {
+      const params = { offset: new Date().getTimezoneOffset() };
+      const termino = busquedaDebounced.trim();
+      if (termino) params.buscar = termino;
+      const res = await obtenerTickets(params);
+      const ventas = res.data?.ventas;
+      return Array.isArray(ventas) ? ventas : [];
+    },
+    { deps: [busquedaDebounced], mensajeError: 'Error al cargar tickets' }
+  );
+  const { run: fetchData, loading, error: fetchError } = ticketsApi;
+  const data = ticketsApi.data || [];
 
   useLector((codigo) => {
     setBusqueda(String(codigo).trim());
