@@ -5,12 +5,12 @@ import Venta from '../Venta/VentaModel.js';
 import Proveedor from '../Proveedor/ProveedorModel.js';
 import Contador from '../Venta/ContadorModel.js';
 import MovimientoStock from '../MovimientoStock/MovimientoStockModel.js';
-import { guardarConTicketUnico, registrarDevolucionEnVenta } from '../Venta/TicketUtils.js';
 import { schemaCrearProducto, schemaActualizarProducto, schemaIntercambio, schemaAgregarStock, schemaMovimientoStock, schemaDeposito, schemaPasarSalon } from './ProductoSchema.js';
 import { enviarEvento, enviarStockBajo } from '../../services/PushService.js';
-import { encontrarVariante, indiceDeVariante, depositoDe } from '../../utils/VariantesUtils.js';
-import { obtenerArticulos, mismaLinea, prorratearPagos, esMismoDia } from '../../utils/VentasUtils.js';
-import { buscarCajaAbierta, cajaEsDeHoy, mensajeCajaAnterior } from '../../utils/CajaUtils.js';
+import { indiceDeVariante, depositoDe } from '../../utils/VariantesUtils.js';
+import { ejecutarCambio } from '../Devolucion/DevolucionService.js';
+import { responderErrorDeServicio } from '../../utils/RespuestaErrorUtils.js';
+import { conReintentos } from '../../utils/TransaccionesUtils.js';
 
 const escaparRegex = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -657,339 +657,33 @@ export const retirarStock = async (req, res, next) => {
 };
 
 export const intercambiarProducto = async (req, res, next) => {
-  let session;
   try {
-    session = await mongoose.startSession();
-    session.startTransaction();
     const data = schemaIntercambio.parse(req.body);
-
-    const caja = await buscarCajaAbierta(session);
-    if (!caja) {
-      await session.abortTransaction();
-      return res.status(409).json({ message: 'Antes de hacer un cambio tenés que abrir la caja', code: 'SIN_CAJA' });
-    }
-    if (!cajaEsDeHoy(caja, Number(data.offset) || 0)) {
-      await session.abortTransaction();
-      return res.status(409).json({ message: mensajeCajaAnterior(caja), code: 'CAJA_DIA_ANTERIOR' });
-    }
-
-    const mismoProducto = String(data.productoDevolver) === String(data.productoCargar);
-    const productoDevuelto = await Producto.findById(data.productoDevolver).session(session);
-    if (!productoDevuelto) {
-      await session.abortTransaction();
-      return res.status(404).json({ message: 'Producto a devolver no encontrado' });
-    }
-
-    const productoCargado = mismoProducto
-      ? productoDevuelto
-      : await Producto.findById(data.productoCargar).session(session);
-    if (!productoCargado) {
-      await session.abortTransaction();
-      return res.status(404).json({ message: 'Producto a cargar no encontrado' });
-    }
-
-    const normalizarVariante = (v) => String(v ?? '').trim().toLowerCase();
-    const mismaVariante = mismoProducto
-      && normalizarVariante(data.talleDevolver) === normalizarVariante(data.talleCargar)
-      && normalizarVariante(data.colorDevolver) === normalizarVariante(data.colorCargar);
-
-    // Validate variantes
-    if (productoDevuelto.variantes?.length > 0) {
-      const devolverVariant = encontrarVariante(productoDevuelto, data.talleDevolver, data.colorDevolver);
-      if (!devolverVariant) {
-        await session.abortTransaction();
-        return res.status(400).json({ message: `Variante no encontrada en "${productoDevuelto.nombre}" a devolver` });
-      }
-    }
-
-    if (productoCargado.variantes?.length > 0) {
-      const cargarVariant = encontrarVariante(productoCargado, data.talleCargar, data.colorCargar);
-      if (!cargarVariant) {
-        await session.abortTransaction();
-        return res.status(400).json({ message: `Variante no encontrada en "${productoCargado.nombre}" a cargar` });
-      }
-      const stockDisponible = cargarVariant.cantidad + (mismaVariante ? data.cantidadDevolver : 0);
-      if (stockDisponible < data.cantidadCargar) {
-        const enDeposito = depositoDe(productoCargado, data.talleCargar, data.colorCargar);
-        await session.abortTransaction();
-        return res.status(400).json({
-          message: `Stock insuficiente de "${productoCargado.nombre}". Solo hay ${cargarVariant.cantidad} unidad(es) en salón.${enDeposito > 0 ? ` Hay ${enDeposito} en depósito: reponé primero.` : ''}`,
-        });
-      }
-    } else {
-      const stockDisponible = productoCargado.cantidad + (mismoProducto ? data.cantidadDevolver : 0);
-      if (stockDisponible < data.cantidadCargar) {
-        const enDeposito = depositoDe(productoCargado, data.talleCargar, data.colorCargar);
-        await session.abortTransaction();
-        return res.status(400).json({
-          message: `Stock insuficiente de "${productoCargado.nombre}". Solo hay ${productoCargado.cantidad} unidad(es) en salón.${enDeposito > 0 ? ` Hay ${enDeposito} en depósito: reponé primero.` : ''}`,
-        });
-      }
-    }
-
-    let saleTicket = null;
-    if (data.venta) {
-      saleTicket = await Venta.findById(data.venta).session(session);
-      if (!saleTicket) {
-        await session.abortTransaction();
-        return res.status(400).json({ message: 'El ticket no existe o ya fue devuelto' });
-      }
-      if (saleTicket.estado === 'devuelta') {
-        await session.abortTransaction();
-        return res.status(400).json({ message: 'El ticket ya fue devuelto' });
-      }
-      if (!saleTicket.articulos || saleTicket.articulos.length === 0) {
-        saleTicket.articulos = obtenerArticulos(saleTicket);
-      }
-      const match = saleTicket.articulos.find((i) => mismaLinea(i, {
-        producto: data.productoDevolver,
-        talle: data.talleDevolver,
-        color: data.colorDevolver,
-      }));
-      if (!match) {
-        await session.abortTransaction();
-        return res.status(400).json({ message: 'El producto no forma parte de este ticket' });
-      }
-      if (match.cantidad < data.cantidadDevolver) {
-        await session.abortTransaction();
-        return res.status(400).json({ message: `Solo hay ${match.cantidad} unidad(es) de este producto en el ticket` });
-      }
-    }
-
-    // Add stock back to returned product
-    if (productoDevuelto.variantes?.length > 0) {
-      const idx = indiceDeVariante(productoDevuelto, data.talleDevolver, data.colorDevolver);
-      if (idx === -1) {
-        productoDevuelto.variantes.push({ talle: data.talleDevolver || '', color: data.colorDevolver || '', cantidad: 0 });
-      }
-      const targetIdx = idx === -1 ? productoDevuelto.variantes.length - 1 : idx;
-      productoDevuelto.variantes[targetIdx].cantidad += data.cantidadDevolver;
-    } else {
-      productoDevuelto.cantidad += data.cantidadDevolver;
-    }
-
-    // Deduct stock from new product
-    if (productoCargado.variantes?.length > 0) {
-      const idx = indiceDeVariante(productoCargado, data.talleCargar, data.colorCargar);
-      if (idx === -1) {
-        productoCargado.variantes.push({ talle: data.talleCargar || '', color: data.colorCargar || '', cantidad: 0 });
-      }
-      const targetIdx = idx === -1 ? productoCargado.variantes.length - 1 : idx;
-      productoCargado.variantes[targetIdx].cantidad -= data.cantidadCargar;
-    } else {
-      productoCargado.cantidad -= data.cantidadCargar;
-    }
-
-    await productoDevuelto.save({ session });
-    if (productoCargado !== productoDevuelto) {
-      await productoCargado.save({ session });
-    }
-
-    const linea = { producto: data.productoDevolver, talle: data.talleDevolver, color: data.colorDevolver };
-    const esLineaDevuelta = (i) => mismaLinea(i, linea);
-
-    if (saleTicket && (!saleTicket.articulos || saleTicket.articulos.length === 0)) {
-      saleTicket.articulos = obtenerArticulos(saleTicket);
-    }
-
-    const precioDevuelto = saleTicket
-      ? (saleTicket.articulos?.find(esLineaDevuelta)?.precio ?? productoDevuelto.precio)
-      : productoDevuelto.precio;
-    const factorDescuentoTicket = 1 - (saleTicket?.descuento || 0) / 100;
-    const devolverValor = Math.round(precioDevuelto * data.cantidadDevolver * factorDescuentoTicket * 100) / 100;
-    const cargarValor = Math.round(productoCargado.precio * data.cantidadCargar * 100) / 100;
-    const diferencia = Math.round((cargarValor - devolverValor) * 100) / 100;
-
-    let pendiente = data.cantidadDevolver;
-    let saleConsumida = null;
-    let montoTotalDevuelto = 0;
-    let precioUnitarioSnapshot = precioDevuelto;
-    let descuentoAplicado = saleTicket?.descuento || 0;
-    let pagosOriginales = [];
-    let pagosAntes = [];
-    const sales = saleTicket ? [saleTicket] : [];
-
-    for (const venta of sales) {
-      if (pendiente <= 0) break;
-      saleConsumida = venta._id;
-
-      const match = venta.articulos?.find(esLineaDevuelta);
-      const saleCantidad = match?.cantidad ?? venta.cantidad ?? 0;
-      const precioUnit = match?.precio ?? venta.precio ?? 0;
-      const factorDescuento = 1 - (venta.descuento || 0) / 100;
-      precioUnitarioSnapshot = precioUnit;
-      descuentoAplicado = venta.descuento || 0;
-
-      if (saleCantidad <= pendiente) {
-        pendiente -= saleCantidad;
-        const montoDevuelto = Math.round(precioUnit * saleCantidad * factorDescuento * 100) / 100;
-        montoTotalDevuelto = Math.round((montoTotalDevuelto + montoDevuelto) * 100) / 100;
-        const restantes = (venta.articulos || []).filter((i) => !esLineaDevuelta(i));
-        if (restantes.length > 0) {
-          venta.articulos = restantes;
-          const primerItem = venta.articulos[0];
-          venta.producto = primerItem.producto;
-          venta.cantidad = primerItem.cantidad;
-          venta.precio = primerItem.precio;
-          venta.talle = primerItem.talle || '';
-          venta.total = Math.round(venta.articulos.reduce((s, i) => s + (i.subtotal ?? i.precio * i.cantidad), 0) * (1 - (venta.descuento || 0) / 100) * 100) / 100;
-          pagosAntes = (venta.pagos || []).map((p) => ({ metodo: p.metodo, monto: Math.round(p.monto * 100) / 100 }));
-        } else {
-          pagosOriginales = (venta.pagos || []).map((p) => ({ metodo: p.metodo, monto: Math.round(p.monto * 100) / 100 }));
-          pagosAntes = pagosOriginales;
-          venta.total = 0;
-          venta.pagos = [];
-          venta.estado = 'devuelta';
-        }
-        registrarDevolucionEnVenta(venta, { motivo: data.motivo, cantidad: saleCantidad, monto: montoDevuelto });
-        await venta.save({ session });
-      } else {
-        if (match) {
-          match.cantidad -= pendiente;
-          match.subtotal = Math.round(match.precio * match.cantidad * 100) / 100;
-        }
-        const sumSubtotales = (venta.articulos || []).reduce(
-          (s, i) => s + (i.subtotal ?? i.precio * i.cantidad),
-          0
-        );
-        venta.total = Math.round(sumSubtotales * (1 - (venta.descuento || 0) / 100) * 100) / 100;
-        const montoDevuelto = Math.round(precioUnit * pendiente * factorDescuento * 100) / 100;
-        montoTotalDevuelto = Math.round((montoTotalDevuelto + montoDevuelto) * 100) / 100;
-        pagosAntes = (venta.pagos || []).map((p) => ({ metodo: p.metodo, monto: Math.round(p.monto * 100) / 100 }));
-        registrarDevolucionEnVenta(venta, { motivo: data.motivo, cantidad: pendiente, monto: montoDevuelto });
-        await venta.save({ session });
-        pendiente = 0;
-      }
-    }
-
-    if (saleTicket && pendiente > 0) {
-      await session.abortTransaction();
-      return res.status(400).json({
-        message: `Solo se pueden devolver ${data.cantidadDevolver - pendiente} unidad(es): no hay más vendidas de este producto para cubrir el cambio`,
-      });
-    }
-
-    const empleado = req.usuario.nombre;
-    const offset = Number(data.offset) || 0;
-    const metodo = data.metodoPago || saleTicket?.pagos?.[0]?.metodo || 'efectivo';
-    const mismoDiaTicket = Boolean(saleTicket) && esMismoDia(saleTicket.fechaCreacion, offset);
-
-    let ventaDiferencia = null;
-    let efectivoDevuelto = 0;
-
-    if (mismoDiaTicket) {
-      let pagosNuevaVenta = prorratearPagos(pagosAntes, montoTotalDevuelto);
-      if (diferencia > 0) {
-        pagosNuevaVenta.push({ metodo, monto: diferencia });
-      } else if (diferencia < 0) {
-        let restante = Math.abs(diferencia);
-        const orden = [metodo, ...pagosNuevaVenta.map((p) => p.metodo).filter((m) => m !== metodo)];
-        for (const m of orden) {
-          if (restante <= 0) break;
-          const idx = pagosNuevaVenta.findIndex((p) => p.metodo === m);
-          if (idx === -1) continue;
-          const quitar = Math.min(pagosNuevaVenta[idx].monto, restante);
-          pagosNuevaVenta[idx].monto = Math.round((pagosNuevaVenta[idx].monto - quitar) * 100) / 100;
-          restante = Math.round((restante - quitar) * 100) / 100;
-        }
-        pagosNuevaVenta = pagosNuevaVenta.filter((p) => p.monto > 0);
-      }
-      if (pagosNuevaVenta.length === 0) {
-        pagosNuevaVenta = [{ metodo, monto: cargarValor }];
-      }
-      const sumaPagos = Math.round(pagosNuevaVenta.reduce((s, p) => s + p.monto, 0) * 100) / 100;
-      const ajuste = Math.round((cargarValor - sumaPagos) * 100) / 100;
-      if (ajuste !== 0) {
-        const ultimo = pagosNuevaVenta[pagosNuevaVenta.length - 1];
-        ultimo.monto = Math.round((ultimo.monto + ajuste) * 100) / 100;
-        if (ultimo.monto <= 0) {
-          await session.abortTransaction();
-          return res.status(400).json({ message: 'No se pudo distribuir el pago del cambio' });
-        }
-      }
-      ventaDiferencia = await Venta.create([{
-        articulos: [{
-          producto: data.productoCargar,
-          cantidad: data.cantidadCargar,
-          precio: productoCargado.precio,
-          talle: data.talleCargar || '',
-          color: data.colorCargar || '',
-          subtotal: cargarValor,
-        }],
-        total: cargarValor,
-        empleado,
-        pagos: pagosNuevaVenta,
-        descuento: 0,
-      }], { session });
-      await guardarConTicketUnico(ventaDiferencia[0], session);
-    } else if (diferencia > 0) {
-      ventaDiferencia = await Venta.create([{
-        articulos: [{
-          producto: data.productoCargar,
-          cantidad: data.cantidadCargar,
-          precio: productoCargado.precio,
-          talle: data.talleCargar || '',
-          color: data.colorCargar || '',
-          subtotal: diferencia,
-        }],
-        total: diferencia,
-        empleado,
-        pagos: [{ metodo, monto: diferencia }],
-        descuento: 0,
-      }], { session });
-      await guardarConTicketUnico(ventaDiferencia[0], session);
-    } else if (diferencia < 0 && metodo === 'efectivo') {
-      efectivoDevuelto = Math.abs(diferencia);
-    }
-
-    await Devolucion.create([{
-      producto: data.productoDevolver,
-      cantidad: data.cantidadDevolver,
-      talle: data.talleDevolver || '',
-      color: data.colorDevolver || '',
-      productoCargar: data.productoCargar,
-      cantidadCargar: data.cantidadCargar,
-      talleCargar: data.talleCargar || '',
-      colorCargar: data.colorCargar || '',
-      venta: data.venta || saleConsumida || null,
-      diferencia,
-      montoDevuelto: montoTotalDevuelto,
-      efectivoDevuelto,
-      precioUnitario: precioUnitarioSnapshot,
-      descuentoAplicado,
-      pagosOriginales,
-      ventaDiferenciaId: ventaDiferencia ? ventaDiferencia[0]._id : null,
-      motivo: data.motivo || `Cambio por ${productoCargado.nombre}`,
-    }], { session });
-
-    await session.commitTransaction();
+    const resultado = await conReintentos(() => ejecutarCambio(data, req.usuario));
 
     void enviarEvento({
       tipo: 'devolucion',
       titulo: 'Cambio registrado',
-      mensaje: `${productoDevuelto.nombre} → ${productoCargado.nombre}`,
+      mensaje: `${resultado.productoDevuelto.nombre} → ${resultado.productoCargado.nombre}`,
       url: '/returns',
       para: 'admins',
     });
-    void enviarStockBajo([productoCargado]);
+    void enviarStockBajo([resultado.productoCargado]);
 
     res.json({
-      message: diferencia > 0
-        ? `Cambio registrado. Diferencia a cobrar: $${diferencia.toFixed(2)}`
-        : diferencia < 0
-          ? `Cambio registrado. Diferencia a favor del cliente: $${Math.abs(diferencia).toFixed(2)}`
+      message: resultado.diferencia > 0
+        ? `Cambio registrado. Diferencia a cobrar: $${resultado.diferencia.toFixed(2)}`
+        : resultado.diferencia < 0
+          ? `Cambio registrado. Diferencia a favor del cliente: $${Math.abs(resultado.diferencia).toFixed(2)}`
           : 'Cambio registrado correctamente',
-      productoDevuelto,
-      productoCargado,
-      diferencia,
-      ventaDiferenciaId: ventaDiferencia ? ventaDiferencia[0]._id : null,
-      ticketDiferencia: ventaDiferencia ? ventaDiferencia[0].ticketNumero : null,
+      productoDevuelto: resultado.productoDevuelto,
+      productoCargado: resultado.productoCargado,
+      diferencia: resultado.diferencia,
+      ventaDiferenciaId: resultado.ventaDiferencia?._id || null,
+      ticketDiferencia: resultado.ventaDiferencia?.ticketNumero || null,
     });
   } catch (error) {
-    await session?.abortTransaction().catch(() => {});
-    next(error);
-  } finally {
-    session?.endSession();
+    responderErrorDeServicio(error, res, next);
   }
 };
 
