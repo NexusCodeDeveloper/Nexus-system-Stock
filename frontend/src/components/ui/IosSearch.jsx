@@ -15,6 +15,7 @@ const IosSearch = ({ value, onChange, placeholder = 'Buscar', className = '', au
     />
     {value && (
       <button
+        type="button"
         onClick={() => onChange('')}
         className="absolute right-2.5 top-1/2 -translate-y-1/2 text-ios-tertiary hover:text-ios-secondary p-1"
         aria-label="Limpiar búsqueda"
