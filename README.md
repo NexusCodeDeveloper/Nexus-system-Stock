@@ -128,10 +128,30 @@ decimales (getters de Mongoose). La migración ya fue aplicada a la base de desa
 
 ## Deploy (opcional)
 
-Actualmente **no hay un servicio de deploy activo**. Si se vuelve a desplegar, `render.yaml` queda
-como referencia: build `npm ci --prefix backend --omit=dev && npm ci --prefix frontend --include=dev && npm run build`,
-start `npm start`, y variables obligatorias `MONGO_URI`, `JWT_SECRET` (32+), `ALLOWED_ORIGINS`,
-`ADMIN_EMAIL`, `ADMIN_PASSWORD`, `EMPLEADO_EMAIL`, `EMPLEADO_PASSWORD`.
+### Vercel (dos proyectos)
+
+El backend está adaptado para Vercel: exporta la app de Express como default y se conecta a Mongo
+en la primera petición (conexión cacheada por instancia). Las tareas de arranque (seed, migraciones,
+limpieza de push) corren una vez por instancia; las notificaciones y el mail del cierre se registran
+con `waitUntil` para que no se corten al responder.
+
+1. **Backend**: New Project → Root Directory `backend` → Node 22.x. Variables obligatorias:
+   `MONGO_URI`, `JWT_SECRET` (32+), `ALLOWED_ORIGINS` (la URL del frontend, exacta y sin `*`),
+   `NODE_ENV=production`, `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `EMPLEADO_EMAIL`, `EMPLEADO_PASSWORD`.
+   No definir `PORT`. Verificar `GET https://<backend>.vercel.app/api/health`.
+2. **Frontend**: New Project → Root Directory `frontend` (Vite, build `npm run build`, salida `dist`).
+   Variables (se incrustan en el build): `VITE_API_URL=https://<backend>.vercel.app/api` y
+   `VITE_VAPID_PUBLIC_KEY` (la misma que `VAPID_PUBLIC_KEY` del backend).
+3. Volver al backend y agregar la URL final del frontend a `ALLOWED_ORIGINS` + redeploy.
+
+La primera petición tras un período de inactividad tarda unos segundos (cold start + conexión).
+El rate limit es en memoria y por instancia.
+
+### Render (referencia)
+
+`render.yaml` queda como referencia: build `npm ci --prefix backend --omit=dev && npm ci --prefix frontend --include=dev && npm run build`,
+start `npm start`, con las mismas variables que arriba.
+
 VAPID: si se dejan `VAPID_PUBLIC_KEY`/`VAPID_PRIVATE_KEY` vacías, el push se desactiva
 sin errores. Si se cargan, deben ser claves válidas (`npx web-push generate-vapid-keys`).
 
