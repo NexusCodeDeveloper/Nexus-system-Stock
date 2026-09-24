@@ -36,7 +36,14 @@ export const obtenerNotificaciones = async (req, res, next) => {
     const notificaciones = await poblarUsuarios(
       Notificacion.find(filtro).sort({ fechaCreacion: -1 })
     );
-    res.json(notificaciones);
+    res.json(
+      notificaciones.map((n) => {
+        const obj = n.toJSON();
+        obj.nuevaParaAdmin = Boolean(n.nuevaParaAdmin)
+          && !(n.vistosPor || []).some((id) => String(id) === String(req.usuario.id));
+        return obj;
+      })
+    );
   } catch (error) {
     next(error);
   }
@@ -120,6 +127,7 @@ export const completarNotificacion = async (req, res, next) => {
           realizadoPor: req.usuario.id,
           realizadoEn: new Date(),
           nuevaParaAdmin: esAdmin ? false : true,
+          vistosPor: [],
         },
       },
       { new: true }
@@ -164,6 +172,7 @@ export const reabrirNotificacion = async (req, res, next) => {
     notificacion.realizadoPor = null;
     notificacion.realizadoEn = null;
     notificacion.nuevaParaAdmin = false;
+    notificacion.vistosPor = [];
     await notificacion.save();
     const pobladas = await poblarUsuarios(
       Notificacion.findById(notificacion._id)
@@ -177,8 +186,8 @@ export const reabrirNotificacion = async (req, res, next) => {
 export const marcarVistasAdmin = async (req, res, next) => {
   try {
     await Notificacion.updateMany(
-      { nuevaParaAdmin: true },
-      { $set: { nuevaParaAdmin: false } }
+      { nuevaParaAdmin: true, vistosPor: { $ne: req.usuario.id } },
+      { $addToSet: { vistosPor: req.usuario.id } }
     );
     res.json({ message: 'Notificaciones marcadas como vistas' });
   } catch (error) {

@@ -55,6 +55,10 @@ const notificationSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    vistosPor: {
+      type: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Usuario' }],
+      default: [],
+    },
   },
   { timestamps: { createdAt: 'fechaCreacion', updatedAt: 'fechaActualizacion' } }
 );
