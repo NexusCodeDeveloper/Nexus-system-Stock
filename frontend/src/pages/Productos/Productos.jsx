@@ -1,4 +1,4 @@
-import { useState, useEffect, useLayoutEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   obtenerProductos,
@@ -10,15 +10,18 @@ import {
 import { obtenerVentas as obtenerTickets } from '../../api/ventas';
 import { obtenerMensajeErrorApi } from '../../utils/apiError';
 import { formatMoney, formatDate } from '../../utils/format';
+import { LIMITE_PRODUCTOS, depositoTotal, variantShortLabel, tieneStockBajo } from '../../utils/productos';
+import { useApi } from '../../hooks/useApi';
+import { useDropdownAnclado } from '../../hooks/useDropdownAnclado';
 import { escucharPush } from '../../services/GestorPush';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
 import ScannerButton from '../../components/scanner/ScannerButton';
 import ScannerModal from '../../components/scanner/ScannerModal';
 import FormularioDevolucion from '../../components/FormularioDevolucion/FormularioDevolucion';
-import { useAutenticacion } from '../../context/AutenticacionContext';
-import { useLector } from '../../context/LectorContext';
-import { useCarrito } from '../../context/CarritoContext';
-import { useCaja } from '../../context/CajaContext';
+import { useAutenticacion } from '../../context/autenticacionContexto';
+import { useLector } from '../../context/lectorContexto';
+import { useCarrito } from '../../context/carritoContexto';
+import { useCaja } from '../../context/cajaContexto';
 import { useIosAlert, IconAlert } from '../../components/alerts';
 import IosButton from '../../components/ui/IosButton';
 import IosModal from '../../components/ui/IosModal';
@@ -35,50 +38,13 @@ const variantLabel = (v) => {
   return `${label} (${v.cantidad})`;
 };
 
-const variantShortLabel = (v) => {
-  const parts = [];
-  if (v.talle) parts.push(v.talle);
-  if (v.color) parts.push(v.color);
-  return parts.join(' / ') || '—';
-};
-
-const depositoTotal = (p) =>
-  p.variantes?.length > 0 ? p.variantes.reduce((s, v) => s + (v.deposito || 0), 0) : (p.deposito || 0);
-
 const Productos = () => {
   const navigate = useNavigate();
-  const [products, setProducts] = useState([]);
-  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
-  const [dropdown, setDropdown] = useState({ product: null, x: 0, y: 0 });
-  const dropdownRef = useRef(null);
-  const anchorRef = useRef(null);
-  const fetchSeqRef = useRef(0);
+  const [searchDebounced, setSearchDebounced] = useState('');
+  const { dropdown, menuRef: dropdownRef, toggle: toggleDropdown, close: closeDropdown } = useDropdownAnclado();
   const returnSeqRef = useRef(0);
-  const lowStockSeqRef = useRef(0);
 
-  useLayoutEffect(() => {
-    if (!dropdown.product) return;
-    const menu = dropdownRef.current;
-    const rect = anchorRef.current;
-    if (!menu || !rect) return;
-    const GAP = 8;
-    const W = menu.offsetWidth;
-    const H = menu.offsetHeight;
-    let x = rect.left;
-    let y = rect.bottom + GAP;
-    if (y + H > window.innerHeight) {
-      y = rect.top - GAP - H;
-    }
-    y = Math.max(GAP, Math.min(y, window.innerHeight - H - GAP));
-    if (x + W > window.innerWidth) {
-      x = rect.right - W;
-    }
-    x = Math.max(GAP, Math.min(x, window.innerWidth - W - GAP));
-    setDropdown((prev) => ({ ...prev, x, y }));
-  }, [dropdown.product]);
-
-  const [error, setError] = useState('');
   const [returnPicker, setReturnPicker] = useState(null);
   const [returnTickets, setReturnTickets] = useState([]);
   const [returnTicketsLoading, setReturnTicketsLoading] = useState(false);
@@ -129,74 +95,56 @@ const Productos = () => {
   } = useCarrito();
   const { caja, cierreHoy, esDeHoy, openAbrir, openReabrir } = useCaja();
 
-  const [lowStock, setLowStock] = useState([]);
   const [lowStockOpen, setLowStockOpen] = useState(false);
-  const [lowStockError, setLowStockError] = useState('');
-
   const [expandedId, setExpandedId] = useState(null);
+
+  useEffect(() => {
+    const t = setTimeout(() => setSearchDebounced(search), search ? 300 : 0);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  const productosApi = useApi(
+    async () => {
+      const prodRes = await obtenerProductos({ search: searchDebounced });
+      const lista = Array.isArray(prodRes.data) ? prodRes.data : [];
+      return { lista, tope: lista.length >= LIMITE_PRODUCTOS };
+    },
+    { deps: [searchDebounced], mensajeError: 'Error al cargar productos' }
+  );
+  const lowStockApi = useApi(
+    async () => {
+      const res = await obtenerStockBajo();
+      return Array.isArray(res.data) ? res.data : [];
+    },
+    { mensajeError: 'Error al cargar stock bajo' }
+  );
+
+  const { run: recargarProductos, loading, error } = productosApi;
+  const { run: recargarLowStock, error: lowStockError } = lowStockApi;
+  const products = productosApi.error ? [] : productosApi.data?.lista || [];
+  const topeAlcanzado = !productosApi.error && Boolean(productosApi.data?.tope);
+  const lowStock = lowStockApi.data || [];
 
   const agotados = lowStock.filter((i) => i.cantidad === 0);
   const bajos = lowStock.filter((i) => i.cantidad > 0);
 
-  const fetchData = async () => {
-    const seq = ++fetchSeqRef.current;
-    setLoading(true);
-    setError('');
-    try {
-      const prodRes = await obtenerProductos({ search });
-      if (seq !== fetchSeqRef.current) return;
-      setProducts(Array.isArray(prodRes.data) ? prodRes.data : []);
-    } catch (err) {
-      if (seq !== fetchSeqRef.current) return;
-      setError(obtenerMensajeErrorApi(err, 'Error al cargar productos'));
-    } finally {
-      if (seq === fetchSeqRef.current) setLoading(false);
-    }
-  };
-
-  const fetchLowStock = () => {
-    const seq = ++lowStockSeqRef.current;
-    setLowStockError('');
-    obtenerStockBajo()
-      .then((res) => {
-        if (seq !== lowStockSeqRef.current) return;
-        setLowStock(Array.isArray(res.data) ? res.data : []);
-      })
-      .catch((err) => {
-        if (seq !== lowStockSeqRef.current) return;
-        setLowStockError(obtenerMensajeErrorApi(err, 'Error al cargar stock bajo'));
-      });
-  };
-
-  const fetchDataRef = useRef(fetchData);
-  fetchDataRef.current = fetchData;
-
-  useEffect(() => {
-    const t = setTimeout(fetchData, search ? 300 : 0);
-    return () => clearTimeout(t);
-  }, [search]);
-
-  useEffect(() => {
-    fetchLowStock();
-  }, []);
-
   useEffect(() => {
     const off = escucharPush((payload) => {
       if (['stock', 'venta', 'devolucion'].includes(payload?.tipo)) {
-        fetchLowStock();
-        fetchDataRef.current();
+        recargarLowStock();
+        recargarProductos();
       }
     });
     return off;
-  }, []);
+  }, [recargarLowStock, recargarProductos]);
 
   const saleVersionRef = useRef(saleVersion);
   useEffect(() => {
     if (saleVersion === saleVersionRef.current) return;
     saleVersionRef.current = saleVersion;
-    fetchData();
-    fetchLowStock();
-  }, [saleVersion]);
+    recargarProductos();
+    recargarLowStock();
+  }, [saleVersion, recargarProductos, recargarLowStock]);
 
   const handleDelete = async (id) => {
     const confirmed = await confirm({
@@ -209,8 +157,8 @@ const Productos = () => {
     if (!confirmed) return;
     try {
       await eliminarProducto(id);
-      fetchData();
-      fetchLowStock();
+      recargarProductos();
+      recargarLowStock();
       toast({ message: 'Producto eliminado' });
     } catch (err) {
       alert({ icon: 'error', title: 'Error', message: obtenerMensajeErrorApi(err, 'Error al eliminar producto') });
@@ -288,8 +236,8 @@ const Productos = () => {
     try {
       await retirarStock(retirarModal._id, { cantidad, talle: retirarVariant?.talle || '', color: retirarVariant?.color || '' });
       setRetirarModal(null);
-      fetchData();
-      fetchLowStock();
+      recargarProductos();
+      recargarLowStock();
       toast({ message: 'Retirado al depósito' });
     } catch (err) {
       alert({ icon: 'error', title: 'Error', message: obtenerMensajeErrorApi(err, 'Error al retirar stock') });
@@ -369,6 +317,7 @@ const Productos = () => {
         agregarAlCarritoEscaneado(producto);
         return;
       }
+      setScannerOpen(false);
       openQuickAdd(producto);
     } catch (err) {
       if (err.response?.status === 404) {
@@ -412,7 +361,7 @@ const Productos = () => {
 
   const handleDropdownAction = async (action) => {
     const p = dropdown.product;
-    setDropdown({ product: null, x: 0, y: 0 });
+    closeDropdown();
     if (action === 'carrito') openQuickAdd(p);
     else if (action === 'retirar') openRetirar(p);
     else if (action === 'devolver') openReturn(p, false);
@@ -641,7 +590,10 @@ const Productos = () => {
         </div>
         <div className="space-y-2 mb-4">
           {cart.map((item, idx) => (
-            <div key={idx} className="flex flex-col sm:flex-row sm:items-center gap-3 bg-ios-surface rounded-2xl p-3 border border-ios-separator/30">
+            <div
+              key={`${item.producto}|${item.talle || ''}|${item.color || ''}`}
+              className="flex flex-col sm:flex-row sm:items-center gap-3 bg-ios-surface rounded-2xl p-3 border border-ios-separator/30"
+            >
               <div className="flex-1 min-w-0 flex items-start justify-between gap-2 sm:block">
                 <div className="min-w-0">
                   <p className="text-sm font-semibold text-ios-label truncate">{item.nombre}</p>
@@ -873,15 +825,21 @@ const Productos = () => {
           setReturnEsCambio(false);
         }}
         onDone={() => {
-          fetchData();
-          fetchLowStock();
+          recargarProductos();
+          recargarLowStock();
         }}
       />
 
 
-      {error && (
+      {error && products.length > 0 && (
         <div className="mb-4 px-4 py-3 bg-ios-red/10 border border-ios-red/25 rounded-ios-control text-ios-red text-sm font-medium">
           {error}
+        </div>
+      )}
+
+      {topeAlcanzado && !search && (
+        <div className="mb-4 px-4 py-3 bg-amber-500/10 border border-amber-500/25 rounded-ios-control text-amber-300 text-sm font-medium">
+          Se muestran los primeros {LIMITE_PRODUCTOS} productos. Usá la búsqueda para encontrar el resto.
         </div>
       )}
 
@@ -916,7 +874,7 @@ const Productos = () => {
                   <tr
                     key={p._id}
                     className="border-t border-ios-separator/30 transition-colors hover:bg-ios-hover/[0.03] cursor-pointer animate-ios-row"
-                    style={{ animationDelay: `${i * 20}ms` }}
+                    style={{ animationDelay: `${Math.min(i, 20) * 20}ms` }}
                     onClick={() => setExpandedId(expandedId === p._id ? null : p._id)}
                   >
                     <td className="px-5 py-3.5 font-semibold text-ios-label">
@@ -981,8 +939,8 @@ const Productos = () => {
                       {p.precio != null ? formatMoney(p.precio) : '—'}
                     </td>
                     <td className="px-4 py-3.5">
-                      <span className={`inline-flex items-center gap-1.5 font-medium ${(p.stockMinimo != null && p.cantidad <= p.stockMinimo) ? 'text-ios-red font-semibold' : 'text-ios-label'}`}>
-                        {(p.stockMinimo != null && p.cantidad <= p.stockMinimo) && (
+                      <span className={`inline-flex items-center gap-1.5 font-medium ${tieneStockBajo(p) ? 'text-ios-red font-semibold' : 'text-ios-label'}`}>
+                        {tieneStockBajo(p) && (
                           <IconAlert className="w-4 h-4" strokeWidth={2} />
                         )}
                         {p.cantidad}
@@ -993,15 +951,7 @@ const Productos = () => {
                     <td className="px-4 py-3.5 text-ios-tertiary">{p.proveedor || '—'}</td>
                     <td className="px-5 py-3.5 text-right">
                       <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (dropdown.product?._id === p._id) {
-                            setDropdown({ product: null, x: 0, y: 0 });
-                          } else {
-                            anchorRef.current = e.currentTarget.getBoundingClientRect();
-                            setDropdown({ product: p, x: 0, y: 0 });
-                          }
-                        }}
+                        onClick={(e) => toggleDropdown(e, p)}
                         className="p-2 rounded-full hover:bg-ios-hover/10 text-ios-secondary transition-colors"
                         aria-label={`Acciones de ${p.nombre}`}
                         aria-haspopup="menu"
@@ -1028,7 +978,7 @@ const Productos = () => {
             </div>
           ) : (
             products.map((p, i) => (
-              <div key={p._id} className="bg-ios-surface border border-ios-separator/30 rounded-2xl px-4 py-3.5 shadow-ios-card animate-ios-row" style={{ animationDelay: `${i * 20}ms` }}>
+              <div key={p._id} className="bg-ios-surface border border-ios-separator/30 rounded-2xl px-4 py-3.5 shadow-ios-card animate-ios-row" style={{ animationDelay: `${Math.min(i, 20) * 20}ms` }}>
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
                     <p className="font-semibold text-ios-label">{p.nombre}</p>
@@ -1041,21 +991,14 @@ const Productos = () => {
                     )}
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
-                    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${(p.stockMinimo != null && p.cantidad <= p.stockMinimo) ? 'bg-ios-red/15 text-ios-red' : 'bg-ios-surface2 text-ios-secondary'}`}>
+                    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${tieneStockBajo(p) ? 'bg-ios-red/15 text-ios-red' : 'bg-ios-surface2 text-ios-secondary'}`}>
                       {p.cantidad}
                     </span>
                     <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-violet-500/15 text-violet-300">
                       Dep {depositoTotal(p)}
                     </span>
                     <button
-                      onClick={(e) => {
-                        if (dropdown.product?._id === p._id) {
-                          setDropdown({ product: null, x: 0, y: 0 });
-                        } else {
-                          anchorRef.current = e.currentTarget.getBoundingClientRect();
-                          setDropdown({ product: p, x: 0, y: 0 });
-                        }
-                      }}
+                      onClick={(e) => toggleDropdown(e, p)}
                       className="p-2 rounded-full hover:bg-ios-hover/10 text-ios-secondary transition-colors"
                     >
                       <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
@@ -1115,7 +1058,7 @@ const Productos = () => {
 
       {dropdown.product && (
         <>
-          <div className="fixed inset-0 z-30" onClick={() => setDropdown({ product: null, x: 0, y: 0 })} />
+          <div className="fixed inset-0 z-30" onClick={closeDropdown} />
           <div
             ref={dropdownRef}
             className="fixed z-40 w-48 bg-ios-surface/95 backdrop-blur-2xl border border-white/10 rounded-2xl shadow-ios-alert p-1.5 animate-ios-modal"
