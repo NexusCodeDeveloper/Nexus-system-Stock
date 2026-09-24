@@ -1,12 +1,16 @@
-import { useState, useEffect, useLayoutEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { obtenerProductos, crearProducto, actualizarProducto, eliminarProducto, addDeposito, reponerStock, pasarSalon } from '../../api/productos';
 import { obtenerMovimientosStock } from '../../api/movimientosStock';
 import { obtenerMensajeErrorApi } from '../../utils/apiError';
 import { printLabel } from '../../utils/printLabel';
 import { formatDate, formatMoney } from '../../utils/format';
+import { LIMITE_PRODUCTOS, depositoTotal, salonTotal, variantLabel } from '../../utils/productos';
+import { useApi } from '../../hooks/useApi';
+import { useDropdownAnclado } from '../../hooks/useDropdownAnclado';
+import { escucharPush } from '../../services/GestorPush';
 import { getItem, setItem } from '../../utils/storage';
-import { useAutenticacion } from '../../context/AutenticacionContext';
+import { useAutenticacion } from '../../context/autenticacionContexto';
 import { useIosAlert } from '../../components/alerts';
 import IosButton from '../../components/ui/IosButton';
 import IosModal from '../../components/ui/IosModal';
@@ -16,14 +20,6 @@ import { IosField, IosInput, IosSelect } from '../../components/ui/IosForm';
 import FormularioProducto from '../../components/FormularioProducto/FormularioProducto';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
 import { IconArrowUp, IconChevronDown, IconHistory, IconPencil, IconPlus, IconPrint, IconRefresh, IconTrash, IconWarehouse } from '../../components/ui/icons';
-
-const variantLabel = (v) => [v.talle, v.color].filter(Boolean).join(' / ') || 'Base';
-
-const depositoTotal = (p) =>
-  p.variantes?.length > 0 ? p.variantes.reduce((s, v) => s + (v.deposito || 0), 0) : (p.deposito || 0);
-
-const salonTotal = (p) =>
-  p.variantes?.length > 0 ? p.variantes.reduce((s, v) => s + (v.cantidad || 0), 0) : (p.cantidad || 0);
 
 const TIPOS = {
   ingreso_deposito: { label: 'Ingreso a depósito', cls: 'bg-violet-500/15 text-violet-300' },
@@ -46,7 +42,6 @@ const MEDIDAS_ETIQUETA = {
 };
 
 const ETIQUETA_PREFS_KEY = 'deposito-etiqueta-prefs';
-const LIMITE_PRODUCTOS = 1000;
 
 const Deposito = () => {
   const { esAdmin } = useAutenticacion();
@@ -55,17 +50,11 @@ const Deposito = () => {
   const navigate = useNavigate();
 
   const [tab, setTab] = useState('stock');
-  const [productos, setProductos] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
   const [search, setSearch] = useState('');
+  const [searchDebounced, setSearchDebounced] = useState('');
   const [soloConStock, setSoloConStock] = useState(false);
   const [expandedId, setExpandedId] = useState(null);
-  const [dropdown, setDropdown] = useState({ product: null, x: 0, y: 0 });
-  const dropdownRef = useRef(null);
-  const anchorRef = useRef(null);
-  const productosSeqRef = useRef(0);
-  const movSeqRef = useRef(0);
+  const { dropdown, menuRef: dropdownRef, toggle: openDropdown, close: cerrarDropdown } = useDropdownAnclado();
 
   const [stockModal, setStockModal] = useState(null);
   const [modalCantidad, setModalCantidad] = useState('1');
@@ -90,54 +79,53 @@ const Deposito = () => {
   const [etiquetaQr, setEtiquetaQr] = useState(true);
   const [etiquetaSaving, setEtiquetaSaving] = useState(false);
 
-  const [movimientos, setMovimientos] = useState([]);
-  const [movLoading, setMovLoading] = useState(false);
-  const [movError, setMovError] = useState('');
   const [movTipo, setMovTipo] = useState('');
   const [movBuscar, setMovBuscar] = useState('');
+  const [movBuscarDebounced, setMovBuscarDebounced] = useState('');
   const [movDesde, setMovDesde] = useState('');
   const [movHasta, setMovHasta] = useState('');
   const [movLimit, setMovLimit] = useState(100);
   const [pasarTodoSaving, setPasarTodoSaving] = useState(false);
 
-  const fetchProductos = async (buscar = search) => {
-    const seq = ++productosSeqRef.current;
-    setLoading(true);
-    setError('');
-    try {
-      const term = String(buscar || '').trim();
+  const productosApi = useApi(
+    async () => {
+      const term = String(searchDebounced || '').trim();
       const res = await obtenerProductos(term ? { search: term } : undefined);
-      if (seq !== productosSeqRef.current) return;
-      setProductos(Array.isArray(res.data) ? res.data : []);
-    } catch (err) {
-      if (seq !== productosSeqRef.current) return;
-      setError(obtenerMensajeErrorApi(err, 'Error al cargar productos'));
-    } finally {
-      if (seq === productosSeqRef.current) setLoading(false);
-    }
-  };
+      return Array.isArray(res.data) ? res.data : [];
+    },
+    { deps: [searchDebounced], mensajeError: 'Error al cargar productos' }
+  );
 
-  const fetchMovimientos = async () => {
-    const seq = ++movSeqRef.current;
-    setMovLoading(true);
-    setMovError('');
-    try {
+  const movimientosApi = useApi(
+    async () => {
       const params = { limit: movLimit };
       if (movTipo) params.tipo = movTipo;
-      if (movBuscar.trim()) params.buscar = movBuscar.trim();
+      if (movBuscarDebounced.trim()) params.buscar = movBuscarDebounced.trim();
       if (movDesde) params.desde = movDesde;
       if (movHasta) params.hasta = movHasta;
       if (movDesde || movHasta) params.tz = new Date().getTimezoneOffset();
       const res = await obtenerMovimientosStock(params);
-      if (seq !== movSeqRef.current) return;
-      setMovimientos(Array.isArray(res.data) ? res.data : []);
-    } catch (err) {
-      if (seq !== movSeqRef.current) return;
-      setMovError(obtenerMensajeErrorApi(err, 'Error al cargar movimientos'));
-    } finally {
-      if (seq === movSeqRef.current) setMovLoading(false);
-    }
-  };
+      const lista = Array.isArray(res.data) ? res.data : [];
+      return { lista, hayMas: lista.length >= movLimit };
+    },
+    { auto: false, mensajeError: 'Error al cargar movimientos' }
+  );
+
+  const { run: recargarProductos, loading, error } = productosApi;
+  const { run: recargarMovimientos, loading: movLoading, error: movError } = movimientosApi;
+  const productos = productosApi.data || [];
+  const movimientos = movimientosApi.error ? [] : movimientosApi.data?.lista || [];
+  const movHayMas = !movimientosApi.error && Boolean(movimientosApi.data?.hayMas);
+
+  useEffect(() => {
+    const off = escucharPush((payload) => {
+      if (['stock', 'venta', 'devolucion'].includes(payload?.tipo)) {
+        recargarProductos();
+        if (tab === 'movimientos') recargarMovimientos();
+      }
+    });
+    return off;
+  }, [recargarProductos, recargarMovimientos, tab]);
 
   const handleGuardar = async (data) => {
     if (isSubmitting) return;
@@ -150,7 +138,7 @@ const Deposito = () => {
       }
       setShowForm(false);
       setEditing(null);
-      fetchProductos();
+      recargarProductos();
       toast({ message: editing ? 'Producto actualizado' : 'Producto creado' });
     } catch (err) {
       alert({ icon: 'error', title: 'Error', message: obtenerMensajeErrorApi(err, 'Error al guardar producto') });
@@ -160,9 +148,14 @@ const Deposito = () => {
   };
 
   useEffect(() => {
-    const timer = setTimeout(() => fetchProductos(search), search.trim() ? 300 : 0);
+    const timer = setTimeout(() => setSearchDebounced(search), search.trim() ? 300 : 0);
     return () => clearTimeout(timer);
   }, [search]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setMovBuscarDebounced(movBuscar), movBuscar.trim() ? 300 : 0);
+    return () => clearTimeout(timer);
+  }, [movBuscar]);
 
   useEffect(() => {
     if (location.state?.crear) {
@@ -174,42 +167,9 @@ const Deposito = () => {
 
   useEffect(() => {
     if (tab !== 'movimientos' || !esAdmin) return undefined;
-    const timer = setTimeout(() => fetchMovimientos(), movBuscar.trim() ? 300 : 0);
-    return () => clearTimeout(timer);
-  }, [tab, movTipo, movBuscar, movDesde, movHasta, movLimit, esAdmin]);
-
-  useLayoutEffect(() => {
-    if (!dropdown.product) return;
-    const menu = dropdownRef.current;
-    const rect = anchorRef.current;
-    if (!menu || !rect) return;
-    const GAP = 8;
-    const W = menu.offsetWidth;
-    const H = menu.offsetHeight;
-    let x = rect.left;
-    let y = rect.bottom + GAP;
-    if (y + H > window.innerHeight) {
-      y = rect.top - GAP - H;
-    }
-    y = Math.max(GAP, Math.min(y, window.innerHeight - H - GAP));
-    if (x + W > window.innerWidth) {
-      x = rect.right - W;
-    }
-    x = Math.max(GAP, Math.min(x, window.innerWidth - W - GAP));
-    setDropdown((prev) => ({ ...prev, x, y }));
-  }, [dropdown.product]);
-
-  const openDropdown = (e, p) => {
-    e.stopPropagation();
-    if (dropdown.product?._id === p._id) {
-      setDropdown({ product: null, x: 0, y: 0 });
-    } else {
-      anchorRef.current = e.currentTarget.getBoundingClientRect();
-      setDropdown({ product: p, x: 0, y: 0 });
-    }
-  };
-
-  const cerrarDropdown = () => setDropdown({ product: null, x: 0, y: 0 });
+    recargarMovimientos();
+    return undefined;
+  }, [tab, movTipo, movBuscarDebounced, movDesde, movHasta, movLimit, esAdmin, recargarMovimientos]);
 
   const handleDelete = async (p) => {
     cerrarDropdown();
@@ -223,7 +183,7 @@ const Deposito = () => {
     if (!confirmed) return;
     try {
       await eliminarProducto(p._id);
-      fetchProductos();
+      recargarProductos();
       toast({ message: 'Producto eliminado' });
     } catch (err) {
       alert({ icon: 'error', title: 'Error', message: obtenerMensajeErrorApi(err, 'Error al eliminar producto') });
@@ -351,6 +311,11 @@ const Deposito = () => {
       alert({ icon: 'warning', title: 'Stock insuficiente', message: `Solo hay ${disponibleModal} unidad(es) en depósito` });
       return;
     }
+    if (esFijar && cantidad === disponibleModal) {
+      toast({ message: 'Sin cambios en el depósito' });
+      setStockModal(null);
+      return;
+    }
 
     const payload = {
       cantidad,
@@ -369,7 +334,7 @@ const Deposito = () => {
         toast({ message: esFijar ? `Depósito ajustado: ${modalProducto.nombre}` : `Depósito actualizado: ${modalProducto.nombre}` });
       }
       setStockModal(null);
-      fetchProductos();
+      recargarProductos();
     } catch (err) {
       alert({ icon: 'error', title: 'Error', message: obtenerMensajeErrorApi(err, 'No se pudo mover el stock') });
     } finally {
@@ -401,23 +366,36 @@ const Deposito = () => {
         ? variantes.map((v) => ({ producto: p._id, cantidad: v.deposito, talle: v.talle || '', color: v.color || '' }))
         : [{ producto: p._id, cantidad: total, talle: '', color: '' }];
       await pasarSalon(items);
-      fetchProductos();
+      recargarProductos();
       toast({ message: `Pasado al salón: ${total} u.` });
     } catch (err) {
       alert({ icon: 'error', title: 'Error', message: obtenerMensajeErrorApi(err, 'No se pudo pasar el stock') });
-      fetchProductos();
+      recargarProductos();
     } finally {
       setPasarTodoSaving(false);
     }
   };
 
-  const exportarMovimientosCsv = () => {
+  const exportarMovimientosCsv = async () => {
     if (movimientos.length === 0) {
       toast({ message: 'No hay movimientos para exportar' });
       return;
     }
+    let lista = movimientos;
+    try {
+      const params = { limit: 500 };
+      if (movTipo) params.tipo = movTipo;
+      if (movBuscar.trim()) params.buscar = movBuscar.trim();
+      if (movDesde) params.desde = movDesde;
+      if (movHasta) params.hasta = movHasta;
+      if (movDesde || movHasta) params.tz = new Date().getTimezoneOffset();
+      const res = await obtenerMovimientosStock(params);
+      if (Array.isArray(res.data)) lista = res.data;
+    } catch {
+      /* si falla, se exporta lo que ya está en pantalla */
+    }
     const filas = [['Producto', 'Talle', 'Color', 'Tipo', 'Cantidad', 'Empleado', 'Fecha']];
-    for (const m of movimientos) {
+    for (const m of lista) {
       filas.push([
         m.productoNombre || '',
         m.talle || '',
@@ -425,7 +403,7 @@ const Deposito = () => {
         TIPOS[m.tipo]?.label || m.tipo || '',
         m.cantidad,
         m.empleado || '',
-        m.fechaCreacion ? new Date(m.fechaCreacion).toISOString() : '',
+        formatDate(m.fechaCreacion),
       ]);
     }
     const csv = filas
@@ -435,9 +413,12 @@ const Deposito = () => {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `movimientos-deposito-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.download = `movimientos-deposito-${new Date().toLocaleDateString('sv-SE')}.csv`;
     a.click();
     URL.revokeObjectURL(url);
+    if (lista.length >= 500) {
+      toast({ message: 'Se exportaron los primeros 500 movimientos. Acotá las fechas para el resto.' });
+    }
   };
 
   const filtrados = productos.filter((p) => {
@@ -449,11 +430,13 @@ const Deposito = () => {
   const bajosSalon = filtrados.filter((p) => salonTotal(p) <= (p.stockMinimo ?? 0)).length;
 
   const badgeSalon = (p) => {
-    const total = salonTotal(p);
-    if (total === 0) {
+    const minimo = p.stockMinimo ?? 0;
+    const variantes = p.variantes || [];
+    const cantidades = variantes.length > 0 ? variantes.map((v) => Number(v.cantidad) || 0) : [salonTotal(p)];
+    if (cantidades.some((c) => c === 0)) {
       return <span className="inline-block px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-ios-red/15 text-ios-red">Agotado</span>;
     }
-    if (total <= (p.stockMinimo ?? 0)) {
+    if (cantidades.some((c) => c <= minimo)) {
       return <span className="inline-block px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-amber-500/15 text-amber-400">Bajo</span>;
     }
     return null;
@@ -499,7 +482,7 @@ const Deposito = () => {
             </IosButton>
           )}
           <button
-            onClick={() => (tab === 'stock' ? fetchProductos() : fetchMovimientos())}
+            onClick={() => (tab === 'stock' ? recargarProductos() : recargarMovimientos())}
             className="ios-btn-press flex items-center gap-2 px-3.5 py-2 bg-ios-surface2 rounded-ios-pill text-sm text-ios-secondary font-medium hover:bg-ios-surface3 transition-colors"
           >
             <IconRefresh className="w-4 h-4" />
@@ -686,7 +669,10 @@ const Deposito = () => {
           <div className="mb-4 flex items-center gap-3 flex-wrap">
             <IosSearch
               value={movBuscar}
-              onChange={setMovBuscar}
+              onChange={(v) => {
+                setMovBuscar(v);
+                setMovLimit(100);
+              }}
               placeholder="Buscar por producto..."
               className="w-full sm:w-72"
             />
@@ -763,7 +749,7 @@ const Deposito = () => {
                   })}
                 </div>
               </div>
-              {movimientos.length >= movLimit && movLimit < 500 && (
+              {movHayMas && movLimit < 500 && (
                 <div className="mt-4 flex justify-center">
                   <button
                     onClick={() => setMovLimit((n) => Math.min(n + 100, 500))}
