@@ -4,6 +4,7 @@ import Producto from '../Producto/ProductoModel.js';
 import Devolucion from '../Devolucion/DevolucionModel.js';
 import CierreCaja from './CierreCajaModel.js';
 import RetiroCaja from '../RetiroCaja/RetiroCajaModel.js';
+import RetiroCajaDia from '../RetiroCaja/RetiroCajaDiaModel.js';
 import { schemaCrearVenta, schemaAbrirCaja, schemaCerrarCaja, schemaReabrirCaja } from './VentaSchema.js';
 import { generarTicketNumero, guardarConTicketUnico } from './TicketUtils.js';
 import { enviarCierreDeCaja, enviarCorreoPrueba, verificarCorreo } from '../../services/CorreoService.js';
@@ -11,11 +12,12 @@ import { enviarEvento, enviarStockBajo } from '../../services/PushService.js';
 import { parsearFecha, obtenerRango, inicioDeDia } from '../../utils/FechasUtils.js';
 import { indiceDeVariante, extraDeposito } from '../../utils/VariantesUtils.js';
 import { obtenerArticulos, unidadesNetasVenta, totalNetoVenta } from '../../utils/VentasUtils.js';
-import { encontrarCierreDeFecha, mensajeCierre } from '../../utils/CierresUtils.js';
+import { filtroCierreDia, mensajeCierre, verificarOperacionNoEnCierre, MENSAJE_CIERRE_EN_CURSO } from '../../utils/CierresUtils.js';
 import { buscarCajaAbierta, respuestaSinCaja, MENSAJE_SIN_CAJA, cajaEsDeHoy, mensajeCajaAnterior } from '../../utils/CajaUtils.js';
 import logger from '../../utils/LoggerUtils.js';
 
 const escaparRegex = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const redondear = (valor) => Math.round((Number(valor) || 0) * 100) / 100;
 
 export const crearVenta = async (req, res, next) => {
   let session;
@@ -145,11 +147,13 @@ export const eliminarVenta = async (req, res, next) => {
       return res.status(400).json({ message: 'No se puede eliminar una venta ya devuelta' });
     }
 
-    const cierre = await encontrarCierreDeFecha(venta.fechaCreacion);
-    if (cierre) {
+    const verificacion = await verificarOperacionNoEnCierre(venta.fechaCreacion, session);
+    if (verificacion.bloqueado) {
       await session.abortTransaction();
       return res.status(409).json({
-        message: `No se puede eliminar una venta que ya forma parte de un cierre.${mensajeCierre(cierre)}`,
+        message: verificacion.motivo === 'cerrando'
+          ? MENSAJE_CIERRE_EN_CURSO
+          : `No se puede eliminar una venta que ya forma parte de un cierre.${mensajeCierre(verificacion.cierre)}`,
       });
     }
 
@@ -403,9 +407,11 @@ export const abrirCaja = async (req, res, next) => {
       });
     }
 
-    const yaCerrada = await CierreCaja.findOne({ fecha: fechaDate, turno: 'dia', estado: { $ne: 'abierto' } });
+    const yaCerrada = await CierreCaja.findOne({ ...filtroCierreDia(fechaDate), estado: { $ne: 'abierto' } });
     if (yaCerrada) {
-      return res.status(409).json({ message: 'La caja de hoy ya fue cerrada.' });
+      return res.status(409).json({
+        message: yaCerrada.estado === 'cerrando' ? MENSAJE_CIERRE_EN_CURSO : 'La caja de hoy ya fue cerrada.',
+      });
     }
 
     let caja;
@@ -418,6 +424,7 @@ export const abrirCaja = async (req, res, next) => {
         abiertoPor: data.nombre,
         abiertoPorUsuario: req.usuario?.nombre || '',
         fondoInicial: data.fondoInicial || 0,
+        offset,
         total: 0,
         cantidad: 0,
       });
@@ -447,7 +454,7 @@ export const obtenerCajaAbierta = async (req, res, next) => {
     const offsetRaw = Number(req.query.offset);
     const offset = Number.isFinite(offsetRaw) ? offsetRaw : 0;
     const hoy = inicioDeDia(offset);
-    const cierreHoy = await CierreCaja.findOne({ fecha: hoy, turno: 'dia', estado: 'cerrado' })
+    const cierreHoy = await CierreCaja.findOne({ ...filtroCierreDia(hoy), estado: 'cerrado' })
       .select('_id fecha cerradaEn cerradoPor total cantidad reaperturas');
 
     const caja = await buscarCajaAbierta();
@@ -471,16 +478,25 @@ export const cerrarCaja = async (req, res, next) => {
     const data = schemaCerrarCaja.parse(req.body);
     const offset = Number.isFinite(Number(data.offset)) ? Number(data.offset) : 0;
 
-    const caja = await buscarCajaAbierta();
+    let caja = await CierreCaja.findOneAndUpdate(
+      { estado: 'abierto' },
+      { $set: { estado: 'cerrando', cerradaEn: new Date() } },
+      { new: true }
+    );
+
     if (!caja) {
-      return res.status(409).json({ message: 'No hay una caja abierta para cerrar' });
+      caja = await CierreCaja.findOne({ estado: 'cerrando' });
+      if (!caja) {
+        return res.status(409).json({ message: 'No hay una caja abierta para cerrar' });
+      }
     }
 
+    const cerradaEn = caja.cerradaEn || new Date();
+    caja.cerradaEn = cerradaEn;
     const resumen = await calcularResumenCaja(caja);
-    const cerradaEn = new Date();
 
     const actualizada = await CierreCaja.findOneAndUpdate(
-      { _id: caja._id, estado: 'abierto' },
+      { _id: caja._id, estado: 'cerrando' },
       {
         $set: {
           estado: 'cerrado',
@@ -512,6 +528,7 @@ export const cerrarCaja = async (req, res, next) => {
           totalRetiros: resumen.totalRetiros,
           totalDevoluciones: resumen.totalDevoluciones,
           efectivoDevuelto: resumen.efectivoDevuelto,
+          efectivoEsperado: resumen.efectivoEsperado,
         },
       },
       { new: true }
@@ -568,7 +585,7 @@ export const reabrirCaja = async (req, res, next) => {
       });
     }
 
-    const cerrada = await CierreCaja.findOne({ fecha: hoy, turno: 'dia', estado: 'cerrado' });
+    const cerrada = await CierreCaja.findOne({ ...filtroCierreDia(hoy), estado: 'cerrado' });
     if (!cerrada) {
       return res.status(409).json({ message: 'No hay una caja cerrada de hoy para reabrir' });
     }
@@ -576,7 +593,7 @@ export const reabrirCaja = async (req, res, next) => {
     const actualizada = await CierreCaja.findOneAndUpdate(
       { _id: cerrada._id, estado: 'cerrado' },
       {
-        $set: { estado: 'abierto', cerradaEn: null, cerradoPor: '', cerradoPorUsuario: '' },
+        $set: { estado: 'abierto', cerradaEn: null, hasta: null, cerradoPor: '', cerradoPorUsuario: '' },
         $push: {
           reaperturas: { por: data.nombre, usuario: req.usuario?.nombre || '', at: new Date() },
         },
@@ -605,7 +622,7 @@ export const reabrirCaja = async (req, res, next) => {
 export const obtenerCierresCaja = async (req, res, next) => {
   try {
     const { desde, hasta, offset = 0, agrupar = 'turno' } = req.query;
-    const filter = { estado: { $ne: 'abierto' } };
+    const filter = { estado: 'cerrado' };
 
     if (desde || hasta) {
       filter.fecha = obtenerRango(desde, hasta, offset);
@@ -647,7 +664,17 @@ export const obtenerCierresCaja = async (req, res, next) => {
         if (c.cerradaEn > g.cerradaEn) g.cerradaEn = c.cerradaEn;
         g.turnos.push(c);
       }
-      return res.json([...grupos.values()]);
+      const agrupados = [...grupos.values()].map((g) => ({
+        ...g,
+        total: redondear(g.total),
+        totalRetiros: redondear(g.totalRetiros),
+        totalDevoluciones: redondear(g.totalDevoluciones),
+        efectivoDevuelto: redondear(g.efectivoDevuelto),
+        efectivo: { ...g.efectivo, total: redondear(g.efectivo.total) },
+        transferencia: { ...g.transferencia, total: redondear(g.transferencia.total) },
+        tarjeta: { ...g.tarjeta, total: redondear(g.tarjeta.total) },
+      }));
+      return res.json(agrupados);
     }
 
     res.json(closes);
@@ -665,6 +692,10 @@ export const eliminarCierreCaja = async (req, res, next) => {
     if (close.estado === 'abierto') {
       return res.status(409).json({ message: 'No se puede eliminar una caja abierta. Cerrala primero.' });
     }
+    if (close.estado !== 'cerrado') {
+      return res.status(409).json({ message: MENSAJE_CIERRE_EN_CURSO });
+    }
+    await RetiroCajaDia.deleteMany({ caja: close._id });
     await CierreCaja.findByIdAndDelete(req.params.id);
     res.json({ message: 'Cierre eliminado correctamente' });
   } catch (error) {
@@ -713,6 +744,9 @@ export const reenviarMailCierre = async (req, res, next) => {
     const close = await CierreCaja.findById(req.params.id);
     if (!close) {
       return res.status(404).json({ message: 'Cierre no encontrado' });
+    }
+    if (close.estado !== 'cerrado') {
+      return res.status(409).json({ message: 'Solo se puede reenviar el mail de una caja cerrada' });
     }
 
     const offset = Number(req.body?.offset) || Number(req.query?.offset) || 0;
@@ -799,12 +833,14 @@ export const migrarArticulosVenta = async () => {
   const pendientes = await Venta.countDocuments({
     $or: [{ articulos: { $exists: false } }, { articulos: { $size: 0 } }],
     producto: { $exists: true, $ne: null },
+    estado: { $ne: 'devuelta' },
   });
   if (pendientes === 0) return 0;
 
   const cursor = Venta.find({
     $or: [{ articulos: { $exists: false } }, { articulos: { $size: 0 } }],
     producto: { $exists: true, $ne: null },
+    estado: { $ne: 'devuelta' },
   }).cursor();
 
   let count = 0;
@@ -812,14 +848,38 @@ export const migrarArticulosVenta = async () => {
     const articulos = obtenerArticulos(venta);
     if (!articulos.length || !articulos[0].producto) continue;
     const fechaOriginal = venta.fechaCreacion || venta.createdAt;
-    venta.articulos = articulos.map((i) => ({
-      producto: i.producto,
-      cantidad: i.cantidad,
-      precio: i.precio,
-      talle: i.talle || '',
-      color: i.color || '',
-      subtotal: i.subtotal ?? venta.total,
-    }));
+    const devueltas = Math.max(0, Number(venta.cantidadDevuelta) || 0);
+    const items = [];
+    for (const i of articulos) {
+      const cantidadOriginal = Number(i.cantidad) || 0;
+      const cantidad = Math.max(0, cantidadOriginal - devueltas);
+      if (cantidad <= 0) continue;
+      const subtotalOriginal = Number(i.subtotal ?? venta.total) || 0;
+      const subtotal = devueltas > 0 && cantidadOriginal > 0
+        ? Math.round(subtotalOriginal * (cantidad / cantidadOriginal) * 100) / 100
+        : subtotalOriginal;
+      items.push({
+        producto: i.producto,
+        cantidad,
+        precio: i.precio,
+        talle: i.talle || '',
+        color: i.color || '',
+        subtotal,
+      });
+    }
+
+    if (items.length === 0) {
+      venta.articulos = [];
+      venta.estado = 'devuelta';
+      venta.total = 0;
+      venta.pagos = [];
+    } else {
+      venta.articulos = items;
+      if (devueltas > 0) {
+        venta.total = Math.round(items.reduce((s, i) => s + i.subtotal, 0) * 100) / 100;
+      }
+    }
+
     await venta.save();
     if (fechaOriginal) {
       await Venta.updateOne({ _id: venta._id }, { $set: { fechaCreacion: fechaOriginal } });
