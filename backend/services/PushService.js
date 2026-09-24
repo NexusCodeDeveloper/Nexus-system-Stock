@@ -1,8 +1,40 @@
 import webpush from 'web-push';
 import SuscripcionPush from '../modules/Push/PushModel.js';
+import Usuario from '../modules/Autenticacion/UsuarioModel.js';
 import logger from '../utils/LoggerUtils.js';
 
 let pushActivo = false;
+
+const HOSTS_PUSH_POR_DEFECTO = [
+  'fcm.googleapis.com',
+  'push.apple.com',
+  'notify.windows.com',
+  'push.services.mozilla.com',
+  'push.operacdn.com',
+  'push.samsungosp.com',
+];
+
+const hostsPermitidos = () => [
+  ...HOSTS_PUSH_POR_DEFECTO,
+  ...(process.env.PUSH_ALLOWED_HOSTS || '')
+    .split(',')
+    .map((host) => host.trim().toLowerCase())
+    .filter(Boolean),
+];
+
+export const validarEndpointPush = (endpoint) => {
+  if (typeof endpoint !== 'string' || endpoint.length === 0 || endpoint.length > 1024) return false;
+  let url;
+  try {
+    url = new URL(endpoint);
+  } catch {
+    return false;
+  }
+  if (url.protocol !== 'https:') return false;
+  if (url.port && url.port !== '443') return false;
+  const host = url.hostname.toLowerCase();
+  return hostsPermitidos().some((permitido) => host === permitido || host.endsWith(`.${permitido}`));
+};
 
 if (process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
   try {
@@ -28,6 +60,11 @@ export const registrarSuscripcion = async ({ endpoint, keys }, usuario) => {
     err.statusCode = 400;
     throw err;
   }
+  if (!validarEndpointPush(endpoint)) {
+    const err = new Error('El endpoint de notificaciones no es válido o no pertenece a un servicio de push conocido');
+    err.statusCode = 400;
+    throw err;
+  }
   await SuscripcionPush.updateOne(
     { endpoint },
     {
@@ -47,25 +84,26 @@ export const registrarSuscripcion = async ({ endpoint, keys }, usuario) => {
 };
 
 export const eliminarSuscripcion = async (endpoint, usuarioId) => {
-  const filtro = usuarioId
-    ? { endpoint, $or: [{ usuarioId }, { usuarioId: null }, { usuarioId: { $exists: false } }] }
-    : { endpoint };
-  await SuscripcionPush.deleteOne(filtro);
+  if (!endpoint || !usuarioId) return;
+  await SuscripcionPush.deleteOne({ endpoint, usuarioId });
 };
 
-const construirFiltro = (para) => {
+export const construirFiltro = (para) => {
   if (para === 'admins') return { rol: 'admin' };
   if (para === 'empleados') return { rol: 'user' };
-  if (para?.usuarioId) {
-    return {
-      $or: [
-        { rol: 'admin' },
-        { usuarioId: para.usuarioId },
-        { usuarioId: { $exists: false }, nombre: para.nombre || '' },
-      ],
-    };
-  }
+  if (para?.usuarioId) return { usuarioId: para.usuarioId };
   return {};
+};
+
+export const limpiarSuscripcionesHuerfanas = async () => {
+  const usuarios = await Usuario.find({}, '_id activo').lean();
+  const activos = new Set(usuarios.filter((u) => u.activo).map((u) => String(u._id)));
+  const subs = await SuscripcionPush.find({ usuarioId: { $ne: null } }).select('usuarioId').lean();
+  const eliminar = subs.filter((s) => !activos.has(String(s.usuarioId))).map((s) => s._id);
+  if (eliminar.length > 0) {
+    await SuscripcionPush.deleteMany({ _id: { $in: eliminar } });
+  }
+  return eliminar.length;
 };
 
 export const enviarEvento = async ({ tipo, titulo, mensaje, url = '/', para = 'todos' }) => {
@@ -86,7 +124,8 @@ export const enviarEvento = async ({ tipo, titulo, mensaje, url = '/', para = 't
       subs.map((s) =>
         webpush.sendNotification(
           { endpoint: s.endpoint, keys: { p256dh: s.keys.p256dh, auth: s.keys.auth } },
-          payload
+          payload,
+          { timeout: 10000 }
         )
       )
     );
