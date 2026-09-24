@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { IconCheck } from '../ui/icons';
 
 const getGreeting = () => {
@@ -26,6 +26,7 @@ const WelcomeOverlay = () => {
   });
   const [closing, setClosing] = useState(false);
   const [status, setStatus] = useState('loading');
+  const fadeTimer = useRef(null);
 
   useEffect(() => {
     if (!visible) return;
@@ -37,19 +38,20 @@ const WelcomeOverlay = () => {
     const doneTimer = setTimeout(() => setStatus('done'), 2000);
     const closeTimer = setTimeout(() => {
       setClosing(true);
-      setTimeout(() => setVisible(false), 200);
+      fadeTimer.current = setTimeout(() => setVisible(false), 200);
     }, 3500);
 
     return () => {
       clearTimeout(doneTimer);
       clearTimeout(closeTimer);
+      clearTimeout(fadeTimer.current);
     };
   }, [visible]);
 
   const dismiss = () => {
     if (closing || !visible) return;
     setClosing(true);
-    setTimeout(() => setVisible(false), 200);
+    fadeTimer.current = setTimeout(() => setVisible(false), 200);
   };
 
   if (!visible) return null;
