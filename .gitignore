@@ -4,6 +4,7 @@ node_modules/
 .env*.local
 dist/
 .vite/
+.vercel/
 *.log
 backups/
 logs/
