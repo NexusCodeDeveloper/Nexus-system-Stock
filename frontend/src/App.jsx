@@ -1,5 +1,5 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
-import { useAutenticacion } from './context/AutenticacionContext'
+import { useAutenticacion } from './context/autenticacionContexto'
 import ProtectedRoute from './components/ProtectedRoute/ProtectedRoute'
 import Layout from './components/Layout/Layout'
 import LoginModal from './pages/Login/Login'
@@ -20,7 +20,29 @@ function Inicio() {
 }
 
 function App() {
-  const { usuario, loading } = useAutenticacion()
+  const autenticacion = useAutenticacion()
+
+  if (!autenticacion) {
+    return (
+      <div className="flex items-center justify-center h-screen bg-ios-bg px-6">
+        <div className="text-center max-w-sm">
+          <p className="text-ios-label font-semibold mb-2">La app se actualizó</p>
+          <p className="text-ios-secondary text-sm mb-4">
+            Recargá la página para seguir. Si el problema continúa, cerrá la app y volvé a abrirla.
+          </p>
+          <button
+            type="button"
+            onClick={() => window.location.reload()}
+            className="px-5 py-2.5 rounded-ios-pill bg-ios-tint text-white text-sm font-semibold"
+          >
+            Recargar página
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  const { usuario, loading } = autenticacion
 
   if (loading) {
     return (
