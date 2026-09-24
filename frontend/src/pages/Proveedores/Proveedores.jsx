@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import {
   obtenerProveedores,
   crearProveedor,
@@ -6,9 +6,10 @@ import {
   eliminarProveedor,
 } from '../../api/proveedores';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
-import { useAutenticacion } from '../../context/AutenticacionContext';
+import { useAutenticacion } from '../../context/autenticacionContexto';
 import { useIosAlert, IconAlert } from '../../components/alerts';
 import { obtenerMensajeErrorApi } from '../../utils/apiError';
+import { useApi } from '../../hooks/useApi';
 import IosButton from '../../components/ui/IosButton';
 import IosModal from '../../components/ui/IosModal';
 import { IosField, IosInput } from '../../components/ui/IosForm';
@@ -17,10 +18,6 @@ import { IconPlus } from '../../components/ui/icons';
 const Proveedores = () => {
   const { usuario, esAdmin } = useAutenticacion();
   const { show: alert, confirm, toast } = useIosAlert();
-  const [suppliers, setSuppliers] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const seqRef = useRef(0);
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -31,25 +28,19 @@ const Proveedores = () => {
     direccion: '',
   });
 
-  const fetchSuppliers = async () => {
-    const seq = ++seqRef.current;
-    setError('');
-    try {
+  const proveedoresApi = useApi(
+    async () => {
       const res = await obtenerProveedores();
-      if (seq !== seqRef.current) return;
-      setSuppliers(Array.isArray(res.data) ? res.data : []);
-    } catch (err) {
-      if (seq !== seqRef.current) return;
-      setError(obtenerMensajeErrorApi(err, 'Error al cargar proveedores'));
-    } finally {
-      if (seq === seqRef.current) setLoading(false);
-    }
-  };
+      return Array.isArray(res.data) ? res.data : [];
+    },
+    { auto: false, mensajeError: 'Error al cargar proveedores' }
+  );
+  const { run: fetchSuppliers, loading, error } = proveedoresApi;
+  const suppliers = proveedoresApi.data || [];
 
   useEffect(() => {
     if (esAdmin) fetchSuppliers();
-    else setLoading(false);
-  }, [esAdmin]);
+  }, [esAdmin, fetchSuppliers]);
 
   const resetForm = () => {
     setForm({ nombre: '', telefono: '', email: '', direccion: '' });
