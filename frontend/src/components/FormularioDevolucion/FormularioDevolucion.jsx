@@ -9,7 +9,7 @@ import IosToggle from '../ui/IosToggle';
 import { IosField, IosInput, IosSelect } from '../ui/IosForm';
 import ScannerButton from '../scanner/ScannerButton';
 import ScannerModal from '../scanner/ScannerModal';
-import { useLector } from '../../context/LectorContext';
+import { useLector } from '../../context/lectorContexto';
 import { formatMoney } from '../../utils/format';
 
 const variantLabel = (v) => [v.talle, v.color].filter(Boolean).join(' / ') || 'Base';
@@ -63,17 +63,41 @@ const FormularioDevolucion = ({ sale, open, onClose, onDone, defaultExchange = f
       setExchangeCantidad('1');
       setExchangeVariantIdx('');
       setMetodoPago(sale.pagos?.[0]?.metodo || 'efectivo');
-      obtenerProductos()
+      setProducts([]);
+      setProductsError('');
+      if (codigoBuscado && idx === -1) {
+        toast({ message: `El código "${initialCodigo}" no está en este ticket`, duration: 2600 });
+      }
+    }
+  }, [open, sale, defaultExchange, initialCodigo, toast]);
+
+  useEffect(() => {
+    if (!open || !sale || !exchangeActivo) return undefined;
+    const term = exchangeSearch.trim();
+    if (!term) {
+      setProducts([]);
+      setProductsError('');
+      return undefined;
+    }
+    let cancelado = false;
+    const timer = setTimeout(() => {
+      obtenerProductos({ search: term })
         .then((res) => {
+          if (cancelado) return;
           setProducts(res.data || []);
           setProductsError('');
         })
         .catch((err) => {
+          if (cancelado) return;
           setProducts([]);
-          setProductsError(obtenerMensajeErrorApi(err, 'No se pudieron cargar los productos para el cambio'));
+          setProductsError(obtenerMensajeErrorApi(err, 'No se pudieron buscar productos'));
         });
-    }
-  }, [open, sale, defaultExchange, initialCodigo]);
+    }, 250);
+    return () => {
+      cancelado = true;
+      clearTimeout(timer);
+    };
+  }, [open, sale, exchangeActivo, exchangeSearch]);
 
   const selectItem = (idx) => {
     setItemIdx(idx);
@@ -89,14 +113,7 @@ const FormularioDevolucion = ({ sale, open, onClose, onDone, defaultExchange = f
     : 0;
   const diferencia = Math.round((cargarValor - devolverValor) * 100) / 100;
 
-  const filteredExchange = products.filter((p) => {
-    const term = exchangeSearch.trim().toLowerCase();
-    if (!term) return true;
-    return (
-      (p.nombre || '').toLowerCase().includes(term) ||
-      (p.codigo || '').toLowerCase().includes(term)
-    );
-  });
+  const filteredExchange = products;
 
   const confirmar = async () => {
     if (saving) return;
