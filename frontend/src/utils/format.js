@@ -1,5 +1,10 @@
-export const formatMoney = (n) =>
-  `$${Number(n || 0).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+export const formatMoney = (n) => {
+  const valor = Number(n);
+  return `$${(Number.isFinite(valor) ? valor : 0).toLocaleString('es-AR', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
+};
 
 export const formatDate = (date) =>
   date
@@ -20,8 +25,8 @@ export const formatDateSafe = (dateStr) => {
 };
 
 export const formatDateShort = (date) => {
-  if (typeof date === 'string' && /^\d{4}-\d{2}-\d{2}/.test(date)) {
-    const [y, m, d] = date.slice(0, 10).split('-');
+  if (typeof date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    const [y, m, d] = date.split('-');
     return `${d}/${m}/${y}`;
   }
   const d = new Date(date);
