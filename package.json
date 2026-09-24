@@ -8,11 +8,11 @@
     "backend": "npm run dev --prefix backend",
     "frontend": "npm run dev --prefix frontend",
     "dev": "npx concurrently -n backend,frontend -c blue,green \"npm run backend\" \"npm run frontend\"",
-    "setup": "npm ci && npm ci --prefix backend && npm ci --include=dev --prefix frontend",
+    "setup": "npm ci && npm ci --include=dev --prefix backend && npm ci --include=dev --prefix frontend",
     "build": "npm run build --prefix frontend",
     "start": "npm run start --prefix backend",
     "lint": "npm run lint --prefix frontend",
-    "test": "npm test --prefix backend"
+    "test": "npm test --prefix backend && npm test --prefix frontend"
   },
   "devDependencies": {
     "concurrently": "^8.2.2"
