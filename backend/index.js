@@ -30,23 +30,27 @@ import { limpiarSuscripcionesHuerfanas } from './services/PushService.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+const abortarArranque = (mensaje, meta = {}) => {
+  logger.error(mensaje, { ...meta, origen: 'backend' });
+  if (process.env.VERCEL) {
+    throw new Error(mensaje);
+  }
+  process.exit(1);
+};
+
 const requiredEnv = ['MONGO_URI', 'JWT_SECRET', 'ALLOWED_ORIGINS', 'ADMIN_EMAIL', 'ADMIN_PASSWORD', 'EMPLEADO_EMAIL', 'EMPLEADO_PASSWORD'];
 const missingEnv = requiredEnv.filter((env) => !process.env[env]);
 if (missingEnv.length > 0) {
-  logger.error('Faltan variables de entorno requeridas', {
+  abortarArranque('Faltan variables de entorno requeridas', {
     motivo: missingEnv.join(', '),
     queRevisar: 'Copiá backend/.env.example a backend/.env y completá los valores.',
-    origen: 'backend',
   });
-  process.exit(1);
 }
 if (process.env.JWT_SECRET.length < 32 || process.env.JWT_SECRET.includes('cambia_esto')) {
-  logger.error('El secreto de sesión (JWT_SECRET) no es válido', {
+  abortarArranque('El secreto de sesión (JWT_SECRET) no es válido', {
     motivo: 'Debe tener al menos 32 caracteres y no ser un valor de ejemplo.',
     queRevisar: 'Generá uno nuevo con: node -e "console.log(require(\'crypto\').randomBytes(32).toString(\'hex\'))"',
-    origen: 'backend',
   });
-  process.exit(1);
 }
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -65,12 +69,10 @@ const validarCredencialesIniciales = () => {
     }
   }
   if (errores.length > 0) {
-    logger.error('Credenciales iniciales inválidas', {
+    abortarArranque('Credenciales iniciales inválidas', {
       motivo: errores.join(', '),
       queRevisar: 'Corregí ADMIN_EMAIL/ADMIN_PASSWORD y EMPLEADO_EMAIL/EMPLEADO_PASSWORD en el .env.',
-      origen: 'backend',
     });
-    process.exit(1);
   }
 };
 
@@ -80,16 +82,78 @@ if (process.env.NODE_ENV === 'production') {
     process.env.EMPLEADO_PASSWORD === 'empleado123',
   ];
   if (clavesEjemplo.some(Boolean)) {
-    logger.error('Las contraseñas de ejemplo no se pueden usar en producción', {
+    abortarArranque('Las contraseñas de ejemplo no se pueden usar en producción', {
       motivo: 'ADMIN_PASSWORD o EMPLEADO_PASSWORD conservan los valores de backend/.env.example.',
       queRevisar: 'Definí contraseñas propias y seguras en las variables de entorno del servidor.',
-      origen: 'backend',
     });
-    process.exit(1);
   }
 }
 
 validarCredencialesIniciales();
+
+const sembrarUsuario = async (nombre, email, clave, rol) => {
+  const emailNormalizado = String(email || '').trim().toLowerCase();
+  const existe = await Usuario.exists({ email: emailNormalizado });
+  if (existe) return;
+  try {
+    await Usuario.create({ nombre, email: emailNormalizado, clave, rol });
+  } catch (error) {
+    if (error.code !== 11000) throw error;
+  }
+};
+
+const sembrarUsuarios = async () => {
+  await sembrarUsuario('Admin', process.env.ADMIN_EMAIL, process.env.ADMIN_PASSWORD, 'admin');
+  logger.debug('Usuario admin verificado');
+
+  try {
+    await sembrarUsuario('Empleado', process.env.EMPLEADO_EMAIL, process.env.EMPLEADO_PASSWORD, 'user');
+    logger.debug('Usuario empleado verificado');
+  } catch (error) {
+    const d = describirError(error);
+    logger.warn('No se pudo crear el usuario empleado inicial', {
+      motivo: d.titulo,
+      detalle: d.detalle,
+      queRevisar: d.queRevisar || 'Revisá la conexión a la base de datos.',
+      origen: 'backend',
+      stack: error.stack,
+    });
+  }
+};
+
+let inicializarPromesa = null;
+
+const inicializar = () => {
+  if (!inicializarPromesa) {
+    inicializarPromesa = (async () => {
+      await connectDB();
+      await sembrarUsuarios();
+      try {
+        await Venta.init();
+        await CierreCaja.init();
+        const itemsMigrados = await migrarArticulosVenta();
+        if (itemsMigrados > 0) logger.info(`Ventas legacy migradas al formato articulos[]: ${itemsMigrados}`);
+        const migradas = await asegurarNumerosTicket();
+        if (migradas > 0) logger.info(`Números de ticket asignados a ${migradas} ventas existentes`);
+        const subsLimpiadas = await limpiarSuscripcionesHuerfanas();
+        if (subsLimpiadas > 0) logger.info(`Suscripciones push de usuarios inactivos eliminadas: ${subsLimpiadas}`);
+      } catch (error) {
+        const d = describirError(error);
+        logger.error('No se pudieron ejecutar las tareas de arranque', {
+          motivo: d.titulo,
+          detalle: d.detalle,
+          queRevisar: d.queRevisar,
+          origen: 'backend',
+          stack: error.stack,
+        });
+      }
+    })().catch((error) => {
+      inicializarPromesa = null;
+      throw error;
+    });
+  }
+  return inicializarPromesa;
+};
 
 const app = express();
 const isDev = process.env.NODE_ENV !== 'production';
@@ -117,6 +181,15 @@ app.use(cors({ origin: allowedOrigins }));
 app.use(helmet());
 app.use(express.json({ limit: '1mb' }));
 app.use(registradorPeticiones);
+
+app.use(async (req, res, next) => {
+  try {
+    await inicializar();
+    next();
+  } catch (error) {
+    next(error);
+  }
+});
 
 const rateLimitBase = {
   windowMs: 15 * 60 * 1000,
@@ -176,7 +249,7 @@ app.use('/api', (req, res) => {
   res.status(404).json({ message: 'Ruta no encontrada' });
 });
 
-if (!isDev) {
+if (!isDev && !process.env.VERCEL) {
   const frontendDist = path.resolve(__dirname, '..', 'frontend', 'dist');
   app.use(express.static(frontendDist));
   app.use((req, res) => {
@@ -189,124 +262,77 @@ if (!isDev) {
 
 app.use(manejadorErrores);
 
-const sembrarUsuario = async (nombre, email, clave, rol) => {
-  const emailNormalizado = String(email || '').trim().toLowerCase();
-  const existe = await Usuario.exists({ email: emailNormalizado });
-  if (existe) return;
-  try {
-    await Usuario.create({ nombre, email: emailNormalizado, clave, rol });
-  } catch (error) {
-    if (error.code !== 11000) throw error;
-  }
-};
+export default app;
 
-const sembrarUsuarios = async () => {
-  await sembrarUsuario('Admin', process.env.ADMIN_EMAIL, process.env.ADMIN_PASSWORD, 'admin');
-  logger.debug('Usuario admin verificado');
+if (process.env.VERCEL) {
+  logger.debug('Arranque en Vercel: la inicialización se ejecuta en la primera petición');
+}
 
-  try {
-    await sembrarUsuario('Empleado', process.env.EMPLEADO_EMAIL, process.env.EMPLEADO_PASSWORD, 'user');
-    logger.debug('Usuario empleado verificado');
-  } catch (error) {
+if (!process.env.VERCEL) {
+  let cerrando = false;
+
+  const cerrarConError = (mensaje, error) => {
+    if (cerrando) return;
+    cerrando = true;
     const d = describirError(error);
-    logger.warn('No se pudo crear el usuario empleado inicial', {
+    logger.error(mensaje, {
       motivo: d.titulo,
       detalle: d.detalle,
-      queRevisar: d.queRevisar || 'Revisá la conexión a la base de datos.',
+      queRevisar: d.queRevisar,
       origen: 'backend',
-      stack: error.stack,
+      stack: error?.stack,
     });
-  }
-};
+    logger.on('finish', () => process.exit(1));
+    logger.end();
+    setTimeout(() => process.exit(1), 2000).unref();
+  };
 
-let cerrando = false;
-
-const cerrarConError = (mensaje, error) => {
-  if (cerrando) return;
-  cerrando = true;
-  const d = describirError(error);
-  logger.error(mensaje, {
-    motivo: d.titulo,
-    detalle: d.detalle,
-    queRevisar: d.queRevisar,
-    origen: 'backend',
-    stack: error?.stack,
+  process.on('unhandledRejection', (reason) => {
+    cerrarConError('Unhandled rejection', reason instanceof Error ? reason : new Error(String(reason)));
   });
-  logger.on('finish', () => process.exit(1));
-  logger.end();
-  setTimeout(() => process.exit(1), 2000).unref();
-};
 
-process.on('unhandledRejection', (reason) => {
-  cerrarConError('Unhandled rejection', reason instanceof Error ? reason : new Error(String(reason)));
-});
+  process.on('uncaughtException', (error) => {
+    cerrarConError('Uncaught exception', error);
+  });
 
-process.on('uncaughtException', (error) => {
-  cerrarConError('Uncaught exception', error);
-});
-
-connectDB()
-  .then(async () => {
-    try {
-      await sembrarUsuarios();
-    } catch (error) {
-      cerrarConError('No se pudo crear el administrador inicial', error);
-      return;
-    }
-    try {
-      await Venta.init();
-      await CierreCaja.init();
-      const itemsMigrados = await migrarArticulosVenta();
-      if (itemsMigrados > 0) logger.info(`Ventas legacy migradas al formato articulos[]: ${itemsMigrados}`);
-      const migradas = await asegurarNumerosTicket();
-      if (migradas > 0) logger.info(`Números de ticket asignados a ${migradas} ventas existentes`);
-      const subsLimpiadas = await limpiarSuscripcionesHuerfanas();
-      if (subsLimpiadas > 0) logger.info(`Suscripciones push de usuarios inactivos eliminadas: ${subsLimpiadas}`);
-    } catch (error) {
+  inicializar()
+    .then(() => {
+      const server = app.listen(PORT, () => {
+        logger.info('Servidor corriendo', {
+          puerto: PORT,
+          entorno: process.env.NODE_ENV || 'development',
+          nivelDeDetalle: logger.level,
+        });
+      });
+      server.on('error', (error) => {
+        if (error.code === 'EADDRINUSE') {
+          logger.error('El puerto ya está en uso', {
+            puerto: PORT,
+            queRevisar: 'Cerrá el proceso que usa ese puerto o definí otro PORT en el .env.',
+            origen: 'backend',
+          });
+        } else {
+          const d = describirError(error);
+          logger.error('Error del servidor', {
+            motivo: d.titulo,
+            detalle: d.detalle,
+            queRevisar: d.queRevisar,
+            origen: 'backend',
+            stack: error.stack,
+          });
+        }
+        process.exit(1);
+      });
+    })
+    .catch((error) => {
       const d = describirError(error);
-      logger.error('No se pudieron asignar los números de ticket pendientes', {
+      logger.error('No se pudo iniciar el servidor', {
         motivo: d.titulo,
         detalle: d.detalle,
-        queRevisar: d.queRevisar,
+        queRevisar: d.queRevisar || 'Verificá MONGO_URI y que la base esté disponible.',
         origen: 'backend',
         stack: error.stack,
       });
-    }
-    const server = app.listen(PORT, () => {
-      logger.info('Servidor corriendo', {
-        puerto: PORT,
-        entorno: process.env.NODE_ENV || 'development',
-        nivelDeDetalle: logger.level,
-      });
-    });
-    server.on('error', (error) => {
-      if (error.code === 'EADDRINUSE') {
-        logger.error('El puerto ya está en uso', {
-          puerto: PORT,
-          queRevisar: 'Cerrá el proceso que usa ese puerto o definí otro PORT en el .env.',
-          origen: 'backend',
-        });
-      } else {
-        const d = describirError(error);
-        logger.error('Error del servidor', {
-          motivo: d.titulo,
-          detalle: d.detalle,
-          queRevisar: d.queRevisar,
-          origen: 'backend',
-          stack: error.stack,
-        });
-      }
       process.exit(1);
     });
-  })
-  .catch((error) => {
-    const d = describirError(error);
-    logger.error('No se pudo iniciar el servidor', {
-      motivo: d.titulo,
-      detalle: d.detalle,
-      queRevisar: d.queRevisar || 'Verificá MONGO_URI y que la base esté disponible.',
-      origen: 'backend',
-      stack: error.stack,
-    });
-    process.exit(1);
-  });
+}
