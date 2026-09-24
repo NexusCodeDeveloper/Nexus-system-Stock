@@ -25,6 +25,7 @@ import Usuario from './modules/Autenticacion/UsuarioModel.js';
 import Venta from './modules/Venta/VentaModel.js';
 import CierreCaja from './modules/Venta/CierreCajaModel.js';
 import { asegurarNumerosTicket, migrarArticulosVenta } from './modules/Venta/VentaController.js';
+import { limpiarSuscripcionesHuerfanas } from './services/PushService.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -48,6 +49,31 @@ if (process.env.JWT_SECRET.length < 32 || process.env.JWT_SECRET.includes('cambi
   process.exit(1);
 }
 
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+const validarCredencialesIniciales = () => {
+  const errores = [];
+  for (const [emailVar, claveVar] of [
+    ['ADMIN_EMAIL', 'ADMIN_PASSWORD'],
+    ['EMPLEADO_EMAIL', 'EMPLEADO_PASSWORD'],
+  ]) {
+    if (!EMAIL_REGEX.test(process.env[emailVar] || '')) {
+      errores.push(`${emailVar} no es un email válido`);
+    }
+    if ((process.env[claveVar] || '').length < 6) {
+      errores.push(`${claveVar} debe tener al menos 6 caracteres`);
+    }
+  }
+  if (errores.length > 0) {
+    logger.error('Credenciales iniciales inválidas', {
+      motivo: errores.join(', '),
+      queRevisar: 'Corregí ADMIN_EMAIL/ADMIN_PASSWORD y EMPLEADO_EMAIL/EMPLEADO_PASSWORD en el .env.',
+      origen: 'backend',
+    });
+    process.exit(1);
+  }
+};
+
 if (process.env.NODE_ENV === 'production') {
   const clavesEjemplo = [
     process.env.ADMIN_PASSWORD === 'nexus2026',
@@ -63,16 +89,28 @@ if (process.env.NODE_ENV === 'production') {
   }
 }
 
+validarCredencialesIniciales();
+
 const app = express();
 const isDev = process.env.NODE_ENV !== 'production';
 const PORT = process.env.PORT || 5000;
 
-app.set('trust proxy', 1);
+const trustProxy = Number(process.env.TRUST_PROXY ?? 1);
+app.set('trust proxy', Number.isFinite(trustProxy) ? trustProxy : 1);
 
 const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'http://localhost:5173,http://localhost:5174')
   .split(',')
   .map((origin) => origin.trim())
   .filter(Boolean);
+
+if (allowedOrigins.length === 0 || allowedOrigins.includes('*')) {
+  logger.error('ALLOWED_ORIGINS no es válido', {
+    motivo: 'No se permite "*" ni una lista vacía.',
+    queRevisar: 'Definí los dominios exactos separados por coma (por ejemplo: https://stock.mitienda.com).',
+    origen: 'backend',
+  });
+  process.exit(1);
+}
 
 app.use(contextoPeticion);
 app.use(cors({ origin: allowedOrigins }));
@@ -163,15 +201,15 @@ const sembrarUsuario = async (nombre, email, clave, rol) => {
 };
 
 const sembrarUsuarios = async () => {
-  try {
-    await sembrarUsuario('Admin', process.env.ADMIN_EMAIL, process.env.ADMIN_PASSWORD, 'admin');
-    logger.debug('Usuario admin verificado');
+  await sembrarUsuario('Admin', process.env.ADMIN_EMAIL, process.env.ADMIN_PASSWORD, 'admin');
+  logger.debug('Usuario admin verificado');
 
+  try {
     await sembrarUsuario('Empleado', process.env.EMPLEADO_EMAIL, process.env.EMPLEADO_PASSWORD, 'user');
     logger.debug('Usuario empleado verificado');
   } catch (error) {
     const d = describirError(error);
-    logger.error('No se pudieron crear los usuarios iniciales', {
+    logger.warn('No se pudo crear el usuario empleado inicial', {
       motivo: d.titulo,
       detalle: d.detalle,
       queRevisar: d.queRevisar || 'Revisá la conexión a la base de datos.',
@@ -209,7 +247,12 @@ process.on('uncaughtException', (error) => {
 
 connectDB()
   .then(async () => {
-    await sembrarUsuarios();
+    try {
+      await sembrarUsuarios();
+    } catch (error) {
+      cerrarConError('No se pudo crear el administrador inicial', error);
+      return;
+    }
     try {
       await Venta.init();
       await CierreCaja.init();
@@ -217,6 +260,8 @@ connectDB()
       if (itemsMigrados > 0) logger.info(`Ventas legacy migradas al formato articulos[]: ${itemsMigrados}`);
       const migradas = await asegurarNumerosTicket();
       if (migradas > 0) logger.info(`Números de ticket asignados a ${migradas} ventas existentes`);
+      const subsLimpiadas = await limpiarSuscripcionesHuerfanas();
+      if (subsLimpiadas > 0) logger.info(`Suscripciones push de usuarios inactivos eliminadas: ${subsLimpiadas}`);
     } catch (error) {
       const d = describirError(error);
       logger.error('No se pudieron asignar los números de ticket pendientes', {
