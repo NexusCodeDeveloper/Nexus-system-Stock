@@ -93,7 +93,10 @@ const TicketBody = ({ sale }) => {
   const items = getItems(sale);
   const pagos = getPagos(sale);
   const descuento = Number(sale.descuento) || 0;
-  const subtotal = items.reduce((s, i) => s + (i.subtotal != null ? i.subtotal : i.precio * i.cantidad), 0);
+  const esLegacy = !(sale.articulos && sale.articulos.length > 0);
+  const subtotal = esLegacy
+    ? null
+    : items.reduce((s, i) => s + (i.subtotal != null ? i.subtotal : i.precio * i.cantidad), 0);
   const codigosBarras = [...new Set(items.map((item) => getCodigo(item)).filter((codigo) => codigo && barcodes[codigo]))];
 
   return (
@@ -146,11 +149,13 @@ const TicketBody = ({ sale }) => {
 
       <div className="ticket-sep">==============================</div>
 
-      <div className="ticket-line">
-        <span>SUBTOTAL</span>
-        <span>{formatMoney(subtotal)}</span>
-      </div>
-      {descuento > 0 && (
+      {subtotal != null && (
+        <div className="ticket-line">
+          <span>SUBTOTAL</span>
+          <span>{formatMoney(subtotal)}</span>
+        </div>
+      )}
+      {subtotal != null && descuento > 0 && (
         <div className="ticket-line">
           <span>DESCUENTO ({descuento}%)</span>
           <span>-{formatMoney(subtotal * descuento / 100)}</span>
@@ -253,7 +258,10 @@ const renderToHtml = (sale, qrDataUrl = '', barcodes = {}) => {
   const items = getItems(sale);
   const pagos = getPagos(sale);
   const descuento = Number(sale.descuento) || 0;
-  const subtotal = items.reduce((s, i) => s + (i.subtotal != null ? i.subtotal : i.precio * i.cantidad), 0);
+  const esLegacy = !(sale.articulos && sale.articulos.length > 0);
+  const subtotal = esLegacy
+    ? null
+    : items.reduce((s, i) => s + (i.subtotal != null ? i.subtotal : i.precio * i.cantidad), 0);
 
   const sep = () => '<div class="ticket-sep">==============================</div>';
   const line = (label, value, extra = '') =>
@@ -295,8 +303,8 @@ const renderToHtml = (sale, qrDataUrl = '', barcodes = {}) => {
   ${sep()}
   ${itemsHtml}
   ${sep()}
-  ${line('SUBTOTAL', formatMoney(subtotal))}
-  ${descuento > 0 ? line(`DESCUENTO (${descuento}%)`, `-${formatMoney(subtotal * descuento / 100)}`) : ''}
+  ${subtotal != null ? line('SUBTOTAL', formatMoney(subtotal)) : ''}
+  ${subtotal != null && descuento > 0 ? line(`DESCUENTO (${descuento}%)`, `-${formatMoney(subtotal * descuento / 100)}`) : ''}
   ${line('TOTAL', formatMoney(sale.total), 'ticket-total')}
   ${sep()}
   ${pagosHtml}
