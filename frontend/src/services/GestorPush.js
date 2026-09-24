@@ -74,15 +74,32 @@ export const activarPush = async () => {
   }
 };
 
-export const desactivarPush = async () => {
+export const sincronizarPush = async () => {
+  if (!pushSoportado() || Notification.permission !== 'granted') return;
+  try {
+    const reg = await esperarServiceWorker();
+    let sub = await reg.pushManager.getSubscription();
+    if (!sub) {
+      sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(VAPID_KEY),
+      });
+    }
+    await suscribirPush(sub.toJSON());
+  } catch {
+    /* silencioso */
+  }
+};
+
+export const desactivarPush = async (token) => {
   if (!pushSoportado()) return;
   try {
     const reg = await esperarServiceWorker();
     const sub = await reg.pushManager.getSubscription();
     if (sub) {
       const endpoint = sub.endpoint;
+      await desuscribirPush(endpoint, token);
       await sub.unsubscribe();
-      await desuscribirPush(endpoint);
     }
   } catch {
     /* silencioso */
