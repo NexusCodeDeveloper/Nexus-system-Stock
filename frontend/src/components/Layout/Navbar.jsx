@@ -1,17 +1,28 @@
 import { useState } from 'react';
 import { useAutenticacion } from '../../context/autenticacionContexto';
 import { useTheme } from '../../context/themeContexto';
-import { IconLogout, IconChevronDown, IconSun, IconMoon } from '../ui/icons';
+import { IconLogout, IconChevronDown, IconSun, IconMoon, IconCalculator } from '../ui/icons';
 import IosToggle from '../ui/IosToggle';
+import Calculadora from '../Calculadora/Calculadora';
 
 const Navbar = () => {
   const { usuario, logout } = useAutenticacion();
   const { theme, toggleTheme } = useTheme();
   const [showDropdown, setShowDropdown] = useState(false);
+  const [calcOpen, setCalcOpen] = useState(false);
 
   return (
     <header className="bg-ios-surface/60 backdrop-blur-2xl border-b border-ios-separator/40 px-4 sm:px-6 py-2.5 flex items-center justify-between z-10 shrink-0">
       <div className="ml-auto flex items-center gap-2 sm:gap-3">
+        <button
+          type="button"
+          onClick={() => setCalcOpen(true)}
+          className="ios-btn-press p-2 rounded-full text-ios-secondary hover:bg-ios-hover/5 transition-colors"
+          title="Calculadora"
+          aria-label="Abrir calculadora"
+        >
+          <IconCalculator className="w-[18px] h-[18px]" strokeWidth={1.9} />
+        </button>
         <div className="flex items-center gap-1.5 px-2 py-1 rounded-ios-pill transition-colors hover:bg-ios-hover/5" title="Cambiar entre modo noche y modo día">
           <IconSun className={`w-4 h-4 transition-colors ${theme === 'light' ? 'text-ios-orange' : 'text-ios-tertiary'}`} strokeWidth={1.9} />
           <IosToggle checked={theme === 'light'} onChange={toggleTheme} />
@@ -55,6 +66,8 @@ const Navbar = () => {
           </div>
         )}
       </div>
+
+      <Calculadora open={calcOpen} onClose={() => setCalcOpen(false)} />
     </header>
   );
 };
