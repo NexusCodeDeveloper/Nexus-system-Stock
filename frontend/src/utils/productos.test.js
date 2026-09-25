@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { depositoTotal, salonTotal, variantLabel, tieneStockBajo } from './productos';
+import { depositoTotal, salonTotal, variantLabel, tieneStockBajo, soloEnDeposito, paramsProductos, variantesParaEnviar } from './productos';
 
 describe('depositoTotal y salonTotal', () => {
   it('suman las variantes cuando existen', () => {
@@ -57,5 +57,63 @@ describe('variantLabel', () => {
     expect(variantLabel({ talle: 'M', color: 'Rojo' })).toBe('M / Rojo');
     expect(variantLabel({ talle: 'M', color: '' })).toBe('M');
     expect(variantLabel({})).toBe('Base');
+  });
+});
+
+describe('soloEnDeposito', () => {
+  it('marca true cuando el salón está en 0 y hay stock en depósito', () => {
+    expect(soloEnDeposito({ cantidad: 0, deposito: 3 })).toBe(true);
+  });
+
+  it('suma las variantes', () => {
+    expect(soloEnDeposito({
+      variantes: [
+        { cantidad: 0, deposito: 2 },
+        { cantidad: 0, deposito: 1 },
+      ],
+    })).toBe(true);
+  });
+
+  it('no marca si queda stock en salón', () => {
+    expect(soloEnDeposito({ cantidad: 1, deposito: 5 })).toBe(false);
+  });
+
+  it('no marca si no hay nada en depósito', () => {
+    expect(soloEnDeposito({ cantidad: 0, deposito: 0 })).toBe(false);
+  });
+});
+
+describe('variantesParaEnviar', () => {
+  it('descarta filas totalmente vacías', () => {
+    expect(variantesParaEnviar()).toEqual([]);
+    expect(variantesParaEnviar([{ talle: '', color: '', deposito: '' }])).toEqual([]);
+    expect(variantesParaEnviar([{ talle: '   ', color: '', deposito: 0 }])).toEqual([]);
+  });
+
+  it('mantiene filas con talle o cantidad y normaliza', () => {
+    expect(variantesParaEnviar([
+      { talle: ' M ', color: 'Azul', deposito: '3' },
+      { talle: '', color: '', deposito: '5' },
+      { talle: 'L', color: '', deposito: '' },
+    ])).toEqual([
+      { talle: 'M', color: 'Azul', deposito: 3 },
+      { talle: '', color: '', deposito: 5 },
+      { talle: 'L', color: '', deposito: 0 },
+    ]);
+  });
+});
+
+describe('paramsProductos', () => {
+  it('devuelve undefined cuando no hay filtros', () => {
+    expect(paramsProductos()).toBeUndefined();
+    expect(paramsProductos({ search: '   ', categoria: '' })).toBeUndefined();
+  });
+
+  it('incluye la búsqueda recortada', () => {
+    expect(paramsProductos({ search: '  remera ' })).toEqual({ search: 'remera' });
+  });
+
+  it('combina búsqueda y categoría', () => {
+    expect(paramsProductos({ search: 'remera', categoria: 'Perro' })).toEqual({ search: 'remera', categoria: 'Perro' });
   });
 });
