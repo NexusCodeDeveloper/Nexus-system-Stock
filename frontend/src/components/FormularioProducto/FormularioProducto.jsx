@@ -4,6 +4,7 @@ import { IconPlus, IconX, IconPrint } from '../ui/icons';
 import { obtenerSiguienteCodigo } from '../../api/productos';
 import { obtenerMensajeErrorApi } from '../../utils/apiError';
 import { printLabel } from '../../utils/printLabel';
+import { variantesParaEnviar } from '../../utils/productos';
 
 const stockPorColor = (colores, variants) => {
   if (!colores || colores.length === 0) return null;
@@ -32,7 +33,6 @@ const FormularioProducto = ({ initial, onSubmit, onCancel, isSubmitting: externa
     categoria: initial?.categoria || '',
     proveedor: initial?.proveedor || '',
     codigo: initial?.codigo || '',
-    deposito: initial?.deposito ?? '',
     stockMinimo: initial?.stockMinimo ?? 2,
   });
   const [newColor, setNewColor] = useState('');
@@ -72,6 +72,7 @@ const FormularioProducto = ({ initial, onSubmit, onCancel, isSubmitting: externa
 
   const groups = useMemo(() => {
     const map = {};
+    if (form.colores.length === 0) map[''] = [];
     for (const c of form.colores) map[c] = [];
     for (const v of form.variants) {
       const key = v.color || '';
@@ -133,9 +134,11 @@ const FormularioProducto = ({ initial, onSubmit, onCancel, isSubmitting: externa
     if (form.precio === '' || Number(form.precio) <= 0) errs.precio = 'El precio debe ser mayor a $0';
     if (!form.categoria.trim()) errs.categoria = 'La categoría es obligatoria';
     if (form.stockMinimo === '' || Number(form.stockMinimo) < 0) errs.stockMinimo = 'El stock mínimo no puede ser negativo';
-    if (form.colores.length > 0 && form.variants.length === 0) errs.variants = 'Agregue al menos una variante con talle y cantidad';
-    else if (form.variants.length > 0 && form.variants.some((v) => !(v.talle || '').trim())) {
-      errs.variants = 'Cada variante debe tener un talle';
+    const claves = form.variants.map(
+      (v) => `${(v.talle || '').trim().toLowerCase()}|${(v.color || '').trim().toLowerCase()}`
+    );
+    if (new Set(claves).size !== claves.length) {
+      errs.variants = 'Hay variantes repetidas (mismo talle y color)';
     }
     setErrores(errs);
     return Object.keys(errs).length === 0;
@@ -144,20 +147,12 @@ const FormularioProducto = ({ initial, onSubmit, onCancel, isSubmitting: externa
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!validate()) return;
-    const variantesValidos = form.variants
-      .filter((v) => (v.talle || '').trim())
-      .map((v) => ({
-        talle: (v.talle || '').trim(),
-        color: v.color,
-        deposito: Number(v.deposito) || 0,
-      }));
     onSubmit({
       ...form,
       codigo: form.codigo.trim(),
       precio: Number(form.precio),
       colores: form.colores,
-      variantes: variantesValidos,
-      deposito: Number(form.deposito) || 0,
+      variantes: variantesParaEnviar(form.variants),
       stockMinimo: Number(form.stockMinimo),
     });
   };
@@ -267,8 +262,11 @@ const FormularioProducto = ({ initial, onSubmit, onCancel, isSubmitting: externa
       {Object.keys(groups).length > 0 && (
         <div>
           <label className={`${labelCls} mb-2`}>
-            Variantes (stock en depósito)
+            Stock en depósito
           </label>
+          <p className="text-ios-tertiary text-[11px] -mt-1 mb-2">
+            Cargá talle y cantidad por variante; el stock entra al depósito y después lo pasás al salón. Si no agregás nada, el producto queda sin stock.
+          </p>
           {errText('variants')}
           <div className="space-y-3">
             {Object.keys(groups).map((color) => {
@@ -288,7 +286,7 @@ const FormularioProducto = ({ initial, onSubmit, onCancel, isSubmitting: externa
                       <div key={i} className="flex items-center gap-2">
                         <input
                           type="text"
-                          placeholder="Talle"
+                          placeholder="Talle (opc.)"
                           value={form.variants[i].talle}
                           onChange={(e) => updateVariant(i, 'talle', e.target.value)}
                           className="flex-1 sm:flex-none w-24 px-3 py-2 bg-ios-surface rounded-ios-card text-ios-label placeholder:text-ios-tertiary focus:outline-none focus:ring-2 focus:ring-ios-tint/40 transition-all text-sm"
@@ -340,29 +338,6 @@ const FormularioProducto = ({ initial, onSubmit, onCancel, isSubmitting: externa
               </span>
             )}
           </div>
-        </div>
-      )}
-
-      {form.colores.length === 0 && (
-        <div className="py-4 text-center text-ios-tertiary text-xs border border-dashed border-ios-separator/60 rounded-ios-card">
-          Agregue al menos un color para empezar a cargar variantes
-        </div>
-      )}
-
-      {form.colores.length === 0 && (
-        <div>
-          <label className={labelCls}>Cantidad en depósito</label>
-          <input
-            type="number"
-            min="0"
-            value={form.deposito}
-            onChange={(e) => setForm({ ...form, deposito: e.target.value })}
-            className={campoCls('deposito')}
-            placeholder="0"
-          />
-          <p className="text-ios-tertiary text-[11px] mt-1">
-            El stock entra al depósito; después lo pasás al salón cuando quieras.
-          </p>
         </div>
       )}
 
