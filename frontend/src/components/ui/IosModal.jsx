@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import IosButton from './IosButton';
 import { IconX } from './icons';
 import { pushModal, popModal, esTopModal, modalStackVacio } from './iosModalStack';
@@ -79,7 +80,7 @@ const IosModal = ({
 
   if (!open) return null;
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-[80]">
       <div className="absolute inset-0 bg-black/50 backdrop-blur-[3px] animate-ios-fade" onClick={onClose} />
 
@@ -177,7 +178,8 @@ const IosModal = ({
           </div>
         </div>
       )}
-    </div>
+    </div>,
+    document.body
   );
 };
 
