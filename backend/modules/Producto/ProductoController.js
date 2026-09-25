@@ -94,14 +94,37 @@ export const obtenerProductos = async (req, res, next) => {
         { codigo: { $regex: safe, $options: 'i' } },
       ];
     }
-    if (categoria) {
-      filter.categoria = { $regex: escaparRegex(categoria), $options: 'i' };
+    const categoriaFiltro = String(categoria || '').trim();
+    if (categoriaFiltro) {
+      filter.categoria = { $regex: `^${escaparRegex(categoriaFiltro)}$`, $options: 'i' };
     }
 
     const limite = Math.min(Math.max(Number(req.query.limit) || 1000, 1), 2000);
     const products = await Producto.find(filter).sort({ nombre: 1 }).limit(limite);
 
     res.json(products);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const obtenerCategorias = async (req, res, next) => {
+  try {
+    const categorias = await Producto.aggregate([
+      { $match: { categoria: { $nin: [null, ''] } } },
+      {
+        $group: {
+          _id: { $toLower: { $trim: { input: '$categoria' } } },
+          nombre: { $min: { $trim: { input: '$categoria' } } },
+          cantidad: { $sum: 1 },
+        },
+      },
+      { $match: { _id: { $nin: [null, ''] } } },
+      { $sort: { _id: 1 } },
+      { $project: { _id: 0, nombre: 1, cantidad: 1 } },
+    ]);
+
+    res.json(categorias);
   } catch (error) {
     next(error);
   }
@@ -289,12 +312,14 @@ export const actualizarProducto = async (req, res, next) => {
           return { ...v, cantidad: prev.cantidad || 0, deposito: depositoNuevo };
         });
       } else {
-        const depositoPrevio = variantesPrevias.length > 0
-          ? variantesPrevias.reduce((s, v) => s + v.deposito, 0)
-          : (product.deposito || 0);
-        const depositoNuevo = Number(data.deposito) || 0;
-        if (depositoPrevio !== depositoNuevo) {
-          movimientos.push({ talle: '', color: '', tipo: 'ajuste_deposito', cantidad: Math.abs(depositoNuevo - depositoPrevio) });
+        if (data.deposito != null) {
+          const depositoPrevio = variantesPrevias.length > 0
+            ? variantesPrevias.reduce((s, v) => s + v.deposito, 0)
+            : (product.deposito || 0);
+          const depositoNuevo = Number(data.deposito) || 0;
+          if (depositoPrevio !== depositoNuevo) {
+            movimientos.push({ talle: '', color: '', tipo: 'ajuste_deposito', cantidad: Math.abs(depositoNuevo - depositoPrevio) });
+          }
         }
         data.variantes = [];
       }

@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import {
   obtenerProductos,
+  obtenerCategorias,
   obtenerProducto,
   obtenerProductoPorCodigo,
   siguienteCodigo,
@@ -24,6 +25,7 @@ router.use(proteger);
 
 router.get('/stats', obtenerEstadisticasTablero);
 router.get('/stock-bajo', obtenerStockBajo);
+router.get('/categorias', obtenerCategorias);
 router.get('/codigo/:codigo', obtenerProductoPorCodigo);
 router.get('/siguiente-codigo', admin, siguienteCodigo);
 router.get('/', obtenerProductos);

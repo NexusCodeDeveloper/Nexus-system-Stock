@@ -4,12 +4,14 @@ import assert from 'node:assert/strict';
 import mongoose from 'mongoose';
 import { startTestDB, stopTestDB, clearDB, runHandler } from './helpers/db.js';
 import Producto from '../modules/Producto/ProductoModel.js';
+import MovimientoStock from '../modules/MovimientoStock/MovimientoStockModel.js';
 import Venta from '../modules/Venta/VentaModel.js';
 import { crearVenta, eliminarVenta, abrirCaja, cerrarCaja, reabrirCaja, obtenerCajaAbierta, obtenerCierresCaja, migrarArticulosVenta, eliminarCierreCaja, reenviarMailCierre } from '../modules/Venta/VentaController.js';
 import CierreCaja from '../modules/Venta/CierreCajaModel.js';
 import { crearDevolucion, eliminarDevolucion } from '../modules/Devolucion/DevolucionController.js';
 import Devolucion from '../modules/Devolucion/DevolucionModel.js';
-import { actualizarProducto, intercambiarProducto, pasarAlSalon } from '../modules/Producto/ProductoController.js';
+import { actualizarProducto, intercambiarProducto, pasarAlSalon, obtenerCategorias, obtenerProductos, crearProducto as crearProductoController } from '../modules/Producto/ProductoController.js';
+import productoRoutes from '../modules/Producto/ProductoRoutes.js';
 import { obtenerDisponibleCaja, crearRetiroCaja, eliminarRetiroCaja } from '../modules/RetiroCaja/RetiroCajaController.js';
 import RetiroCajaDia from '../modules/RetiroCaja/RetiroCajaDiaModel.js';
 import { inicioDeDia } from '../utils/FechasUtils.js';
@@ -125,6 +127,77 @@ test('agregar variantes a un producto con stock de salón se rechaza y no pierde
   const despues = await Producto.findById(product._id);
   assert.equal(despues.cantidad, 10);
   assert.equal(despues.variantes.length, 0);
+});
+
+test('editar un producto sin variantes sin enviar depósito no altera el stock ni registra movimientos', async () => {
+  const product = await Producto.create({ nombre: 'Remera', precio: 100, cantidad: 0, deposito: 50, categoria: 'Ropa' });
+
+  const res = await runHandler(actualizarProducto, {
+    params: { id: String(product._id) },
+    body: { nombre: 'Remera nueva', variantes: [] },
+  });
+  assert.equal(res.status, 200);
+
+  const despues = await Producto.findById(product._id);
+  assert.equal(despues.nombre, 'Remera nueva');
+  assert.equal(despues.deposito, 50);
+  assert.equal(await MovimientoStock.countDocuments({ producto: product._id }), 0);
+});
+
+test('crear un producto con variante base guarda el stock en depósito y deja el salón en 0', async () => {
+  const res = await runHandler(crearProductoController, {
+    body: {
+      nombre: 'Cable USB',
+      precio: 100,
+      categoria: 'Varios',
+      variantes: [{ talle: '', color: '', deposito: 5 }],
+    },
+  });
+  assert.equal(res.status, 201);
+  assert.equal(res.body.deposito, 0);
+  assert.equal(res.body.cantidad, 0);
+  assert.equal(res.body.variantes.length, 1);
+  assert.equal(res.body.variantes[0].deposito, 5);
+});
+
+test('obtenerCategorias agrupa sin distinguir mayúsculas ni espacios y cuenta productos', async () => {
+  await Producto.create([
+    { nombre: 'A', precio: 100, cantidad: 0, categoria: 'Perro' },
+    { nombre: 'B', precio: 100, cantidad: 0, categoria: 'perro' },
+    { nombre: 'C', precio: 100, cantidad: 0, categoria: 'Gato' },
+  ]);
+  await Producto.collection.insertOne({
+    nombre: 'D',
+    precio: 100,
+    cantidad: 0,
+    categoria: '  Gato  ',
+  });
+
+  const res = await runHandler(obtenerCategorias);
+  assert.equal(res.status, 200);
+  assert.deepEqual(res.body, [
+    { nombre: 'Gato', cantidad: 2 },
+    { nombre: 'Perro', cantidad: 2 },
+  ]);
+});
+
+test('obtenerProductos filtra por categoría exacta sin distinguir mayúsculas', async () => {
+  await Producto.create([
+    { nombre: 'Remera perro', precio: 100, cantidad: 0, categoria: 'Perro' },
+    { nombre: 'Remera perro grande', precio: 100, cantidad: 0, categoria: 'Perro grande' },
+    { nombre: 'Remera gato', precio: 100, cantidad: 0, categoria: 'Gato' },
+  ]);
+
+  const res = await runHandler(obtenerProductos, { query: { categoria: 'perro' } });
+  assert.equal(res.status, 200);
+  assert.equal(res.body.length, 1);
+  assert.equal(res.body[0].categoria, 'Perro');
+});
+
+test('la ruta /categorias se registra antes de /:id', () => {
+  const rutas = productoRoutes.stack.filter((capa) => capa.route).map((capa) => capa.route.path);
+  assert.ok(rutas.includes('/categorias'));
+  assert.ok(rutas.indexOf('/categorias') < rutas.indexOf('/:id'));
 });
 
 test('devolución total + borrar devolución reconstruye la venta con precio y pagos originales', async () => {
