@@ -10,14 +10,16 @@ import {
 import { obtenerVentas as obtenerTickets } from '../../api/ventas';
 import { obtenerMensajeErrorApi } from '../../utils/apiError';
 import { formatMoney, formatDate } from '../../utils/format';
-import { LIMITE_PRODUCTOS, depositoTotal, variantShortLabel, tieneStockBajo } from '../../utils/productos';
+import { LIMITE_PRODUCTOS, depositoTotal, variantShortLabel, tieneStockBajo, soloEnDeposito, paramsProductos } from '../../utils/productos';
 import { useApi } from '../../hooks/useApi';
+import { useCategorias } from '../../hooks/useCategorias';
 import { useDropdownAnclado } from '../../hooks/useDropdownAnclado';
 import { escucharPush } from '../../services/GestorPush';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
 import ScannerButton from '../../components/scanner/ScannerButton';
 import ScannerModal from '../../components/scanner/ScannerModal';
 import FormularioDevolucion from '../../components/FormularioDevolucion/FormularioDevolucion';
+import FiltroCategorias from '../../components/FiltroCategorias/FiltroCategorias';
 import { useAutenticacion } from '../../context/autenticacionContexto';
 import { useLector } from '../../context/lectorContexto';
 import { useCarrito } from '../../context/carritoContexto';
@@ -28,7 +30,7 @@ import IosModal from '../../components/ui/IosModal';
 import IosSearch from '../../components/ui/IosSearch';
 import IosToggle from '../../components/ui/IosToggle';
 import { IosField, IosInput, IosSelect } from '../../components/ui/IosForm';
-import { IconCart, IconArrowUp, IconChevronDown, IconTrash, IconX, IconBox, IconCamera, IconReturn, IconRefresh } from '../../components/ui/icons';
+import { IconCart, IconArrowUp, IconChevronDown, IconTrash, IconX, IconBox, IconCamera, IconReturn, IconRefresh, IconWarehouse } from '../../components/ui/icons';
 
 const variantLabel = (v) => {
   const parts = [];
@@ -42,6 +44,7 @@ const Productos = () => {
   const navigate = useNavigate();
   const [search, setSearch] = useState('');
   const [searchDebounced, setSearchDebounced] = useState('');
+  const [categoriaActiva, setCategoriaActiva] = useState('');
   const { dropdown, menuRef: dropdownRef, toggle: toggleDropdown, close: closeDropdown } = useDropdownAnclado();
   const returnSeqRef = useRef(0);
 
@@ -103,13 +106,14 @@ const Productos = () => {
     return () => clearTimeout(t);
   }, [search]);
 
+  const { categorias, recargarCategorias } = useCategorias();
   const productosApi = useApi(
     async () => {
-      const prodRes = await obtenerProductos({ search: searchDebounced });
+      const prodRes = await obtenerProductos(paramsProductos({ search: searchDebounced, categoria: categoriaActiva }));
       const lista = Array.isArray(prodRes.data) ? prodRes.data : [];
       return { lista, tope: lista.length >= LIMITE_PRODUCTOS };
     },
-    { deps: [searchDebounced], mensajeError: 'Error al cargar productos' }
+    { deps: [searchDebounced, categoriaActiva], mensajeError: 'Error al cargar productos' }
   );
   const lowStockApi = useApi(
     async () => {
@@ -159,6 +163,7 @@ const Productos = () => {
       await eliminarProducto(id);
       recargarProductos();
       recargarLowStock();
+      recargarCategorias();
       toast({ message: 'Producto eliminado' });
     } catch (err) {
       alert({ icon: 'error', title: 'Error', message: obtenerMensajeErrorApi(err, 'Error al eliminar producto') });
@@ -497,6 +502,13 @@ const Productos = () => {
           </div>
         )}
       </div>
+
+      <FiltroCategorias
+        categorias={categorias}
+        activa={categoriaActiva}
+        onChange={setCategoriaActiva}
+        className="mb-4"
+      />
 
       <IosModal
         open={!!quickAdd}
@@ -865,7 +877,16 @@ const Productos = () => {
                   <td colSpan={7} className="text-center py-14 text-ios-tertiary text-sm">
                     <div className="flex flex-col items-center gap-2">
                       <IconBox className="w-8 h-8 text-ios-tertiary" strokeWidth={1.5} />
-                      {error || 'No hay productos'}
+                      <span>{error || (categoriaActiva ? `No hay productos en "${categoriaActiva}"` : 'No hay productos')}</span>
+                      {!error && (categoriaActiva || search) && (
+                        <button
+                          type="button"
+                          onClick={() => { setCategoriaActiva(''); setSearch(''); }}
+                          className="text-ios-tint text-xs font-semibold hover:underline"
+                        >
+                          Ver todos los productos
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -939,12 +960,20 @@ const Productos = () => {
                       {p.precio != null ? formatMoney(p.precio) : '—'}
                     </td>
                     <td className="px-4 py-3.5">
-                      <span className={`inline-flex items-center gap-1.5 font-medium ${tieneStockBajo(p) ? 'text-ios-red font-semibold' : 'text-ios-label'}`}>
-                        {tieneStockBajo(p) && (
-                          <IconAlert className="w-4 h-4" strokeWidth={2} />
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className={`inline-flex items-center gap-1.5 font-medium ${tieneStockBajo(p) ? 'text-ios-red font-semibold' : 'text-ios-label'}`}>
+                          {tieneStockBajo(p) && (
+                            <IconAlert className="w-4 h-4" strokeWidth={2} />
+                          )}
+                          {p.cantidad}
+                        </span>
+                        {soloEnDeposito(p) && (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-violet-500/15 text-violet-300 whitespace-nowrap">
+                            <IconWarehouse className="w-3 h-3" strokeWidth={2} />
+                            Solo en depósito
+                          </span>
                         )}
-                        {p.cantidad}
-                      </span>
+                      </div>
                       <span className="block text-[11px] text-ios-tertiary mt-0.5">Dep: {depositoTotal(p)}</span>
                     </td>
                     <td className="px-4 py-3.5 text-ios-tertiary">{p.categoria}</td>
@@ -974,7 +1003,16 @@ const Productos = () => {
         <div className="md:hidden space-y-2.5">
           {products.length === 0 ? (
             <div className="text-center py-10 text-ios-tertiary text-sm">
-              {error || 'No hay productos'}
+              <p>{error || (categoriaActiva ? `No hay productos en "${categoriaActiva}"` : 'No hay productos')}</p>
+              {!error && (categoriaActiva || search) && (
+                <button
+                  type="button"
+                  onClick={() => { setCategoriaActiva(''); setSearch(''); }}
+                  className="mt-2 text-ios-tint text-xs font-semibold hover:underline"
+                >
+                  Ver todos los productos
+                </button>
+              )}
             </div>
           ) : (
             products.map((p, i) => (
@@ -988,6 +1026,12 @@ const Productos = () => {
                     </p>
                     {p.codigo && (
                       <p className="text-[11px] text-ios-tertiary mt-0.5">Código: {p.codigo}</p>
+                    )}
+                    {soloEnDeposito(p) && (
+                      <span className="inline-flex items-center gap-1 mt-1.5 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-violet-500/15 text-violet-300">
+                        <IconWarehouse className="w-3 h-3" strokeWidth={2} />
+                        Solo en depósito
+                      </span>
                     )}
                   </div>
                   <div className="flex items-center gap-2 shrink-0">

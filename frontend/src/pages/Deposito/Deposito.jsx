@@ -5,8 +5,9 @@ import { obtenerMovimientosStock } from '../../api/movimientosStock';
 import { obtenerMensajeErrorApi } from '../../utils/apiError';
 import { printLabel } from '../../utils/printLabel';
 import { formatDate, formatMoney } from '../../utils/format';
-import { LIMITE_PRODUCTOS, depositoTotal, salonTotal, variantLabel } from '../../utils/productos';
+import { LIMITE_PRODUCTOS, depositoTotal, salonTotal, variantLabel, paramsProductos } from '../../utils/productos';
 import { useApi } from '../../hooks/useApi';
+import { useCategorias } from '../../hooks/useCategorias';
 import { useDropdownAnclado } from '../../hooks/useDropdownAnclado';
 import { escucharPush } from '../../services/GestorPush';
 import { getItem, setItem } from '../../utils/storage';
@@ -18,6 +19,7 @@ import IosSearch from '../../components/ui/IosSearch';
 import IosToggle from '../../components/ui/IosToggle';
 import { IosField, IosInput, IosSelect } from '../../components/ui/IosForm';
 import FormularioProducto from '../../components/FormularioProducto/FormularioProducto';
+import FiltroCategorias from '../../components/FiltroCategorias/FiltroCategorias';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
 import { IconArrowUp, IconChevronDown, IconHistory, IconPencil, IconPlus, IconPrint, IconRefresh, IconTrash, IconWarehouse } from '../../components/ui/icons';
 
@@ -52,6 +54,7 @@ const Deposito = () => {
   const [tab, setTab] = useState('stock');
   const [search, setSearch] = useState('');
   const [searchDebounced, setSearchDebounced] = useState('');
+  const [categoriaActiva, setCategoriaActiva] = useState('');
   const [soloConStock, setSoloConStock] = useState(false);
   const [expandedId, setExpandedId] = useState(null);
   const { dropdown, menuRef: dropdownRef, toggle: openDropdown, close: cerrarDropdown } = useDropdownAnclado();
@@ -87,13 +90,13 @@ const Deposito = () => {
   const [movLimit, setMovLimit] = useState(100);
   const [pasarTodoSaving, setPasarTodoSaving] = useState(false);
 
+  const { categorias, recargarCategorias } = useCategorias();
   const productosApi = useApi(
     async () => {
-      const term = String(searchDebounced || '').trim();
-      const res = await obtenerProductos(term ? { search: term } : undefined);
+      const res = await obtenerProductos(paramsProductos({ search: searchDebounced, categoria: categoriaActiva }));
       return Array.isArray(res.data) ? res.data : [];
     },
-    { deps: [searchDebounced], mensajeError: 'Error al cargar productos' }
+    { deps: [searchDebounced, categoriaActiva], mensajeError: 'Error al cargar productos' }
   );
 
   const movimientosApi = useApi(
@@ -139,6 +142,7 @@ const Deposito = () => {
       setShowForm(false);
       setEditing(null);
       recargarProductos();
+      recargarCategorias();
       toast({ message: editing ? 'Producto actualizado' : 'Producto creado' });
     } catch (err) {
       alert({ icon: 'error', title: 'Error', message: obtenerMensajeErrorApi(err, 'Error al guardar producto') });
@@ -184,6 +188,7 @@ const Deposito = () => {
     try {
       await eliminarProducto(p._id);
       recargarProductos();
+      recargarCategorias();
       toast({ message: 'Producto eliminado' });
     } catch (err) {
       alert({ icon: 'error', title: 'Error', message: obtenerMensajeErrorApi(err, 'Error al eliminar producto') });
@@ -534,6 +539,13 @@ const Deposito = () => {
             </button>
           </div>
 
+          <FiltroCategorias
+            categorias={categorias}
+            activa={categoriaActiva}
+            onChange={setCategoriaActiva}
+            className="mb-4"
+          />
+
           {productos.length >= LIMITE_PRODUCTOS && (
             <div className="mb-4 px-4 py-3 bg-amber-500/10 border border-amber-500/25 rounded-ios-control text-amber-400 text-sm font-medium">
               Se muestran los primeros {LIMITE_PRODUCTOS} productos. Usá la búsqueda para encontrar el resto.
@@ -563,8 +575,21 @@ const Deposito = () => {
                 <IconWarehouse className="w-7 h-7 text-ios-tertiary" strokeWidth={1.5} />
               </div>
               <p className="text-ios-tertiary text-sm">
-                {soloConStock ? 'No hay productos con stock en depósito' : 'No hay productos'}
+                {soloConStock
+                  ? 'No hay productos con stock en depósito'
+                  : categoriaActiva
+                    ? `No hay productos en "${categoriaActiva}"`
+                    : 'No hay productos'}
               </p>
+              {(categoriaActiva || search) && (
+                <button
+                  type="button"
+                  onClick={() => { setCategoriaActiva(''); setSearch(''); }}
+                  className="mt-3 text-ios-tint text-xs font-semibold hover:underline"
+                >
+                  Ver todos los productos
+                </button>
+              )}
             </div>
           ) : (
             <>
