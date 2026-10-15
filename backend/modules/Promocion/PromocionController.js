@@ -6,16 +6,46 @@ import { verificarSuperposicion } from './PromocionService.js';
 import { estadoDePromocion, precioConPromocion, promocionVigente } from '../../utils/PreciosUtils.js';
 import { aCentavos, deCentavos } from '../../utils/DineroUtils.js';
 
-const serializarPromocion = (promo, ahora = new Date()) => ({
+const contarActivosPorPromocion = async (promos) => {
+  const cantidades = new Map();
+  const conLista = promos.filter((promo) => !promo.todos);
+  const idsLista = [...new Set(
+    conLista.flatMap((promo) => (promo.productos || []).map((id) => String(id)))
+  )].filter((id) => mongoose.Types.ObjectId.isValid(id));
+  const [todosActivos, activos] = await Promise.all([
+    promos.some((promo) => promo.todos) ? Producto.countDocuments({ enPapelera: { $ne: true } }) : 0,
+    idsLista.length > 0
+      ? Producto.find({ _id: { $in: idsLista }, enPapelera: { $ne: true } }).select('_id').lean()
+      : [],
+  ]);
+  const activosSet = new Set(activos.map((doc) => String(doc._id)));
+  for (const promo of conLista) {
+    cantidades.set(
+      String(promo._id),
+      (promo.productos || []).filter((id) => activosSet.has(String(id))).length
+    );
+  }
+  for (const promo of promos.filter((p) => p.todos)) {
+    cantidades.set(String(promo._id), todosActivos);
+  }
+  return cantidades;
+};
+
+const serializarPromocion = (promo, cantidadActivos, ahora = new Date()) => ({
   ...promo.toJSON(),
   estado: estadoDePromocion(promo, ahora),
-  cantidadProductos: promo.todos ? null : (promo.productos || []).length,
+  cantidadProductos: promo.todos ? null : cantidadActivos,
 });
+
+const serializarPromociones = async (promos, ahora = new Date()) => {
+  const cantidades = await contarActivosPorPromocion(promos);
+  return promos.map((promo) => serializarPromocion(promo, cantidades.get(String(promo._id)) || 0, ahora));
+};
 
 export const obtenerPromociones = async (req, res, next) => {
   try {
     const promociones = await Promocion.find().sort({ desde: -1 }).limit(200);
-    res.json(promociones.map((promo) => serializarPromocion(promo)));
+    res.json(await serializarPromociones(promociones));
   } catch (error) {
     next(error);
   }
@@ -26,6 +56,7 @@ export const obtenerPromocionesVigentes = async (req, res, next) => {
   try {
     const ahora = new Date();
     const promociones = await Promocion.find({ activa: true, hasta: { $gte: ahora } }).sort({ hasta: 1 });
+    const cantidades = await contarActivosPorPromocion(promociones);
     res.json({
       ahora,
       promociones: promociones.map((promo) => ({
@@ -36,7 +67,7 @@ export const obtenerPromocionesVigentes = async (req, res, next) => {
         desde: promo.desde,
         hasta: promo.hasta,
         todos: promo.todos,
-        cantidadProductos: promo.todos ? null : (promo.productos || []).length,
+        cantidadProductos: promo.todos ? null : cantidades.get(String(promo._id)) || 0,
         estado: estadoDePromocion(promo, ahora),
       })),
     });
@@ -57,7 +88,9 @@ export const obtenerProductosDePromocion = async (req, res, next) => {
       return res.status(404).json({ message: 'Promoción no encontrada o vencida' });
     }
 
-    const filter = promo.todos ? {} : { _id: { $in: promo.productos } };
+    const filter = promo.todos
+      ? { enPapelera: { $ne: true } }
+      : { _id: { $in: promo.productos }, enPapelera: { $ne: true } };
     const offset = Math.max(Number(req.query.offset) || 0, 0);
     const limite = Math.min(Math.max(Number(req.query.limit) || 1000, 1), 2000);
 
@@ -108,7 +141,8 @@ export const crearPromocion = async (req, res, next) => {
       creadoPor: req.usuario?.nombre || '',
     });
 
-    res.status(201).json(serializarPromocion(promo));
+    const [serializada] = await serializarPromociones([promo]);
+    res.status(201).json(serializada);
   } catch (error) {
     next(error);
   }
@@ -127,7 +161,8 @@ export const cancelarPromocion = async (req, res, next) => {
     if (!promo) {
       return res.status(404).json({ message: 'Promoción no encontrada' });
     }
-    res.json(serializarPromocion(promo));
+    const [serializada] = await serializarPromociones([promo]);
+    res.json(serializada);
   } catch (error) {
     next(error);
   }
