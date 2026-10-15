@@ -100,7 +100,7 @@ const LoginModal = () => {
               <button
                 type="button"
                 onClick={() => setShowPw(!showPw)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-ios-tertiary hover:text-ios-label transition-colors p-1"
+                className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-ios-tertiary hover:text-ios-secondary transition-colors"
                 aria-label={showPw ? 'Ocultar contraseña' : 'Mostrar contraseña'}
               >
                 {showPw ? <IconEyeOff className="w-5 h-5" /> : <IconEye className="w-5 h-5" />}
