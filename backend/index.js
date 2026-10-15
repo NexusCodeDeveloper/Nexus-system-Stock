@@ -33,7 +33,10 @@ import CierreCaja from './modules/Venta/CierreCajaModel.js';
 import CuotaCuentaCorriente from './modules/CuotaCuentaCorriente/CuotaCuentaCorrienteModel.js';
 import Promocion from './modules/Promocion/PromocionModel.js';
 import Producto from './modules/Producto/ProductoModel.js';
-import { asegurarNumerosTicket, migrarArticulosVenta } from './modules/Venta/VentaController.js';
+import AumentoPrecio from './modules/Producto/AumentoPrecioModel.js';
+import { asegurarNumerosTicket, migrarArticulosVenta, asegurarSnapshotArticulos } from './modules/Venta/VentaController.js';
+import { migrarCodigosVariante } from './modules/Producto/ProductoController.js';
+import { asegurarSnapshotDevoluciones } from './modules/Devolucion/DevolucionService.js';
 import { revisarCuotas, revisarCuotasSiCorresponde } from './modules/CuotaCuentaCorriente/CuotasService.js';
 import { limpiarSuscripcionesHuerfanas } from './services/PushService.js';
 
@@ -144,8 +147,23 @@ const inicializar = () => {
         await CuotaCuentaCorriente.init();
         await Promocion.init();
         await Producto.init();
+        await AumentoPrecio.init();
         const itemsMigrados = await migrarArticulosVenta();
         if (itemsMigrados > 0) logger.info(`Ventas legacy migradas al formato articulos[]: ${itemsMigrados}`);
+        const snapshotsVentas = await asegurarSnapshotArticulos();
+        if (snapshotsVentas > 0) logger.info(`Ventas con nombre/código de producto congelado: ${snapshotsVentas}`);
+        const snapshotsDevoluciones = await asegurarSnapshotDevoluciones();
+        if (snapshotsDevoluciones > 0) logger.info(`Devoluciones con nombre de producto congelado: ${snapshotsDevoluciones}`);
+        const archivadosMigrados = await Producto.updateMany(
+          { archivado: true },
+          { $set: { enPapelera: true, eliminadoEn: new Date(), eliminadoPor: 'Migración' } }
+        );
+        if (archivadosMigrados.modifiedCount > 0) {
+          logger.info(`Productos archivados migrados a la papelera: ${archivadosMigrados.modifiedCount}`);
+        }
+        await Producto.updateMany({ archivado: { $exists: true } }, { $unset: { archivado: '' } });
+        const variantesMigradas = await migrarCodigosVariante();
+        if (variantesMigradas > 0) logger.info(`Códigos de variante generados: ${variantesMigradas} productos`);
         const migradas = await asegurarNumerosTicket();
         if (migradas > 0) logger.info(`Números de ticket asignados a ${migradas} ventas existentes`);
         const subsLimpiadas = await limpiarSuscripcionesHuerfanas();
