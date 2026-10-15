@@ -8,6 +8,8 @@ import {
   crearProducto,
   actualizarProducto,
   eliminarProducto,
+  restaurarProducto,
+  eliminarDefinitivo,
   obtenerEstadisticasTablero,
   intercambiarProducto,
   agregarStock,
@@ -44,6 +46,8 @@ router.post('/pasar-salon', pasarAlSalon);
 router.post('/:id/reponer', reponerStock);
 router.post('/:id/retirar', admin, retirarStock);
 router.post('/intercambio', intercambiarProducto);
+router.put('/:id/restaurar', admin, restaurarProducto);
+router.delete('/:id/definitivo', admin, eliminarDefinitivo);
 router.delete('/:id', admin, eliminarProducto);
 
 export default router;
