@@ -482,6 +482,178 @@ export const actualizarProducto = async (req, res, next) => {
   }
 };
 
+export const aplicarAumentoMasivo = async (req, res, next) => {
+  let session;
+  try {
+    const data = schemaAumentoPrecio.parse(req.body);
+    const ids = [...new Set(data.productos.map((id) => String(id)))];
+
+    session = await mongoose.startSession();
+    session.startTransaction();
+
+    const productos = await Producto.find({
+      _id: { $in: ids },
+      enPapelera: { $ne: true },
+    }).session(session);
+
+    if (productos.length === 0) {
+      await session.abortTransaction();
+      return res.status(400).json({
+        message: 'Ninguno de los productos seleccionados está disponible (no existen o están en la papelera)',
+      });
+    }
+
+    const items = [];
+    const operaciones = [];
+    for (const product of productos) {
+      const centavosAnterior = aCentavos(product.precio);
+      const centavosNuevo = data.tipo === 'porcentaje'
+        ? Math.round(centavosAnterior * (1 + data.valor / 100))
+        : centavosAnterior + aCentavos(data.valor);
+      if (centavosNuevo === centavosAnterior) continue;
+      items.push({
+        producto: product._id,
+        nombre: product.nombre,
+        precioAnterior: deCentavos(centavosAnterior),
+        precioNuevo: deCentavos(centavosNuevo),
+      });
+      operaciones.push({
+        updateOne: {
+          filter: { _id: product._id, enPapelera: { $ne: true } },
+          update: { $set: { precio: deCentavos(centavosNuevo) } },
+        },
+      });
+    }
+
+    if (items.length === 0) {
+      await session.abortTransaction();
+      return res.status(400).json({
+        message: 'El aumento no modifica el precio de los productos seleccionados',
+      });
+    }
+
+    await Producto.bulkWrite(operaciones, { session });
+    const [aumento] = await AumentoPrecio.create(
+      [{
+        tipo: data.tipo,
+        valor: data.valor,
+        cantidad: items.length,
+        items,
+        creadoPor: req.usuario?.nombre || '',
+      }],
+      { session }
+    );
+
+    await session.commitTransaction();
+
+    const omitidos = ids.length - productos.length;
+    const sinCambios = productos.length - items.length;
+    const detalles = [];
+    if (omitidos > 0) detalles.push(`${omitidos} quedaron fuera (no existen o están en la papelera)`);
+    if (sinCambios > 0) detalles.push(`${sinCambios} sin cambios de precio`);
+
+    res.json({
+      message: `Precios actualizados en ${items.length} producto(s)${detalles.length > 0 ? `. ${detalles.join('; ')}` : ''}`,
+      cantidad: items.length,
+      omitidos,
+      sinCambios,
+      aumento,
+    });
+  } catch (error) {
+    await session?.abortTransaction().catch(() => {});
+    next(error);
+  } finally {
+    session?.endSession();
+  }
+};
+
+export const obtenerAumentos = async (req, res, next) => {
+  try {
+    const limite = Math.min(Math.max(Number(req.query.limit) || 50, 1), 200);
+    const aumentos = await AumentoPrecio.find()
+      .select('-items')
+      .sort({ fechaCreacion: -1 })
+      .limit(limite);
+    res.json(aumentos);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const deshacerAumento = async (req, res, next) => {
+  let session;
+  try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(400).json({ message: 'Aumento inválido' });
+    }
+
+    session = await mongoose.startSession();
+    session.startTransaction();
+
+    const aumento = await AumentoPrecio.findById(req.params.id).session(session);
+    if (!aumento) {
+      await session.abortTransaction();
+      return res.status(404).json({ message: 'Aumento no encontrado' });
+    }
+    if (aumento.deshecho) {
+      await session.abortTransaction();
+      return res.status(409).json({ message: 'Este aumento ya fue deshecho' });
+    }
+
+    const ids = aumento.items.map((item) => item.producto);
+    const productos = await Producto.find({
+      _id: { $in: ids },
+      enPapelera: { $ne: true },
+    }).session(session);
+    const porId = new Map(productos.map((product) => [String(product._id), product]));
+
+    const operaciones = [];
+    let omitidos = 0;
+    for (const item of aumento.items) {
+      const product = porId.get(String(item.producto));
+      if (!product || aCentavos(product.precio) !== aCentavos(item.precioNuevo)) {
+        omitidos += 1;
+        continue;
+      }
+      operaciones.push({
+        updateOne: {
+          filter: { _id: product._id, enPapelera: { $ne: true } },
+          update: { $set: { precio: item.precioAnterior } },
+        },
+      });
+    }
+
+    if (operaciones.length === 0) {
+      await session.abortTransaction();
+      return res.status(409).json({
+        message: 'No se pudo deshacer: los precios de esos productos ya cambiaron después del aumento',
+        code: 'PRECIOS_CAMBIADOS',
+      });
+    }
+
+    await Producto.bulkWrite(operaciones, { session });
+    aumento.deshecho = true;
+    aumento.deshechoPor = req.usuario?.nombre || '';
+    aumento.deshechoEn = new Date();
+    await aumento.save({ session });
+
+    await session.commitTransaction();
+
+    res.json({
+      message: omitidos > 0
+        ? `Se restauraron ${operaciones.length} precio(s). ${omitidos} producto(s) no se tocaron porque su precio cambió después.`
+        : `Se restauraron ${operaciones.length} precio(s)`,
+      cantidad: operaciones.length,
+      omitidos,
+    });
+  } catch (error) {
+    await session?.abortTransaction().catch(() => {});
+    next(error);
+  } finally {
+    session?.endSession();
+  }
+};
+
 export const agregarStock = async (req, res, next) => {
   let session;
   try {
