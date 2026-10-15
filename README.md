@@ -259,7 +259,8 @@ Cada **variante** (talle/color) recibe además su propio código estable: `NC-00
   caracteres ambiguos). Antes de asignarlo el servidor verifica que no exista y el índice único de la
   base impide cualquier repetición.
 - **Etiquetas:** desde el menú de acciones del producto en Depósito elegís el formato, la medida y la
-  cantidad (1–100):
+  cantidad (1–100). Si el producto tiene variantes, el diálogo pide **qué variante imprimir** y la etiqueta
+  lleva el código de esa variante más el talle/color en texto:
   - **Etiqueta:** una por página con la medida elegida (60×40 por defecto; ideal para rollo troquelado
     de tiquetera). Medidas: 60×40, 58×40, 50×30, 40×30 o personalizada.
   - **Hoja A4 (grilla):** acomoda las etiquetas por hoja según la medida (60×40 → 21 por hoja; 50×30 →
