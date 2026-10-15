@@ -131,28 +131,28 @@ const Devoluciones = () => {
               <div key={r._id} className="bg-ios-surface border border-ios-separator/30 rounded-3xl p-4 shadow-ios-card">
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
-                      <p className="font-semibold text-ios-label">{r.producto?.nombre || 'Producto eliminado'}</p>
+                      <p className="font-semibold text-ios-label">{r.producto?.nombre || r.productoNombre || 'Producto eliminado'}</p>
                       <p className="text-xs text-ios-tertiary mt-0.5">
                         {r.producto?.categoria || '—'}
                         {r.talle ? ` · Talle ${r.talle}` : ''}
                       </p>
                       {r.productoCargar && (
                         <p className="text-xs text-ios-tint mt-0.5">
-                          Cambiado por: {r.productoCargar.nombre} × {r.cantidadCargar}
+                          Cambiado por: {r.productoCargar.nombre || r.productoCargarNombre || 'Producto eliminado'} × {r.cantidadCargar}
                         </p>
                       )}
                     </div>
                     {esAdmin && (
                       <button
                         onClick={() => handleDelete(r._id)}
-                        className="text-ios-red text-xs border border-ios-red/50 dark:border-ios-red/30 px-2.5 py-1 rounded-ios-pill hover:bg-ios-red/15 dark:hover:bg-ios-red/10 transition-all font-semibold shrink-0"
+                        className="btn-vivo btn-vivo-rojo text-xs px-2.5 py-1 rounded-ios-pill font-semibold shrink-0"
                       >
                         Eliminar
                       </button>
                     )}
                   </div>
                   {Number.isFinite(Number(r.diferencia)) && Number(r.diferencia) !== 0 && (
-                    <div className={`mt-2 inline-block px-2.5 py-1 rounded-full text-[11px] font-semibold border ${
+                    <div className={`mt-2 inline-flex items-center justify-center leading-none px-2.5 py-1 rounded-full text-[11px] font-semibold border ${
                       r.diferencia > 0
                         ? 'bg-green-500/10 border-green-500/25 text-green-400'
                         : 'bg-amber-500/10 border-amber-500/25 text-amber-400'

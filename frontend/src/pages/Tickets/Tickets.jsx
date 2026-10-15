@@ -222,7 +222,7 @@ const Tickets = () => {
                         <td className="px-4 py-3.5">
                           <div className="flex flex-wrap gap-1">
                             {getPagos(s).map((p, i) => (
-                              <span key={i} className={`inline-block px-2 py-0.5 rounded-full text-[11px] font-semibold whitespace-nowrap ${pagoBadge(p.metodo)}`}>
+                              <span key={i} className={`inline-flex items-center justify-center leading-none px-2 py-0.5 rounded-full text-[11px] font-semibold whitespace-nowrap ${pagoBadge(p.metodo)}`}>
                                 {pagoLabel(p.metodo)}
                               </span>
                             ))}
@@ -232,7 +232,7 @@ const Tickets = () => {
                         <td className="px-5 py-3.5 text-right">
                           <button
                             onClick={(e) => openDropdown(e, s)}
-                            className="p-2 rounded-full hover:bg-ios-hover/10 text-ios-secondary transition-colors"
+                            className="p-2 btn-icono btn-icono-gris"
                             aria-label="Opciones del ticket"
                           >
                             <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
@@ -266,20 +266,20 @@ const Tickets = () => {
                         </IconTile>
                         <p className="font-bold text-ios-label tabular-nums tracking-wide text-[15px]">{getNumero(s)}</p>
                         {getEstadoTicket(s) && (
-                          <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold whitespace-nowrap ${getEstadoTicket(s).cls}`}>
+                          <span className={`inline-flex items-center justify-center leading-none px-2 py-0.5 rounded-full text-[10px] font-semibold whitespace-nowrap ${getEstadoTicket(s).cls}`}>
                             {getEstadoTicket(s).label}
                           </span>
                         )}
                       </div>
                       <div className="flex flex-wrap gap-1 justify-end shrink-0">
                         {getPagos(s).map((p, i) => (
-                          <span key={i} className={`inline-block px-2 py-0.5 rounded-full text-[11px] font-semibold ${pagoBadge(p.metodo)}`}>
+                          <span key={i} className={`inline-flex items-center justify-center leading-none px-2 py-0.5 rounded-full text-[11px] font-semibold ${pagoBadge(p.metodo)}`}>
                             {pagoLabel(p.metodo)}
                           </span>
                         ))}
                         <button
                           onClick={(e) => openDropdown(e, s)}
-                          className="p-1.5 rounded-full hover:bg-ios-hover/10 text-ios-secondary transition-colors"
+                          className="p-1.5 btn-icono btn-icono-gris"
                           aria-label="Opciones del ticket"
                         >
                           <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
@@ -302,14 +302,14 @@ const Tickets = () => {
                       {isExpanded ? (
                         <button
                           onClick={() => setExpandedId(null)}
-                          className="text-ios-tint text-xs border border-ios-tint/50 dark:border-ios-tint/30 px-2.5 py-1 rounded-ios-pill hover:bg-ios-tint/15 dark:hover:bg-ios-tint/10 transition-all font-semibold shrink-0"
+                          className="btn-vivo btn-vivo-azul text-xs px-2.5 py-1 rounded-ios-pill font-semibold shrink-0"
                         >
                           Ocultar detalle
                         </button>
                       ) : (
                         <button
                           onClick={() => setExpandedId(s._id)}
-                          className="text-ios-tint text-xs border border-ios-tint/50 dark:border-ios-tint/30 px-2.5 py-1 rounded-ios-pill hover:bg-ios-tint/15 dark:hover:bg-ios-tint/10 transition-all font-semibold shrink-0"
+                          className="btn-vivo btn-vivo-azul text-xs px-2.5 py-1 rounded-ios-pill font-semibold shrink-0"
                         >
                           Ver detalle
                         </button>
