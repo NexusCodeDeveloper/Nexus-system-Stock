@@ -2,11 +2,18 @@ import { z } from 'zod';
 
 const objectId = z.string().regex(/^[0-9a-fA-F]{24}$/, 'ID inválido');
 
+const codigoVarianteRegex = /^NC-\d{6}-\d{2}$/;
+
 const schemaVariante = z.object({
   talle: z.string().optional().default(''),
   color: z.string().optional().default(''),
   cantidad: z.number().int().min(0, 'La cantidad no puede ser negativa').optional().default(0),
   deposito: z.number().int().min(0, 'La cantidad no puede ser negativa').optional().default(0),
+  codigo: z
+    .string()
+    .trim()
+    .regex(codigoVarianteRegex, 'El código de variante debe tener el formato NC-000001-01')
+    .optional(),
 });
 
 const schemaCodigo = z.preprocess(
