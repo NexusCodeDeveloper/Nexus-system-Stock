@@ -92,6 +92,8 @@ export const crearVenta = async (req, res, next) => {
       const precioUnitario = Math.round(precioVigentePesos(product, promociones) * 100) / 100;
       articulos.push({
         producto: item.producto,
+        nombre: product.nombre || '',
+        codigo: product.codigo || '',
         cantidad: item.cantidad,
         precio: precioUnitario,
         talle: item.talle || '',
@@ -1104,6 +1106,34 @@ export const ejecutarMigracion = async (req, res, next) => {
   } catch (error) {
     next(error);
   }
+};
+
+export const asegurarSnapshotArticulos = async () => {
+  const filtroSinNombre = {
+    articulos: { $elemMatch: { $or: [{ nombre: { $exists: false } }, { nombre: '' }] } },
+  };
+  const pendientes = await Venta.countDocuments(filtroSinNombre);
+  if (pendientes === 0) return 0;
+
+  const cursor = Venta.find(filtroSinNombre).cursor();
+  let count = 0;
+
+  for await (const venta of cursor) {
+    let cambio = false;
+    for (const articulo of venta.articulos || []) {
+      if (articulo.nombre) continue;
+      const producto = await Producto.findById(articulo.producto).select('nombre codigo');
+      articulo.nombre = producto?.nombre || 'Producto eliminado';
+      if (!articulo.codigo) articulo.codigo = producto?.codigo || '';
+      cambio = true;
+    }
+    if (cambio) {
+      await venta.save();
+      count++;
+    }
+  }
+
+  return count;
 };
 
 export const asegurarNumerosTicket = async () => {
