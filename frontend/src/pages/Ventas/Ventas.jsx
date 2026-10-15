@@ -477,10 +477,8 @@ const Ventas = () => {
           <button
             key={p.key}
             onClick={() => selectPeriodo(p)}
-            className={`w-full sm:flex-1 px-3.5 py-2 rounded-ios-pill text-sm font-semibold transition-all ios-btn-press ${
-              activePeriodo === p.key
-                ? 'bg-ios-tint text-white shadow-[0_3px_10px_rgba(10,132,255,0.3)]'
-                : 'bg-ios-surface3 text-ios-tertiary hover:text-ios-secondary dark:bg-ios-surface2'
+            className={`w-full sm:flex-1 px-3.5 py-2 rounded-ios-pill text-sm font-semibold transition-all duration-150 active:scale-[0.97] ${
+              activePeriodo === p.key ? 'btn-vivo btn-vivo-azul' : 'btn-vivo btn-vivo-gris'
             }`}
           >
             {p.label}
@@ -532,10 +530,8 @@ const Ventas = () => {
               </span>
               <button
                 onClick={openCerrar}
-                className={`shrink-0 px-3 py-1.5 rounded-ios-pill text-xs font-bold transition-colors ${
-                  esDeHoy
-                    ? 'bg-emerald-500/25 text-emerald-700 hover:bg-emerald-500/35 dark:bg-emerald-500/20 dark:text-emerald-200 dark:hover:bg-emerald-500/30'
-                    : 'bg-amber-500/25 text-amber-700 hover:bg-amber-500/35 dark:bg-amber-500/20 dark:text-amber-200 dark:hover:bg-amber-500/30'
+                className={`shrink-0 px-3 py-1.5 rounded-ios-pill text-xs font-bold ${
+                  esDeHoy ? 'btn-vivo btn-vivo-verde' : 'btn-vivo btn-vivo-ambar'
                 }`}
               >
                 Cerrar caja
@@ -547,7 +543,7 @@ const Ventas = () => {
               <span className="min-w-0 flex-1 sm:flex-none truncate text-xs text-ios-secondary font-semibold">Caja cerrada hoy</span>
               <button
                 onClick={() => setActiveTab('cierres')}
-                className="shrink-0 px-3 py-1.5 rounded-ios-pill bg-ios-tint/25 text-ios-tint text-xs font-bold hover:bg-ios-tint/35 transition-colors dark:bg-ios-tint/20 dark:hover:bg-ios-tint/30"
+                className="shrink-0 px-3 py-1.5 rounded-ios-pill btn-vivo btn-vivo-azul text-xs font-bold"
               >
                 Ver cierres
               </button>
@@ -555,7 +551,7 @@ const Ventas = () => {
           ) : (
             <button
               onClick={openAbrir}
-              className="w-full sm:w-auto px-4 py-2 rounded-ios-pill bg-amber-100 border border-amber-300 text-amber-800 text-sm font-semibold hover:bg-amber-200 transition-colors dark:bg-amber-500/15 dark:border-amber-500/30 dark:text-amber-300 dark:hover:bg-amber-500/25"
+              className="w-full sm:w-auto px-4 py-2 rounded-ios-pill btn-vivo btn-vivo-ambar text-sm font-semibold"
             >
               Abrir caja
             </button>
@@ -686,11 +682,11 @@ const Ventas = () => {
                                 strokeWidth={2.2}
                               />
                               <span className="font-semibold text-ios-label">
-                                {items[0]?.producto?.nombre || 'Producto'}
+                                {items[0]?.producto?.nombre || items[0]?.nombre || 'Producto'}
                                 {items.length > 1 && <span className="text-ios-tertiary font-normal"> +{items.length - 1} más</span>}
                               </span>
                               {getEstadoVenta(s) && (
-                                <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold whitespace-nowrap ${getEstadoVenta(s).cls}`}>
+                                <span className={`inline-flex items-center justify-center leading-none px-2 py-0.5 rounded-full text-[10px] font-semibold whitespace-nowrap ${getEstadoVenta(s).cls}`}>
                                   {getEstadoVenta(s).label}
                                 </span>
                               )}
@@ -704,7 +700,7 @@ const Ventas = () => {
                               {getPagos(s).map((p, i) => (
                                   <span
                                   key={i}
-                                  className={`inline-block px-2 py-0.5 rounded-full text-[11px] font-semibold whitespace-nowrap ${pagoBadge(p.metodo)}`}
+                                  className={`inline-flex items-center justify-center leading-none px-2 py-0.5 rounded-full text-[11px] font-semibold whitespace-nowrap ${pagoBadge(p.metodo)}`}
                                 >
                                   {pagoLabel(p.metodo)}
                                   <span className="ml-1 opacity-60 font-medium">{formatMoney(p.monto)}</span>
@@ -717,7 +713,7 @@ const Ventas = () => {
                             {esAdmin && (
                               <button
                                 onClick={(e) => { e.stopPropagation(); handleDelete(s._id); }}
-                                className="text-ios-red hover:text-ios-red dark:hover:text-ios-red/80 text-xs border border-ios-red/50 dark:border-ios-red/30 px-2.5 py-1 rounded-ios-pill hover:bg-ios-red/15 dark:hover:bg-ios-red/10 transition-all font-semibold"
+                                className="btn-vivo btn-vivo-rojo text-xs px-2.5 py-1 rounded-ios-pill font-semibold"
                               >
                                 Eliminar
                               </button>
@@ -734,26 +730,26 @@ const Ventas = () => {
                                     <button
                                       onClick={(e) => { e.stopPropagation(); setReturnIsCambio(false); setReturnSale(s); }}
                                       disabled={s.estado === 'devuelta'}
-                                      className="text-ios-red hover:text-ios-red dark:hover:text-ios-red/80 text-xs border border-ios-red/50 dark:border-ios-red/30 px-2.5 py-1 rounded-ios-pill hover:bg-ios-red/15 dark:hover:bg-ios-red/10 transition-all font-semibold disabled:opacity-40 disabled:pointer-events-none"
+                                      className="btn-vivo btn-vivo-rojo text-xs px-2.5 py-1 rounded-ios-pill font-semibold disabled:opacity-40 disabled:pointer-events-none"
                                     >
                                       Devolver
                                     </button>
                                     <button
                                       onClick={(e) => { e.stopPropagation(); setReturnIsCambio(true); setReturnSale(s); }}
                                       disabled={s.estado === 'devuelta'}
-                                      className="text-ios-tint hover:text-ios-tint dark:hover:text-ios-tint/80 text-xs border border-ios-tint/50 dark:border-ios-tint/30 px-2.5 py-1 rounded-ios-pill hover:bg-ios-tint/15 dark:hover:bg-ios-tint/10 transition-all font-semibold disabled:opacity-40 disabled:pointer-events-none"
+                                      className="btn-vivo btn-vivo-azul text-xs px-2.5 py-1 rounded-ios-pill font-semibold disabled:opacity-40 disabled:pointer-events-none"
                                     >
                                       Cambiar
                                     </button>
                                     <button
                                       onClick={(e) => { e.stopPropagation(); setTicketModal(s); }}
-                                      className="text-ios-tint hover:text-ios-tint dark:hover:text-ios-tint/80 text-xs border border-ios-tint/50 dark:border-ios-tint/30 px-2.5 py-1 rounded-ios-pill hover:bg-ios-tint/15 dark:hover:bg-ios-tint/10 transition-all font-semibold"
+                                      className="btn-vivo btn-vivo-azul text-xs px-2.5 py-1 rounded-ios-pill font-semibold"
                                     >
                                       Ver ticket
                                     </button>
                                     <button
                                       onClick={(e) => { e.stopPropagation(); imprimirTicket(s); }}
-                                      className="text-ios-tint hover:text-ios-tint dark:hover:text-ios-tint/80 text-xs border border-ios-tint/50 dark:border-ios-tint/30 px-2.5 py-1 rounded-ios-pill hover:bg-ios-tint/15 dark:hover:bg-ios-tint/10 transition-all font-semibold"
+                                      className="btn-vivo btn-vivo-azul text-xs px-2.5 py-1 rounded-ios-pill font-semibold"
                                     >
                                       Imprimir ticket
                                     </button>
@@ -773,7 +769,7 @@ const Ventas = () => {
                                   <tbody>
                                     {items.map((item, idx) => (
                                       <tr key={idx} className="border-t border-ios-separator/30">
-                                        <td className="px-4 py-2.5 pl-12 text-ios-label font-medium">{item.producto?.nombre || 'Producto'}</td>
+                                        <td className="px-4 py-2.5 pl-12 text-ios-label font-medium">{item.producto?.nombre || item.nombre || 'Producto'}</td>
                                         <td className="px-4 py-2.5 text-ios-tertiary">{item.producto?.categoria || '—'}</td>
                                         <td className="px-4 py-2.5 text-ios-label">{item.cantidad}</td>
                                         <td className="px-4 py-2.5 text-ios-tertiary">{item.talle || '—'}</td>
@@ -809,11 +805,11 @@ const Ventas = () => {
                   <div key={s._id} className="bg-ios-surface border border-ios-separator/30 rounded-3xl p-4 shadow-ios-card">
                     <div className="flex flex-wrap items-center gap-2 mb-2">
                       <p className="font-semibold text-ios-label truncate min-w-0 w-full sm:w-auto sm:flex-1">
-                        {items[0]?.producto?.nombre || 'Producto'}
+                        {items[0]?.producto?.nombre || items[0]?.nombre || 'Producto'}
                         {items.length > 1 && <span className="text-ios-tertiary font-normal"> +{items.length - 1} más</span>}
                       </p>
                       {getEstadoVenta(s) && (
-                        <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold whitespace-nowrap shrink-0 ${getEstadoVenta(s).cls}`}>
+                        <span className={`inline-flex items-center justify-center leading-none px-2 py-0.5 rounded-full text-[10px] font-semibold whitespace-nowrap shrink-0 ${getEstadoVenta(s).cls}`}>
                           {getEstadoVenta(s).label}
                         </span>
                       )}
@@ -821,7 +817,7 @@ const Ventas = () => {
                         {getPagos(s).map((p, i) => (
                           <span
                             key={i}
-                            className={`inline-block px-2 py-0.5 rounded-full text-[11px] font-semibold ${pagoBadge(p.metodo)}`}
+                            className={`inline-flex items-center justify-center leading-none px-2 py-0.5 rounded-full text-[11px] font-semibold ${pagoBadge(p.metodo)}`}
                           >
                             {pagoLabel(p.metodo)}
                           </span>
@@ -841,14 +837,14 @@ const Ventas = () => {
                         {esAdmin && (
                           <button
                             onClick={() => handleDelete(s._id)}
-                            className="text-ios-red text-xs border border-ios-red/50 dark:border-ios-red/30 px-2.5 py-1 rounded-ios-pill hover:bg-ios-red/15 dark:hover:bg-ios-red/10 transition-all font-semibold"
+                            className="btn-vivo btn-vivo-rojo text-xs px-2.5 py-1 rounded-ios-pill font-semibold"
                           >
                             Eliminar
                           </button>
                         )}
                         <button
                           onClick={() => setExpandedId(isExpanded ? null : s._id)}
-                          className="text-ios-tint text-xs border border-ios-tint/50 dark:border-ios-tint/30 px-2.5 py-1 rounded-ios-pill hover:bg-ios-tint/15 dark:hover:bg-ios-tint/10 transition-all font-semibold"
+                          className="btn-vivo btn-vivo-azul text-xs px-2.5 py-1 rounded-ios-pill font-semibold"
                         >
                           {isExpanded ? 'Ocultar' : 'Ver detalle'}
                         </button>
@@ -860,26 +856,26 @@ const Ventas = () => {
                           <button
                             onClick={() => { setReturnIsCambio(false); setReturnSale(s); }}
                             disabled={s.estado === 'devuelta'}
-                            className="text-ios-red text-xs border border-ios-red/50 dark:border-ios-red/30 px-2.5 py-1 rounded-ios-pill hover:bg-ios-red/15 dark:hover:bg-ios-red/10 transition-all font-semibold disabled:opacity-40 disabled:pointer-events-none"
+                            className="btn-vivo btn-vivo-rojo text-xs px-2.5 py-1 rounded-ios-pill font-semibold disabled:opacity-40 disabled:pointer-events-none"
                           >
                             Devolver
                           </button>
                           <button
                             onClick={() => { setReturnIsCambio(true); setReturnSale(s); }}
                             disabled={s.estado === 'devuelta'}
-                            className="text-ios-tint text-xs border border-ios-tint/50 dark:border-ios-tint/30 px-2.5 py-1 rounded-ios-pill hover:bg-ios-tint/15 dark:hover:bg-ios-tint/10 transition-all font-semibold disabled:opacity-40 disabled:pointer-events-none"
+                            className="btn-vivo btn-vivo-azul text-xs px-2.5 py-1 rounded-ios-pill font-semibold disabled:opacity-40 disabled:pointer-events-none"
                           >
                             Cambiar
                           </button>
                           <button
                             onClick={() => setTicketModal(s)}
-                            className="text-ios-tint text-xs border border-ios-tint/50 dark:border-ios-tint/30 px-2.5 py-1 rounded-ios-pill hover:bg-ios-tint/15 dark:hover:bg-ios-tint/10 transition-all font-semibold"
+                            className="btn-vivo btn-vivo-azul text-xs px-2.5 py-1 rounded-ios-pill font-semibold"
                           >
                             Ver ticket
                           </button>
                           <button
                             onClick={() => imprimirTicket(s)}
-                            className="text-ios-tint text-xs border border-ios-tint/50 dark:border-ios-tint/30 px-2.5 py-1 rounded-ios-pill hover:bg-ios-tint/15 dark:hover:bg-ios-tint/10 transition-all font-semibold"
+                            className="btn-vivo btn-vivo-azul text-xs px-2.5 py-1 rounded-ios-pill font-semibold"
                           >
                             Imprimir ticket
                           </button>
@@ -887,7 +883,7 @@ const Ventas = () => {
                         {items.map((item, idx) => (
                           <div key={idx} className="flex items-center justify-between gap-2 text-sm">
                             <div className="min-w-0">
-                              <p className="text-ios-label font-medium truncate">{item.producto?.nombre || 'Producto'}</p>
+                              <p className="text-ios-label font-medium truncate">{item.producto?.nombre || item.nombre || 'Producto'}</p>
                               <p className="text-xs text-ios-tertiary">
                                 {item.producto?.categoria || '—'}
                                 {item.talle ? ` · Talle ${item.talle}` : ''}
@@ -962,10 +958,8 @@ const Ventas = () => {
                     setCDesde(p.desde());
                     setCHasta(p.hasta());
                   }}
-                  className={`w-full sm:flex-1 px-3.5 py-2 rounded-ios-pill text-sm font-semibold transition-all ios-btn-press ${
-                    cActivePeriodo === p.key
-                      ? 'bg-ios-tint text-white shadow-[0_3px_10px_rgba(10,132,255,0.3)]'
-                      : 'bg-ios-surface3 text-ios-tertiary hover:text-ios-secondary dark:bg-ios-surface2'
+                  className={`w-full sm:flex-1 px-3.5 py-2 rounded-ios-pill text-sm font-semibold transition-all duration-150 active:scale-[0.97] ${
+                    cActivePeriodo === p.key ? 'btn-vivo btn-vivo-azul' : 'btn-vivo btn-vivo-gris'
                   }`}
                 >
                   {p.label}
@@ -1011,13 +1005,13 @@ const Ventas = () => {
                           {c.turnos ? (
                             <div className="flex flex-wrap gap-1">
                               {c.turnos.map((t, i) => (
-                                <span key={i} className={`inline-block px-2 py-0.5 rounded-full text-[11px] font-semibold ${turnoBadge(t.turno)}`}>
+                                <span key={i} className={`inline-flex items-center justify-center leading-none px-2 py-0.5 rounded-full text-[11px] font-semibold ${turnoBadge(t.turno)}`}>
                                   {turnoTableLabel(t.turno)}
                                 </span>
                               ))}
                             </div>
                           ) : (
-                            <span className={`inline-block px-2 py-0.5 rounded-full text-[11px] font-semibold ${turnoBadge(c.turno)}`}>
+                            <span className={`inline-flex items-center justify-center leading-none px-2 py-0.5 rounded-full text-[11px] font-semibold ${turnoBadge(c.turno)}`}>
                               {turnoTableLabel(c.turno)}
                             </span>
                           )}
@@ -1038,7 +1032,7 @@ const Ventas = () => {
                           <div className="flex items-center justify-end gap-2">
                             <button
                               onClick={() => viewCloseDetail(c)}
-                              className="text-ios-tint hover:text-ios-tint dark:hover:text-ios-tint/80 text-xs border border-ios-tint/50 dark:border-ios-tint/30 px-2.5 py-1 rounded-ios-pill hover:bg-ios-tint/15 dark:hover:bg-ios-tint/10 transition-all font-semibold"
+                              className="btn-vivo btn-vivo-azul text-xs px-2.5 py-1 rounded-ios-pill font-semibold"
                             >
                               Ver
                             </button>
@@ -1046,10 +1040,10 @@ const Ventas = () => {
                               <button
                                 onClick={() => handleResendReport(c.fecha)}
                                 disabled={resendingId === `dia-${c.fecha}`}
-                                className={`text-xs border px-2.5 py-1 rounded-ios-pill transition-all font-semibold ${
+                                className={`text-xs px-2.5 py-1 rounded-ios-pill font-semibold ${
                                   resendingId === `dia-${c.fecha}`
-                                    ? 'text-amber-400 border-amber-500/50 bg-amber-500/15 cursor-wait dark:border-amber-500/30 dark:bg-amber-500/10'
-                                    : 'text-emerald-400 hover:text-emerald-300 border-emerald-500/50 hover:bg-emerald-500/15 dark:border-emerald-500/30 dark:hover:bg-emerald-500/10'
+                                    ? 'btn-vivo btn-vivo-ambar cursor-wait'
+                                    : 'btn-vivo btn-vivo-verde'
                                 }`}
                               >
                                 {resendingId === `dia-${c.fecha}` ? 'Pendiente…' : 'Reenviar reporte'}
@@ -1059,10 +1053,10 @@ const Ventas = () => {
                               <button
                                 onClick={() => handleResendCloseMail(c._id)}
                                 disabled={resendingId === c._id}
-                                className={`text-xs border px-2.5 py-1 rounded-ios-pill transition-all font-semibold ${
+                                className={`text-xs px-2.5 py-1 rounded-ios-pill font-semibold ${
                                   resendingId === c._id
-                                    ? 'text-amber-400 border-amber-500/50 bg-amber-500/15 cursor-wait dark:border-amber-500/30 dark:bg-amber-500/10'
-: 'text-emerald-400 hover:text-emerald-300 border-emerald-500/50 hover:bg-emerald-500/15 dark:border-emerald-500/30 dark:hover:bg-emerald-500/10'
+                                    ? 'btn-vivo btn-vivo-ambar cursor-wait'
+                                    : 'btn-vivo btn-vivo-verde'
                                 }`}
                               >
                                 {resendingId === c._id ? 'Pendiente…' : 'Reenviar'}
@@ -1071,7 +1065,7 @@ const Ventas = () => {
                             {!c.turnos && esAdmin && (
                               <button
                                 onClick={() => handleDeleteClose(c._id)}
-                                className="text-ios-red hover:text-ios-red dark:hover:text-ios-red/80 text-xs border border-ios-red/50 dark:border-ios-red/30 px-2.5 py-1 rounded-ios-pill hover:bg-ios-red/15 dark:hover:bg-ios-red/10 transition-all font-semibold"
+                                className="btn-vivo btn-vivo-rojo text-xs px-2.5 py-1 rounded-ios-pill font-semibold"
                               >
                                 Eliminar
                               </button>
@@ -1103,12 +1097,12 @@ const Ventas = () => {
                     <div className="flex flex-wrap gap-1 justify-end">
                       {c.turnos ? (
                         c.turnos.map((t, i) => (
-                          <span key={i} className={`inline-block px-2 py-0.5 rounded-full text-[11px] font-semibold ${turnoBadge(t.turno)}`}>
+                          <span key={i} className={`inline-flex items-center justify-center leading-none px-2 py-0.5 rounded-full text-[11px] font-semibold ${turnoBadge(t.turno)}`}>
                             {turnoTableLabel(t.turno)}
                           </span>
                         ))
                       ) : (
-                        <span className={`inline-block px-2 py-0.5 rounded-full text-[11px] font-semibold ${turnoBadge(c.turno)}`}>
+                        <span className={`inline-flex items-center justify-center leading-none px-2 py-0.5 rounded-full text-[11px] font-semibold ${turnoBadge(c.turno)}`}>
                           {turnoTableLabel(c.turno)}
                         </span>
                       )}
@@ -1136,7 +1130,7 @@ const Ventas = () => {
                     <div className="flex flex-wrap gap-2">
                       <button
                         onClick={() => viewCloseDetail(c)}
-                        className="text-ios-tint text-xs border border-ios-tint/50 dark:border-ios-tint/30 px-2.5 py-1 rounded-ios-pill hover:bg-ios-tint/15 dark:hover:bg-ios-tint/10 transition-all font-semibold"
+                        className="btn-vivo btn-vivo-azul text-xs px-2.5 py-1 rounded-ios-pill font-semibold"
                       >
                         Ver
                       </button>
@@ -1144,10 +1138,10 @@ const Ventas = () => {
                         <button
                           onClick={() => handleResendReport(c.fecha)}
                           disabled={resendingId === `dia-${c.fecha}`}
-                          className={`text-xs border px-2.5 py-1 rounded-ios-pill transition-all font-semibold ${
+                          className={`text-xs px-2.5 py-1 rounded-ios-pill font-semibold ${
                             resendingId === `dia-${c.fecha}`
-                              ? 'text-amber-400 border-amber-500/50 bg-amber-500/15 cursor-wait dark:border-amber-500/30 dark:bg-amber-500/10'
-                              : 'text-emerald-400 border-emerald-500/50 dark:border-emerald-500/30'
+                              ? 'btn-vivo btn-vivo-ambar cursor-wait'
+                              : 'btn-vivo btn-vivo-verde'
                           }`}
                         >
                           {resendingId === `dia-${c.fecha}` ? 'Pendiente…' : 'Reenviar reporte'}
@@ -1157,10 +1151,10 @@ const Ventas = () => {
                         <button
                           onClick={() => handleResendCloseMail(c._id)}
                           disabled={resendingId === c._id}
-                          className={`text-xs border px-2.5 py-1 rounded-ios-pill transition-all font-semibold ${
+                          className={`text-xs px-2.5 py-1 rounded-ios-pill font-semibold ${
                             resendingId === c._id
-                              ? 'text-amber-400 border-amber-500/50 bg-amber-500/15 cursor-wait dark:border-amber-500/30 dark:bg-amber-500/10'
-                              : 'text-emerald-400 border-emerald-500/50 dark:border-emerald-500/30'
+                              ? 'btn-vivo btn-vivo-ambar cursor-wait'
+                              : 'btn-vivo btn-vivo-verde'
                           }`}
                         >
                           {resendingId === c._id ? 'Pendiente…' : 'Reenviar'}
@@ -1169,7 +1163,7 @@ const Ventas = () => {
                       {!c.turnos && esAdmin && (
                         <button
                           onClick={() => handleDeleteClose(c._id)}
-                          className="text-ios-red text-xs border border-ios-red/50 dark:border-ios-red/30 px-2.5 py-1 rounded-ios-pill hover:bg-ios-red/15 dark:hover:bg-ios-red/10 transition-all font-semibold"
+                          className="btn-vivo btn-vivo-rojo text-xs px-2.5 py-1 rounded-ios-pill font-semibold"
                         >
                           Eliminar
                         </button>
