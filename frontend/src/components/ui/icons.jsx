@@ -37,6 +37,8 @@ export const IconCamera = (p) => <Icon {...p} d="M4 7h3l2-2h6l2 2h3a1 1 0 011 1v
 
 export const IconWarehouse = (p) => <Icon {...p} d="M3 21h18M5 21V8l7-5 7 5v13M9 21v-6h6v6M9 11h6" />;
 
+export const IconArchive = (p) => <Icon {...p} d="M4 8h16v11a1 1 0 01-1 1H5a1 1 0 01-1-1V8zm-1-4h18a1 1 0 011 1v2a1 1 0 01-1 1H3a1 1 0 01-1-1V5a1 1 0 011-1zm6 8h6" />;
+
 export const IconTag = (p) => <Icon {...p} d="M20.59 13.41L11 3.83A2 2 0 009.59 3H4a1 1 0 00-1 1v5.59a2 2 0 00.59 1.41l9.58 9.59a2 2 0 002.83 0l4.59-4.59a2 2 0 000-2.83zM7 7h.01" />;
 
 export const IconClock = (p) => <Icon {...p} d="M12 21a9 9 0 100-18 9 9 0 000 18zm0-14v5l3 2" />;

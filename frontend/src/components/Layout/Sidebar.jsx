@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom';
-import { IconBox, IconChart, IconUsers, IconUserPlus, IconReturn, IconBell, IconTile, IconTicket, IconWallet, IconWarehouse } from '../ui/icons';
+import { IconBox, IconChart, IconUsers, IconUserPlus, IconReturn, IconBell, IconTile, IconTicket, IconWallet, IconWarehouse, IconArchive } from '../ui/icons';
 import { useNotificaciones } from '../../context/notificacionContexto';
 import { useSolicitudesCliente } from '../../context/solicitudContexto';
 import { useAutenticacion } from '../../context/autenticacionContexto';
@@ -14,6 +14,7 @@ const links = [
   { to: '/devoluciones', label: 'Devoluciones', icon: IconReturn, gradient: 'from-orange-500 to-rose-600' },
   { to: '/notificaciones', label: 'Avisos', icon: IconBell, gradient: 'from-cyan-500 to-sky-600' },
   { to: '/empleados', label: 'Empleados', icon: IconUserPlus, gradient: 'from-rose-500 to-pink-600', adminOnly: true },
+  { to: '/papelera', label: 'Papelera', icon: IconArchive, gradient: 'from-slate-500 to-gray-600', adminOnly: true },
 ];
 
 const Sidebar = () => {

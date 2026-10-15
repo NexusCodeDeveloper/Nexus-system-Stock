@@ -12,6 +12,7 @@ import Tickets from './pages/Tickets/Tickets'
 import Clientes from './pages/Clientes/Clientes'
 import Notificaciones from './pages/Notificaciones/Notificaciones'
 import Empleados from './pages/Empleados/Empleados'
+import Papelera from './pages/Papelera/Papelera'
 import LoadingSpinner from './components/common/LoadingSpinner'
 import WelcomeOverlay from './components/Layout/WelcomeOverlay'
 import BannerPermisoPush from './components/BannerPermisoPush'
@@ -74,6 +75,7 @@ function App() {
           <Route path="devoluciones" element={<Devoluciones />} />
           <Route path="notificaciones" element={<Notificaciones />} />
           <Route path="empleados" element={<ProtectedRoute soloAdmin><Empleados /></ProtectedRoute>} />
+          <Route path="papelera" element={<ProtectedRoute soloAdmin><Papelera /></ProtectedRoute>} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
