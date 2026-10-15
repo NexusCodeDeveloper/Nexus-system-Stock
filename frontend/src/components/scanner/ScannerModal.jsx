@@ -165,7 +165,7 @@ const ScannerModal = ({ open, onClose, onLeer, continuo = false, titulo = 'Escan
           <button
             type="button"
             onClick={onClose}
-            className="p-1.5 rounded-full hover:bg-ios-hover/10 text-ios-secondary transition-colors"
+            className="p-1.5 btn-icono btn-icono-gris"
             aria-label="Cerrar escáner"
           >
             <IconX className="w-4 h-4" />
@@ -196,7 +196,7 @@ const ScannerModal = ({ open, onClose, onLeer, continuo = false, titulo = 'Escan
           <button
             type="button"
             onClick={alternarLinterna}
-            className="p-2 rounded-full bg-ios-surface3 text-ios-secondary hover:bg-ios-separator/40 dark:bg-ios-surface2 dark:hover:bg-ios-surface3 transition-colors"
+            className="p-2 btn-icono btn-icono-gris bg-ios-surface3 dark:bg-ios-surface2 ring-1 ring-ios-separator/40 hover:bg-ios-separator/40"
             aria-label="Linterna"
           >
             <IconSun className="w-4 h-4" />

@@ -6,7 +6,7 @@ const ScannerButton = ({ onClick, title = 'Escanear con la cámara', className =
     onClick={onClick}
     title={title}
     aria-label={title}
-    className={`shrink-0 w-9 h-9 flex items-center justify-center rounded-ios-control bg-ios-surface text-ios-secondary border border-ios-separator/40 hover:bg-ios-surface3 dark:hover:bg-ios-surface2 active:scale-95 transition-all ${className}`}
+    className={`shrink-0 w-9 h-9 flex items-center justify-center rounded-ios-control bg-ios-surface text-ios-secondary border border-ios-separator/40 hover:bg-ios-surface3 hover:border-ios-tint/40 hover:text-ios-tint hover:shadow-[0_8px_18px_-8px_rgba(10,132,255,0.5)] dark:hover:bg-ios-surface2 active:scale-95 transition-all ${className}`}
   >
     <IconCamera className="w-4 h-4" />
   </button>

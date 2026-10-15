@@ -152,6 +152,88 @@ button {
 .ios-btn-press {
     @apply transition-all duration-150 active:scale-[0.97] active:opacity-80;
   }
+
+/* Lenguaje de botones: "vivo" para acciones principales, "suave" para secundarias */
+
+.btn-vivo {
+    @apply transition-all duration-150 ring-1 ring-white/25 hover:-translate-y-0.5 active:scale-[0.97] active:opacity-90;
+  }
+
+.btn-suave {
+    @apply transition-all duration-150 ring-1 hover:-translate-y-0.5 active:scale-[0.97] active:opacity-90;
+  }
+
+.btn-vivo-azul {
+    @apply bg-gradient-to-b from-[#2E9BFF] to-[#0A6CFF] text-white hover:shadow-[0_12px_30px_-8px_rgba(14,140,255,0.65)];
+  }
+
+.btn-vivo-rojo {
+    @apply bg-gradient-to-b from-[#FF6A5E] to-[#FF453A] text-white hover:shadow-[0_12px_30px_-8px_rgba(255,69,58,0.6)];
+  }
+
+.btn-vivo-gris {
+    @apply bg-gradient-to-b from-[#94A3B8] to-[#64748B] text-white hover:shadow-[0_12px_30px_-8px_rgba(100,116,139,0.6)];
+  }
+
+.btn-vivo-verde {
+    @apply bg-gradient-to-b from-[#34D399] to-[#059669] text-white hover:shadow-[0_12px_30px_-8px_rgba(16,185,129,0.65)];
+  }
+
+.btn-vivo-violeta {
+    @apply bg-gradient-to-b from-[#A855F7] to-[#7C3AED] text-white hover:shadow-[0_12px_30px_-8px_rgba(168,85,247,0.65)];
+  }
+
+.btn-vivo-ambar {
+    @apply bg-gradient-to-b from-[#FBBF24] to-[#F59E0B] text-white hover:shadow-[0_12px_30px_-8px_rgba(245,158,11,0.65)];
+  }
+
+.btn-vivo-naranja {
+    @apply bg-gradient-to-b from-[#FBBF24] to-[#F97316] text-white hover:shadow-[0_12px_30px_-8px_rgba(249,115,22,0.65)];
+  }
+
+.btn-suave-azul {
+    @apply bg-ios-tint/15 text-ios-tint ring-ios-tint/30 hover:bg-ios-tint/25 hover:shadow-[0_10px_24px_-10px_rgba(10,132,255,0.55)];
+  }
+
+.btn-suave-rojo {
+    @apply bg-ios-red/15 text-ios-red ring-ios-red/30 hover:bg-ios-red/25 hover:shadow-[0_10px_24px_-10px_rgba(255,69,58,0.55)];
+  }
+
+.btn-suave-gris {
+    @apply bg-ios-surface3 text-ios-label ring-ios-separator/40 hover:bg-ios-separator/40 dark:bg-ios-surface2 dark:hover:bg-ios-surface3 hover:shadow-[0_10px_24px_-10px_rgba(0,0,0,0.35)];
+  }
+
+.btn-suave-verde {
+    @apply bg-ios-green/15 text-ios-green ring-ios-green/30 hover:bg-ios-green/25 hover:shadow-[0_10px_24px_-10px_rgba(50,215,75,0.5)];
+  }
+
+.btn-suave-violeta {
+    @apply bg-ios-purple/15 text-ios-purple ring-ios-purple/30 hover:bg-ios-purple/25 hover:shadow-[0_10px_24px_-10px_rgba(191,90,242,0.5)];
+  }
+
+.btn-suave-naranja {
+    @apply bg-ios-orange/15 text-ios-orange ring-ios-orange/30 hover:bg-ios-orange/25 hover:shadow-[0_10px_24px_-10px_rgba(255,159,10,0.5)];
+  }
+
+.btn-suave-ambar {
+    @apply bg-amber-500/15 text-amber-600 dark:text-amber-300 ring-amber-500/30 hover:bg-amber-500/25 hover:shadow-[0_10px_24px_-10px_rgba(245,158,11,0.55)];
+  }
+
+.btn-icono {
+    @apply transition-all duration-150 rounded-full active:scale-[0.94];
+  }
+
+.btn-icono-gris {
+    @apply text-ios-secondary hover:text-ios-label hover:bg-ios-hover/10;
+  }
+
+.btn-icono-azul {
+    @apply text-ios-tint hover:bg-ios-tint/15 hover:shadow-[0_8px_18px_-8px_rgba(10,132,255,0.5)];
+  }
+
+.btn-icono-rojo {
+    @apply text-ios-red hover:bg-ios-red/15 hover:shadow-[0_8px_18px_-8px_rgba(255,69,58,0.5)];
+  }
 }
 
 /* ---------- Scrollbar ---------- */

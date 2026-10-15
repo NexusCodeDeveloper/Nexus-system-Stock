@@ -105,7 +105,7 @@ const IosModal = ({
                 {showClose && (
                   <button
                     onClick={onClose}
-                    className="absolute right-4 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-ios-surface3 dark:bg-ios-surface2 flex items-center justify-center text-ios-tertiary hover:text-ios-label transition-colors"
+                    className="absolute right-4 top-1/2 -translate-y-1/2 w-8 h-8 btn-icono btn-icono-gris bg-ios-surface3 dark:bg-ios-surface2 ring-1 ring-ios-separator/40 flex items-center justify-center"
                     aria-label="Cerrar"
                   >
                     <IconX className="w-4 h-4" strokeWidth={2.2} />
@@ -150,7 +150,7 @@ const IosModal = ({
                 {showClose && (
                   <button
                     onClick={onClose}
-                    className="absolute right-5 top-4 w-8 h-8 rounded-full bg-ios-surface3 dark:bg-ios-surface2 flex items-center justify-center text-ios-tertiary hover:text-ios-label transition-colors"
+                    className="absolute right-5 top-4 w-8 h-8 btn-icono btn-icono-gris bg-ios-surface3 dark:bg-ios-surface2 ring-1 ring-ios-separator/40 flex items-center justify-center"
                     aria-label="Cerrar"
                   >
                     <IconX className="w-4 h-4" strokeWidth={2.2} />

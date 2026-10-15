@@ -10,8 +10,10 @@ const IosSegmented = ({ options, value, onChange, className = '' }) => (
           type="button"
           aria-pressed={active}
           onClick={() => onChange(val)}
-          className={`ios-btn-press flex-1 px-3 py-1.5 text-[13px] font-semibold rounded-[7px] transition-all duration-150 ${
-            active ? 'bg-ios-surface3 text-ios-label shadow-[0_1px_3px_rgba(0,0,0,0.4)]' : 'text-ios-tertiary'
+          className={`flex-1 px-3 py-1.5 text-[13px] font-semibold rounded-[7px] transition-all duration-150 ${
+            active
+              ? 'btn-vivo btn-vivo-azul'
+              : 'text-ios-tertiary hover:bg-ios-hover/5 hover:text-ios-secondary active:bg-ios-hover/10'
           }`}
         >
           {label}

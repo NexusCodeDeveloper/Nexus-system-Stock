@@ -17,7 +17,7 @@ const IosSearch = ({ value, onChange, placeholder = 'Buscar', className = '', au
       <button
         type="button"
         onClick={() => onChange('')}
-        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-ios-tertiary hover:text-ios-secondary p-1"
+        className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 btn-icono btn-icono-gris text-ios-tertiary"
         aria-label="Limpiar búsqueda"
       >
         <IconX className="w-3.5 h-3.5" />
