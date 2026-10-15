@@ -8,6 +8,11 @@ const returnSchema = new mongoose.Schema(
       ref: 'Producto',
       required: true,
     },
+    productoNombre: {
+      type: String,
+      trim: true,
+      default: '',
+    },
     cantidad: {
       type: Number,
       required: true,
@@ -27,6 +32,11 @@ const returnSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Producto',
       default: null,
+    },
+    productoCargarNombre: {
+      type: String,
+      trim: true,
+      default: '',
     },
     cantidadCargar: {
       type: Number,
