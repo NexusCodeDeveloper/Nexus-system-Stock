@@ -172,6 +172,7 @@ export const ejecutarDevolucion = async (data, usuario) => {
 
     const returnRecord = await Devolucion.create([{
       ...data,
+      productoNombre: product.nombre || '',
       venta: data.venta || null,
       diferencia: 0,
       montoDevuelto: montoTotalDevuelto,
@@ -388,6 +389,8 @@ export const ejecutarCambio = async (data, usuario) => {
       ventaDiferencia = await Venta.create([{
         articulos: [{
           producto: data.productoCargar,
+          nombre: productoCargado.nombre || '',
+          codigo: productoCargado.codigo || '',
           cantidad: data.cantidadCargar,
           precio: productoCargado.precio,
           talle: data.talleCargar || '',
@@ -410,6 +413,8 @@ export const ejecutarCambio = async (data, usuario) => {
       ventaDiferencia = await Venta.create([{
         articulos: [{
           producto: data.productoCargar,
+          nombre: productoCargado.nombre || '',
+          codigo: productoCargado.codigo || '',
           cantidad: data.cantidadCargar,
           precio: productoCargado.precio,
           talle: data.talleCargar || '',
@@ -431,10 +436,12 @@ export const ejecutarCambio = async (data, usuario) => {
 
     const canjeRecord = await Devolucion.create([{
       producto: data.productoDevolver,
+      productoNombre: productoDevuelto.nombre || '',
       cantidad: data.cantidadDevolver,
       talle: data.talleDevolver || '',
       color: data.colorDevolver || '',
       productoCargar: data.productoCargar,
+      productoCargarNombre: productoCargado.nombre || '',
       cantidadCargar: data.cantidadCargar,
       talleCargar: data.talleCargar || '',
       colorCargar: data.colorCargar || '',
@@ -697,4 +704,24 @@ export const revertirDevolucion = async (id, usuario) => {
   } finally {
     session.endSession();
   }
+};
+
+export const asegurarSnapshotDevoluciones = async () => {
+  const filtro = { $or: [{ productoNombre: { $exists: false } }, { productoNombre: '' }] };
+  const pendientes = await Devolucion.countDocuments(filtro);
+  if (pendientes === 0) return 0;
+
+  const cursor = Devolucion.find(filtro).cursor();
+  let count = 0;
+  for await (const devolucion of cursor) {
+    const producto = await Producto.findById(devolucion.producto).select('nombre');
+    devolucion.productoNombre = producto?.nombre || 'Producto eliminado';
+    if (devolucion.productoCargar && !devolucion.productoCargarNombre) {
+      const cargado = await Producto.findById(devolucion.productoCargar).select('nombre');
+      devolucion.productoCargarNombre = cargado?.nombre || 'Producto eliminado';
+    }
+    await devolucion.save();
+    count++;
+  }
+  return count;
 };
