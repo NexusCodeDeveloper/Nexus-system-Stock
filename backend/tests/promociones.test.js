@@ -5,7 +5,7 @@ import { startTestDB, stopTestDB, clearDB, runHandler } from './helpers/db.js';
 import Producto from '../modules/Producto/ProductoModel.js';
 import Promocion from '../modules/Promocion/PromocionModel.js';
 import { crearVenta, abrirCaja } from '../modules/Venta/VentaController.js';
-import { obtenerProductos, obtenerProducto } from '../modules/Producto/ProductoController.js';
+import { obtenerProductos, obtenerProducto, eliminarProducto } from '../modules/Producto/ProductoController.js';
 import { crearPromocion, cancelarPromocion, eliminarPromocion, obtenerPromociones, obtenerPromocionesVigentes, obtenerProductosDePromocion } from '../modules/Promocion/PromocionController.js';
 import promocionRoutes from '../modules/Promocion/PromocionRoutes.js';
 
@@ -362,4 +362,47 @@ test('eliminar una promoción inexistente o inválida se rechaza', async () => {
     usuario: admin,
   });
   assert.equal(inexistente.status, 404);
+});
+
+test('los productos en la papelera no aparecen en promociones ni contadores', async () => {
+  const activo = await crearProducto({ nombre: 'Activo' });
+  const eliminado = await crearProducto({ nombre: 'Eliminado' });
+  const promo = await crearPromo({ productos: [String(activo._id), String(eliminado._id)] });
+  assert.equal(promo.status, 201);
+  assert.equal(promo.body.cantidadProductos, 2);
+
+  await runHandler(eliminarProducto, { params: { id: String(eliminado._id) }, usuario: admin });
+
+  const vigentes = await runHandler(obtenerPromocionesVigentes, { usuario: admin });
+  const alcance = vigentes.body.promociones.find((p) => String(p._id) === String(promo.body._id));
+  assert.equal(alcance.cantidadProductos, 1, 'el contador no cuenta el producto eliminado');
+
+  const listado = await runHandler(obtenerPromociones, { usuario: admin });
+  assert.equal(listado.body[0].cantidadProductos, 1);
+
+  const detalle = await runHandler(obtenerProductosDePromocion, {
+    params: { id: String(promo.body._id) },
+    usuario: admin,
+  });
+  assert.equal(detalle.body.total, 1);
+  assert.deepEqual(detalle.body.productos.map((p) => p.nombre), ['Activo']);
+});
+
+test('una promoción para todos no incluye productos en la papelera', async () => {
+  await crearProducto({ nombre: 'Activo' });
+  const eliminado = await crearProducto({ nombre: 'Eliminado' });
+  const promo = await crearPromo({ todos: true, productos: [] });
+
+  await runHandler(eliminarProducto, { params: { id: String(eliminado._id) }, usuario: admin });
+
+  const vigentes = await runHandler(obtenerPromocionesVigentes, { usuario: admin });
+  const alcance = vigentes.body.promociones.find((p) => String(p._id) === String(promo.body._id));
+  assert.equal(alcance.cantidadProductos, null, 'para todos sigue siendo null');
+
+  const detalle = await runHandler(obtenerProductosDePromocion, {
+    params: { id: String(promo.body._id) },
+    usuario: admin,
+  });
+  assert.equal(detalle.body.total, 1);
+  assert.deepEqual(detalle.body.productos.map((p) => p.nombre), ['Activo']);
 });
