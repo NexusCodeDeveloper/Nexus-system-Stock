@@ -1,10 +1,10 @@
-const base = 'ios-btn-press shrink-0 inline-flex items-center gap-1.5 px-3.5 py-2 rounded-ios-pill text-sm font-medium transition-colors';
+const base = 'shrink-0 inline-flex items-center gap-1.5 px-3.5 py-2 rounded-ios-pill text-sm transition-all duration-150 active:scale-[0.97]';
 
 const chipCls = (seleccionada) =>
   `${base} ${
     seleccionada
-      ? 'bg-ios-green/25 text-ios-green border border-ios-green/50 dark:bg-ios-green/15 dark:border-ios-green/30'
-      : 'bg-ios-surface3 text-ios-tertiary border border-transparent hover:bg-ios-separator/40 dark:bg-ios-surface2 dark:hover:bg-ios-surface3'
+      ? 'btn-vivo btn-vivo-verde font-semibold'
+      : 'btn-vivo btn-vivo-gris font-medium'
   }`;
 
 const FiltroCategorias = ({ categorias, activa, onChange, className = '' }) => {
@@ -31,8 +31,8 @@ const FiltroCategorias = ({ categorias, activa, onChange, className = '' }) => {
           >
             {c.nombre}
             <span
-              className={`inline-block px-1.5 rounded-full text-[10px] font-semibold ${
-                seleccionada ? 'bg-ios-green/20' : 'bg-ios-surface3'
+              className={`inline-flex items-center justify-center leading-none px-1.5 rounded-full text-[10px] font-semibold ${
+                seleccionada ? 'bg-white/25' : 'bg-white/20'
               }`}
             >
               {c.cantidad}

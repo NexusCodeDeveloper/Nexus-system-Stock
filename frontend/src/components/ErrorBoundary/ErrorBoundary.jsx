@@ -33,7 +33,7 @@ class ErrorBoundary extends Component {
             </p>
             <button
               onClick={() => window.location.reload()}
-              className="px-6 py-2.5 bg-white/10 text-white rounded-lg text-sm hover:bg-white/15 transition-all"
+              className="px-6 py-2.5 btn-vivo btn-vivo-azul rounded-lg text-sm font-semibold"
             >
               Recargar página
             </button>

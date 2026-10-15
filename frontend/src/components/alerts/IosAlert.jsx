@@ -78,8 +78,10 @@ const IosAlert = ({ alert, onClose }) => {
                   if (action) action();
                   onClose();
                 }}
-                className={`w-full py-[9px] px-4 text-center transition-colors active:bg-ios-hover/10 ${
-                  b.style === 'destructive' ? 'text-ios-red' : 'text-ios-tint'
+                className={`w-full py-[9px] px-4 text-center transition-colors ${
+                  b.style === 'destructive'
+                    ? 'text-ios-red hover:bg-ios-red/10 active:bg-ios-red/15'
+                    : 'text-ios-tint hover:bg-ios-tint/10 active:bg-ios-tint/15'
                 } ${b.style === 'cancel' ? 'font-semibold' : 'font-medium'}`}
               >
                 {b.text || b.label}

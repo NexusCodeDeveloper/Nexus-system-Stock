@@ -86,7 +86,7 @@ const BannerPermisoPush = () => {
           </p>
           <button
             onClick={() => setEstado('oculto')}
-            className="text-xs text-ios-tint font-semibold shrink-0"
+            className="text-xs text-ios-tint font-semibold shrink-0 hover:underline"
           >
             Entendido
           </button>
@@ -112,19 +112,19 @@ const BannerPermisoPush = () => {
         <div className="mt-3 flex gap-2">
           <button
             onClick={noPreguntar}
-            className="flex-1 px-3 py-2 rounded-ios-control text-xs text-ios-tertiary font-medium bg-ios-surface3 hover:bg-ios-separator/40 dark:bg-ios-surface2 dark:hover:bg-ios-surface3 transition-colors"
+            className="flex-1 px-3 py-2 rounded-ios-control text-xs font-medium btn-vivo btn-vivo-gris"
           >
             No volver a preguntar
           </button>
           <button
             onClick={ahoraNo}
-            className="flex-1 px-3 py-2 rounded-ios-control text-xs text-ios-secondary font-medium bg-ios-surface3 hover:bg-ios-separator/40 dark:bg-ios-surface2 dark:hover:bg-ios-surface3 transition-colors"
+            className="flex-1 px-3 py-2 rounded-ios-control text-xs font-medium btn-vivo btn-vivo-gris"
           >
             Ahora no
           </button>
           <button
             onClick={activar}
-            className="flex-1 px-3 py-2 rounded-ios-control text-xs font-semibold text-white bg-ios-tint hover:bg-blue-500 transition-colors"
+            className="flex-1 px-3 py-2 rounded-ios-control text-xs font-semibold btn-vivo btn-vivo-azul"
           >
             Activar
           </button>

@@ -87,12 +87,14 @@ const Badge = ({ activo, onClick, color, children }) => (
     type="button"
     onClick={onClick}
     aria-pressed={activo}
-    className={`ios-btn-press flex items-center gap-2 px-3 py-1.5 rounded-ios-pill text-[13px] font-semibold border transition-all ${
-      activo ? 'text-ios-label' : 'text-ios-tertiary border-transparent bg-ios-surface3 dark:bg-ios-surface2'
+    className={`flex items-center gap-2 px-3 py-1.5 rounded-ios-pill text-[13px] font-semibold transition-all duration-150 active:scale-[0.97] hover:-translate-y-0.5 ${
+      activo
+        ? 'text-white ring-1 ring-white/25'
+        : 'text-ios-tertiary bg-ios-surface3 dark:bg-ios-surface2 ring-1 ring-ios-separator/40 hover:bg-ios-separator/40'
     }`}
-    style={activo ? { backgroundColor: `${color}26`, borderColor: color } : undefined}
+    style={activo ? { backgroundColor: color, boxShadow: `0 8px 20px -10px ${color}` } : undefined}
   >
-    <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: color }} />
+    <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: activo ? 'rgba(255,255,255,0.85)' : color }} />
     <span>{children}</span>
   </button>
 );

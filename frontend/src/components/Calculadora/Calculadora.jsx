@@ -9,18 +9,18 @@ const MODOS = [
 ];
 
 const VARIANTES = {
-  numero: 'bg-ios-surface3 text-ios-label hover:bg-ios-separator/40 dark:bg-ios-surface2 dark:hover:bg-ios-surface3',
-  funcion: 'bg-ios-surface3/80 text-ios-secondary hover:bg-ios-separator/40 dark:bg-ios-surface2/60 dark:hover:bg-ios-surface3',
-  operador: 'bg-ios-tint/20 text-ios-tint hover:bg-ios-tint/30 dark:bg-ios-tint/15 dark:hover:bg-ios-tint/25',
-  accion: 'bg-ios-surface3 text-ios-secondary hover:bg-ios-hover/10',
-  igual: 'bg-gradient-to-b from-[#0E8CFF] to-ios-tint text-white shadow-[0_4px_14px_rgba(10,132,255,0.35)]',
-  activo: 'bg-ios-tint/30 text-ios-tint dark:bg-ios-tint/20',
+  numero: 'bg-ios-surface3 text-ios-label ring-1 ring-ios-separator/30 hover:bg-ios-separator/40 hover:-translate-y-0.5 dark:bg-ios-surface2 dark:hover:bg-ios-surface3',
+  funcion: 'bg-ios-surface3/80 text-ios-secondary ring-1 ring-ios-separator/30 hover:bg-ios-separator/40 hover:-translate-y-0.5 dark:bg-ios-surface2/60 dark:hover:bg-ios-surface3',
+  operador: 'btn-vivo btn-vivo-azul',
+  accion: 'bg-ios-surface3 text-ios-secondary ring-1 ring-ios-separator/30 hover:bg-ios-separator/40 hover:-translate-y-0.5 dark:bg-ios-surface2 dark:hover:bg-ios-surface3',
+  igual: 'btn-vivo btn-vivo-azul',
+  activo: 'btn-vivo btn-vivo-azul',
 };
 
 const Boton = ({ variante = 'numero', chico = false, className = '', children, ...props }) => (
   <button
     type="button"
-    className={`ios-btn-press rounded-ios-control font-semibold transition-colors ${
+    className={`rounded-ios-control font-semibold transition-all duration-150 active:scale-[0.97] ${
       chico ? 'py-2.5 text-[13px]' : 'py-3 text-[15px]'
     } ${VARIANTES[variante]} ${className}`}
     {...props}

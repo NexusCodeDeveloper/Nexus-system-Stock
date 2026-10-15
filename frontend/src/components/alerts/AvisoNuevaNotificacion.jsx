@@ -39,7 +39,7 @@ const AvisoNuevaNotificacion = () => {
             </div>
             <button
               onClick={marcarVistasAdmin}
-              className="pointer-events-auto shrink-0 text-ios-tertiary hover:text-ios-label transition-colors p-0.5 -m-0.5"
+              className="pointer-events-auto shrink-0 p-1 text-ios-tertiary hover:text-ios-label hover:bg-ios-hover/10 rounded-full transition-colors -m-0.5"
             >
               <IconX className="w-4 h-4" strokeWidth={2.2} />
             </button>
