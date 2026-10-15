@@ -116,6 +116,9 @@ export const ejecutarDevolucion = async (data, usuario) => {
 
     const product = await Producto.findById(data.producto).session(session);
     if (!product) throw errorDeServicio(404, 'Producto no encontrado');
+    if (product.enPapelera) {
+      throw errorDeServicio(409, 'Este producto no está disponible para devolver.', 'EN_PAPELERA');
+    }
 
     if (product.variantes?.length > 0) {
       const idx = indiceDeVariante(product, data.talle, data.color);
@@ -247,11 +250,17 @@ export const ejecutarCambio = async (data, usuario) => {
     const mismoProducto = String(data.productoDevolver) === String(data.productoCargar);
     const productoDevuelto = await Producto.findById(data.productoDevolver).session(session);
     if (!productoDevuelto) throw errorDeServicio(404, 'Producto a devolver no encontrado');
+    if (productoDevuelto.enPapelera) {
+      throw errorDeServicio(409, 'Este producto no está disponible para un cambio.', 'EN_PAPELERA');
+    }
 
     const productoCargado = mismoProducto
       ? productoDevuelto
       : await Producto.findById(data.productoCargar).session(session);
     if (!productoCargado) throw errorDeServicio(404, 'Producto a cargar no encontrado');
+    if (productoCargado.enPapelera) {
+      throw errorDeServicio(409, `"${productoCargado.nombre}" está en la papelera. Restauralo desde la papelera para usarlo en un cambio.`);
+    }
 
     const normalizarVariante = (v) => String(v ?? '').trim().toLowerCase();
     const mismaVariante = mismoProducto
@@ -565,6 +574,13 @@ export const revertirDevolucion = async (id, usuario) => {
       && String(returnRecord.productoCargar) === String(returnRecord.producto);
 
     const product = await Producto.findById(returnRecord.producto).session(session);
+    if (product?.enPapelera) {
+      throw errorDeServicio(
+        409,
+        `No se puede deshacer la devolución de "${product.nombre}" porque está en la papelera.`,
+        'EN_PAPELERA'
+      );
+    }
     if (product) {
       if (product.variantes?.length > 0) {
         const idx = indiceDeVariante(product, returnRecord.talle, returnRecord.color);
@@ -598,6 +614,13 @@ export const revertirDevolucion = async (id, usuario) => {
       const productoCargado = mismoProducto
         ? product
         : await Producto.findById(returnRecord.productoCargar).session(session);
+      if (productoCargado?.enPapelera) {
+        throw errorDeServicio(
+          409,
+          `No se puede deshacer la devolución porque "${productoCargado.nombre}" está en la papelera.`,
+          'EN_PAPELERA'
+        );
+      }
       if (productoCargado) {
         if (productoCargado.variantes?.length > 0) {
           const idx = indiceDeVariante(productoCargado, returnRecord.talleCargar, returnRecord.colorCargar);
