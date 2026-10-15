@@ -61,6 +61,13 @@ export const crearVenta = async (req, res, next) => {
         await session.abortTransaction();
         return res.status(404).json({ message: `Producto ${item.producto} no encontrado` });
       }
+      if (product.enPapelera) {
+        await session.abortTransaction();
+        return res.status(409).json({
+          message: `"${product.nombre}" está en la papelera y ya no se puede vender. Restauralo desde la papelera o quitalo del carrito.`,
+          code: 'EN_PAPELERA',
+        });
+      }
       productosVendidos.push(product);
 
       if (product.variantes?.length > 0) {
@@ -220,6 +227,14 @@ export const eliminarVenta = async (req, res, next) => {
 
     const idsProductos = articulos.map((item) => item.producto).filter(Boolean);
     const productos = await Producto.find({ _id: { $in: idsProductos } }).session(session);
+    const productoEnPapelera = productos.find((p) => p.enPapelera);
+    if (productoEnPapelera) {
+      await session.abortTransaction();
+      return res.status(409).json({
+        message: `No se puede eliminar la venta porque "${productoEnPapelera.nombre}" está en la papelera. Restauralo desde la papelera para continuar.`,
+        code: 'EN_PAPELERA',
+      });
+    }
     const productosPorId = new Map(productos.map((p) => [p._id.toString(), p]));
     const modificados = new Map();
 
