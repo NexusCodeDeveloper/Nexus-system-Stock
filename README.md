@@ -268,6 +268,9 @@ Cada **variante** (talle/color) recibe además su propio código estable: `NC-00
   desactivar con los interruptores "Mostrar QR" y "Mostrar precio". En el diálogo de impresión
   conviene usar márgenes en 0, escala 100% y sin encabezados.
 
+Las etiquetas impresas antes de esta mejora (solo con el código del producto) siguen sirviendo: se escanean igual,
+pero si el producto tiene varias variantes con stock hay que elegir el talle/color en el selector.
+
 Endpoints: `GET /api/productos/codigo/:codigo` (buscar por código) y `GET /api/productos/siguiente-codigo`
 (admin; lo usa el formulario para mostrar el código al crear).
 
