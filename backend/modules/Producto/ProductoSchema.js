@@ -133,3 +133,24 @@ export const schemaActualizarProducto = z.object({
   validarColoresDeVariantes(data, ctx);
   validarVariantesUnicas(data, ctx);
 });
+
+export const LIMITE_PRODUCTOS_AUMENTO = 5000;
+
+export const schemaAumentoPrecio = z
+  .object({
+    tipo: z.enum(['porcentaje', 'monto']),
+    valor: z.number().finite().positive('El aumento debe ser mayor a 0'),
+    productos: z
+      .array(objectId)
+      .min(1, 'Seleccioná al menos un producto')
+      .max(LIMITE_PRODUCTOS_AUMENTO, `No se pueden aumentar más de ${LIMITE_PRODUCTOS_AUMENTO} productos a la vez`),
+  })
+  .superRefine((data, ctx) => {
+    if (data.tipo === 'porcentaje' && data.valor > 10000) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'El porcentaje no puede superar el 10000%',
+        path: ['valor'],
+      });
+    }
+  });
