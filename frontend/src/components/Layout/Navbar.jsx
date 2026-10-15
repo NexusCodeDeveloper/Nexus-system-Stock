@@ -31,7 +31,7 @@ const Navbar = () => {
         <button
           type="button"
           onClick={() => setCalcOpen(true)}
-          className="ios-btn-press p-2 rounded-full text-ios-secondary hover:bg-ios-hover/5 transition-colors"
+          className="p-2 btn-icono btn-icono-gris"
           title="Calculadora"
           aria-label="Abrir calculadora"
         >

@@ -44,7 +44,7 @@ const LayoutInner = () => {
         <button
           type="button"
           onClick={abrirCarritoMobile}
-          className="md:hidden fixed bottom-24 right-4 z-40 flex items-center gap-2 rounded-full bg-ios-tint text-white px-4 py-3 shadow-[0_8px_24px_rgba(10,132,255,0.45)] font-semibold text-sm"
+          className="md:hidden fixed bottom-24 right-4 z-40 flex items-center gap-2 rounded-full btn-vivo btn-vivo-azul px-4 py-3 font-semibold text-sm shadow-[0_10px_28px_-8px_rgba(14,140,255,0.7)]"
           aria-label={`Abrir carrito (${cart.length} productos)`}
         >
           <IconCart className="w-4 h-4" />

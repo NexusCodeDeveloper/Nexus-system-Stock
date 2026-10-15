@@ -49,7 +49,7 @@ const MobileNav = () => {
                     <span className="relative flex items-center justify-center w-[30px] h-[30px] rounded-[10px] transition-all duration-200">
                       <span
                         className={`absolute inset-0 rounded-[10px] transition-all duration-200 ${
-                          isActive ? `bg-gradient-to-br ${link.gradient} shadow-[0_3px_8px_rgba(0,0,0,0.4)]` : ''
+                          isActive ? `bg-gradient-to-br ${link.gradient} ring-1 ring-white/25 shadow-[0_8px_18px_-8px_rgba(0,0,0,0.35)]` : ''
                         }`}
                       />
                       <link.icon

@@ -4,7 +4,10 @@ import { calcularPagina, rangoPaginas } from '../../utils/paginacion';
 const OPCIONES = [10, 25, 50, 100];
 
 const botonBase =
-  'ios-btn-press inline-flex items-center justify-center rounded-ios-pill text-sm font-semibold transition-colors disabled:opacity-40 disabled:pointer-events-none';
+  'inline-flex items-center justify-center rounded-ios-pill text-sm font-semibold transition-all duration-150 active:scale-[0.97] disabled:opacity-40 disabled:pointer-events-none';
+
+const botonSuave =
+  'bg-gradient-to-b from-[#94A3B8] to-[#64748B] text-white ring-1 ring-white/25 hover:-translate-y-0.5 hover:shadow-[0_12px_30px_-8px_rgba(100,116,139,0.6)]';
 
 const Paginacion = ({ pagina, porPagina, total, onPagina, onPorPagina, deshabilitado = false, className = '' }) => {
   if (Number(total) <= 0) return null;
@@ -50,7 +53,7 @@ const Paginacion = ({ pagina, porPagina, total, onPagina, onPorPagina, deshabili
           type="button"
           onClick={() => ir(paginaSegura - 1)}
           disabled={deshabilitado || paginaSegura <= 1}
-          className={`${botonBase} w-9 h-9 bg-ios-surface3 text-ios-secondary hover:bg-ios-separator/40 dark:bg-ios-surface2 dark:hover:bg-ios-surface3`}
+          className={`${botonBase} ${botonSuave} w-9 h-9`}
           aria-label="Página anterior"
         >
           <IconChevronRight className="w-4 h-4 rotate-180" />
@@ -70,7 +73,7 @@ const Paginacion = ({ pagina, porPagina, total, onPagina, onPorPagina, deshabili
                 disabled={deshabilitado}
                 aria-current={p === paginaSegura ? 'page' : undefined}
                 className={`${botonBase} min-w-[36px] h-9 px-2 ${
-                  p === paginaSegura ? 'bg-ios-tint text-white' : 'bg-ios-surface3 text-ios-secondary hover:bg-ios-separator/40 dark:bg-ios-surface2 dark:hover:bg-ios-surface3'
+                  p === paginaSegura ? 'btn-vivo btn-vivo-azul' : botonSuave
                 }`}
               >
                 {p}
@@ -87,7 +90,7 @@ const Paginacion = ({ pagina, porPagina, total, onPagina, onPorPagina, deshabili
           type="button"
           onClick={() => ir(paginaSegura + 1)}
           disabled={deshabilitado || paginaSegura >= totalPaginas}
-          className={`${botonBase} w-9 h-9 bg-ios-surface3 text-ios-secondary hover:bg-ios-separator/40 dark:bg-ios-surface2 dark:hover:bg-ios-surface3`}
+          className={`${botonBase} ${botonSuave} w-9 h-9`}
           aria-label="Página siguiente"
         >
           <IconChevronRight className="w-4 h-4" />

@@ -49,9 +49,9 @@ const Sidebar = () => {
             to={link.to}
             end={link.to === '/'}
             className={({ isActive }) =>
-              `relative flex items-center pl-2 pr-3 py-2.5 rounded-2xl transition-colors duration-200 ${
+              `relative flex items-center pl-2 pr-3 py-2.5 rounded-2xl transition-all duration-200 ${
                 isActive
-                  ? 'bg-ios-hover/[0.08]'
+                  ? 'bg-ios-tint/15 ring-1 ring-ios-tint/30 shadow-[0_8px_18px_-10px_rgba(10,132,255,0.5)]'
                   : 'hover:bg-ios-hover/[0.05] active:bg-ios-hover/[0.09]'
               }`
             }

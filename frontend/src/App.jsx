@@ -34,7 +34,7 @@ function App() {
           <button
             type="button"
             onClick={() => window.location.reload()}
-            className="px-5 py-2.5 rounded-ios-pill bg-ios-tint text-white text-sm font-semibold"
+            className="px-5 py-2.5 rounded-ios-pill btn-vivo btn-vivo-azul text-sm font-semibold"
           >
             Recargar página
           </button>
