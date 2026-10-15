@@ -14,6 +14,7 @@ import CuotaCuentaCorriente from '../../modules/CuotaCuentaCorriente/CuotaCuenta
 import AjustesCuentaCorriente from '../../modules/AjustesCuentaCorriente/AjustesCuentaCorrienteModel.js';
 import Promocion from '../../modules/Promocion/PromocionModel.js';
 import SolicitudCliente from '../../modules/SolicitudCliente/SolicitudClienteModel.js';
+import AumentoPrecio from '../../modules/Producto/AumentoPrecioModel.js';
 
 let replSet;
 
@@ -35,6 +36,7 @@ export const startTestDB = async () => {
     AjustesCuentaCorriente.init(),
     Promocion.init(),
     SolicitudCliente.init(),
+    AumentoPrecio.init(),
   ]);
 };
 
