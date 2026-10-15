@@ -1,4 +1,5 @@
-import { useCarrito } from '../../context/carritoContexto';
+import { useEffect } from 'react';
+import { useCarrito, claveItemCarrito } from '../../context/carritoContexto';
 import { useCaja } from '../../context/cajaContexto';
 import IosButton from '../ui/IosButton';
 import IosToggle from '../ui/IosToggle';
@@ -16,6 +17,7 @@ const PanelCarrito = () => {
     removeFromCart,
     updateCartItem,
     clearCart,
+    lastAdded,
     metodos,
     sellEmpleado,
     sellDescuento,
@@ -46,6 +48,12 @@ const PanelCarrito = () => {
     if (ok) clearCart();
   };
 
+  useEffect(() => {
+    if (!lastAdded) return;
+    const visibles = [...document.querySelectorAll('[data-item-resaltado="true"]')];
+    visibles.find((el) => el.offsetParent !== null)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }, [lastAdded]);
+
   return (
     <aside className="w-full h-full flex flex-col bg-ios-surface/95 backdrop-blur-2xl border-l border-ios-separator/40">
       <div className="px-4 pt-6 pb-3 border-b border-ios-separator/40 flex items-start justify-between gap-2 shrink-0">
@@ -57,7 +65,7 @@ const PanelCarrito = () => {
         </div>
         <button
           onClick={handleVaciar}
-          className="shrink-0 text-[11px] text-ios-red border border-ios-red/50 dark:border-ios-red/30 px-2.5 py-1 rounded-ios-pill hover:bg-ios-red/15 dark:hover:bg-ios-red/10 transition-colors font-semibold"
+          className="shrink-0 text-[11px] btn-vivo btn-vivo-rojo px-2.5 py-1 rounded-ios-pill font-semibold"
         >
           Vaciar
         </button>
@@ -65,17 +73,25 @@ const PanelCarrito = () => {
 
       <div className="flex-1 min-h-0 overflow-y-auto px-4 py-3 space-y-3">
         <div className="space-y-2">
-          {cart.map((item, idx) => (
-            <div key={idx} className="bg-ios-surface rounded-2xl border border-ios-separator/30 p-3">
+          {cart.map((item, idx) => {
+            const resaltado = lastAdded?.key === claveItemCarrito(item);
+            return (
+            <div
+              key={idx}
+              data-item-resaltado={resaltado ? 'true' : undefined}
+              className={`bg-ios-surface rounded-2xl border p-3 transition-all duration-500 ${
+                resaltado ? 'border-ios-green/60 ring-2 ring-ios-green/40 bg-ios-green/10 animate-ios-scan' : 'border-ios-separator/30'
+              }`}
+            >
               <div className="flex items-start justify-between gap-2">
                 <p className="text-sm font-semibold text-ios-label leading-tight min-w-0">{item.nombre}</p>
-                <button onClick={() => removeFromCart(idx)} className="text-ios-red shrink-0 p-0.5">
+                <button onClick={() => removeFromCart(idx)} className="shrink-0 p-1 btn-icono btn-icono-rojo">
                   <IconX className="w-4 h-4" />
                 </button>
               </div>
-              {(item.talle || item.color) && (
+              {(item.talle || item.color || item.codigo) && (
                 <p className="text-[11px] text-ios-tertiary mt-0.5">
-                  {[item.talle, item.color].filter(Boolean).join(' / ')}
+                  {[[item.talle, item.color].filter(Boolean).join(' / '), item.codigo].filter(Boolean).join(' · ')}
                 </p>
               )}
               <div className="flex items-center justify-between gap-2 mt-2">
@@ -100,7 +116,8 @@ const PanelCarrito = () => {
                 </span>
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
 
         <div className="border-t border-ios-separator/40 pt-3 space-y-3">
@@ -132,7 +149,7 @@ const PanelCarrito = () => {
                   key={m.key}
                   type="button"
                   onClick={() => setMetodoPago(m.key)}
-                  className={`flex-1 px-1.5 py-2 text-[12px] rounded-ios-control border transition-all ios-btn-press font-medium ${
+                  className={`flex-1 px-1.5 py-2 text-[12px] rounded-ios-control transition-all duration-150 font-medium ${
                     sellMetodoPago === m.key
                       ? m.activeCls
                       : 'bg-ios-surface3 text-ios-tertiary border-transparent hover:bg-ios-separator/40 dark:bg-ios-surface2 dark:hover:bg-ios-surface3'
@@ -208,7 +225,7 @@ const PanelCarrito = () => {
             <button
               type="button"
               onClick={openAbrir}
-              className="mt-2 w-full py-2 rounded-ios-control bg-amber-100 border border-amber-300 text-amber-800 font-bold hover:bg-amber-200 transition-colors dark:border-0 dark:bg-amber-500/20 dark:text-amber-300 dark:hover:bg-amber-500/30"
+              className="mt-2 w-full py-2 rounded-ios-control btn-vivo btn-vivo-ambar font-bold"
             >
               Abrir caja
             </button>

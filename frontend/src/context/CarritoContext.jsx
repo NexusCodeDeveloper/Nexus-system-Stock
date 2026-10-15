@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { CarritoContext, METODOS_PAGO } from './carritoContexto';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { CarritoContext, METODOS_PAGO, claveItemCarrito } from './carritoContexto';
 import { crearVenta } from '../api/ventas';
 import { obtenerProducto } from '../api/productos';
 import { obtenerAjustesCuenta } from '../api/cuotas';
@@ -17,6 +17,8 @@ const hoyISO = () => {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
+
+const DURACION_RESALTADO_MS = 3200;
 
 export const CarritoProvider = ({ children }) => {
   const { usuario } = useAutenticacion();
@@ -42,6 +44,9 @@ export const CarritoProvider = ({ children }) => {
   const [showTicketModal, setShowTicketModal] = useState(false);
   const [showCobrarPago, setShowCobrarPago] = useState(false);
   const [saleVersion, setSaleVersion] = useState(0);
+  const [lastAdded, setLastAdded] = useState(null);
+  const lastAddedSeqRef = useRef(0);
+  const lastAddedTimerRef = useRef(null);
 
   const pagoEnCuenta = lastSale ? (lastSale.pagos || []).find((p) => p.metodo === 'cuentaCorriente') : null;
   const ventaEnCuenta = Boolean(lastSale?.cliente && pagoEnCuenta);
@@ -89,7 +94,18 @@ export const CarritoProvider = ({ children }) => {
     if (cart.length === 0) resetSell();
   }, [cart.length, resetSell]);
 
-  const addItem = useCallback((item) => {
+  const marcarUltimoAgregado = useCallback((item) => {
+    lastAddedSeqRef.current += 1;
+    setLastAdded({ key: claveItemCarrito(item), seq: lastAddedSeqRef.current, ts: Date.now() });
+    if (lastAddedTimerRef.current) clearTimeout(lastAddedTimerRef.current);
+    lastAddedTimerRef.current = setTimeout(() => setLastAdded(null), DURACION_RESALTADO_MS);
+  }, []);
+
+  useEffect(() => () => {
+    if (lastAddedTimerRef.current) clearTimeout(lastAddedTimerRef.current);
+  }, []);
+
+  const addItem = useCallback((item, opciones = {}) => {
     setCart((prev) => {
       const idx = prev.findIndex(
         (i) =>
@@ -102,7 +118,11 @@ export const CarritoProvider = ({ children }) => {
       copia[idx] = { ...copia[idx], cantidad: Number(copia[idx].cantidad || 0) + (Number(item.cantidad) || 1) };
       return copia;
     });
-  }, []);
+    if (opciones.reveal) {
+      marcarUltimoAgregado(item);
+      setShowCartModal(true);
+    }
+  }, [marcarUltimoAgregado]);
 
   const removeFromCart = useCallback((idx) => {
     setCart((prev) => prev.filter((_, i) => i !== idx));
@@ -114,6 +134,7 @@ export const CarritoProvider = ({ children }) => {
 
   const clearCart = useCallback(() => {
     setCart([]);
+    setLastAdded(null);
   }, []);
 
   const openCart = useCallback(() => {
@@ -263,6 +284,7 @@ export const CarritoProvider = ({ children }) => {
       setShowTicketModal(true);
       setShowCobrarPago(false);
       setCart([]);
+      setLastAdded(null);
       setShowCartModal(false);
       setSaleVersion((v) => v + 1);
       toast({ message: 'Venta registrada' });
@@ -289,6 +311,7 @@ export const CarritoProvider = ({ children }) => {
     showCartModal,
     openCart,
     closeCart,
+    lastAdded,
     metodos: METODOS_PAGO,
     sellEmpleado,
     sellDescuento,
@@ -322,6 +345,7 @@ export const CarritoProvider = ({ children }) => {
     saleVersion,
   }), [
     cart, addItem, removeFromCart, updateCartItem, clearCart, showCartModal, openCart, closeCart,
+    lastAdded,
     sellEmpleado, sellDescuento, sellMetodoPago, setMetodoPago, sellSplit, toggleSplit,
     sellMetodo2, sellMonto2, sellCliente, sellCuotas, sellPrimerVencimiento, sellAplicarInteres,
     sellInteres, sellMora, ajustesCuenta, sellSaving, descuentoNum, finalTotal, sellMonto1, confirmSale, saleVersion,

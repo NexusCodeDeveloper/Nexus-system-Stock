@@ -120,6 +120,17 @@ button {
   to { opacity: 1; transform: translateY(0); }
 }
 
+@keyframes iosScanPop {
+  0% { transform: scale(0.985); }
+  55% { transform: scale(1.015); }
+  100% { transform: scale(1); }
+}
+
+@keyframes iosCardDeal {
+  from { opacity: 0; transform: translateY(-140%) rotate(-10deg); }
+  to { opacity: 1; transform: translateY(0) rotate(0deg); }
+}
+
 @keyframes iosFlip {
   0%, 15% { transform: rotateY(0deg); }
   35% { transform: rotateY(180deg); }
@@ -144,7 +155,25 @@ button {
 .animate-ios-page { animation: iosPageEnter 0.25s ease-out; }
 .animate-ios-fade { animation: iosFadeIn 0.2s ease-out; }
 .animate-ios-row { animation: iosRowIn 0.3s ease-out both; }
+.animate-ios-scan { animation: iosScanPop 0.45s cubic-bezier(0.2, 0.9, 0.3, 1.2); }
 .animate-slideDown { animation: slideDown 0.2s ease-out both; }
+.animate-card-deal { animation: iosCardDeal 0.4s cubic-bezier(0.2, 0.9, 0.3, 1.1) backwards; }
+
+@keyframes cartaPulso {
+  0%, 76%, 100% { filter: none; }
+  84% { filter: brightness(1.25) saturate(1.2); }
+  92% { filter: brightness(1); }
+}
+
+.carta-pulso {
+  animation: cartaPulso 8s ease-in-out infinite;
+  animation-delay: var(--pulso-delay, 0s);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-card-deal { animation: none; }
+  .carta-pulso { animation: none; }
+}
 
 /* ---------- iOS components ---------- */
 
