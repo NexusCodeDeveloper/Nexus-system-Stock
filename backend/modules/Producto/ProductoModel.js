@@ -1,11 +1,13 @@
 import mongoose from 'mongoose';
 import { campoCentavosPositivo } from '../../utils/DineroUtils.js';
+import { asegurarCodigosVariante } from '../../utils/CodigosVarianteUtils.js';
 
 const variantSubSchema = new mongoose.Schema({
   talle: { type: String, trim: true, default: '' },
   color: { type: String, trim: true, default: '' },
   cantidad: { type: Number, required: true, min: 0, default: 0 },
   deposito: { type: Number, min: 0, default: 0 },
+  codigo: { type: String, trim: true, uppercase: true },
 }, { _id: false });
 
 const productSchema = new mongoose.Schema(
@@ -83,6 +85,7 @@ const productSchema = new mongoose.Schema(
 productSchema.pre('save', function (next) {
   if (this.variantes?.length > 0) {
     this.cantidad = this.variantes.reduce((sum, v) => sum + v.cantidad, 0);
+    asegurarCodigosVariante(this);
   }
   next();
 });
