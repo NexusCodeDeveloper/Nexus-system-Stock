@@ -8,6 +8,8 @@ export const obtenerSiguienteCodigo = () => api.get('/productos/siguiente-codigo
 export const crearProducto = (data) => api.post('/productos', data);
 export const actualizarProducto = (id, data) => api.put(`/productos/${id}`, data);
 export const eliminarProducto = (id) => api.delete(`/productos/${id}`);
+export const restaurarProducto = (id) => api.put(`/productos/${id}/restaurar`);
+export const eliminarProductoDefinitivo = (id) => api.delete(`/productos/${id}/definitivo`);
 export const agregarStock = (id, data) => api.put(`/productos/${id}/agregar-stock`, data);
 export const addDeposito = (id, data) => api.put(`/productos/${id}/deposito`, data);
 export const reponerStock = (id, data) => api.post(`/productos/${id}/reponer`, data);
