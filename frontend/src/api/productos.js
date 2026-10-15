@@ -17,4 +17,7 @@ export const pasarSalon = (articulos) => api.post('/productos/pasar-salon', { ar
 export const retirarStock = (id, data) => api.post(`/productos/${id}/retirar`, data);
 export const intercambiarProducto = (data) => api.post('/productos/intercambio', data);
 export const obtenerStockBajo = () => api.get('/productos/stock-bajo');
+export const aplicarAumentoMasivo = (data) => api.post('/productos/aumento-masivo', data);
+export const obtenerAumentos = (params) => api.get('/productos/aumentos', { params });
+export const deshacerAumento = (id) => api.post(`/productos/aumentos/${id}/deshacer`);
 
