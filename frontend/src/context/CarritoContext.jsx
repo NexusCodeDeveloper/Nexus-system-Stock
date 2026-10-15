@@ -174,6 +174,10 @@ export const CarritoProvider = ({ children }) => {
         return item;
       }
       const precio = precioVigente(p);
+      if (p.enPapelera) {
+        problemas.push(`"${p.nombre}" fue eliminado y está en la papelera: restauralo o quitalo del carrito.`);
+        return { ...item, precio, nombre: p.nombre };
+      }
       if (Math.abs(precio - Number(item.precio)) > 0.001) {
         problemas.push(`"${p.nombre}" cambió de precio ($${Number(item.precio).toFixed(2)} → $${precio.toFixed(2)}).`);
         return { ...item, precio, nombre: p.nombre };
