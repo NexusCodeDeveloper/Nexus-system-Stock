@@ -214,19 +214,41 @@ Todo el stock entra al depósito y desde ahí se carga el salón:
 - Endpoints: `PUT /api/productos/:id/deposito` (admin), `POST /api/productos/:id/reponer` (admin y
   empleado), `POST /api/productos/:id/retirar` (admin) y `GET /api/movimientos-stock` (admin).
 
+## Papelera de productos
+
+Los productos se pueden **eliminar y editar siempre** (solo admin). Al eliminar, el producto se mueve a la **Papelera**
+en lugar de borrarse:
+
+- La confirmación de eliminar avisa siempre que **las ventas y tickets ya emitidos no se actualizan**: el historial queda
+  como está y los cambios aplican solo a futuras ventas. Si el producto tiene ventas, la confirmación indica cuántas.
+- Mientras está en la papelera el producto se oculta del catálogo, del buscador, de las categorías, del escaneo y de las
+  ventas, pero **conserva su stock** y todo su historial.
+- Editar un producto también avisa que las ventas ya realizadas no se actualizan.
+- El nombre del producto en la papelera queda libre: podés crear uno nuevo con el mismo nombre. Si querés restaurar el
+  original y ya existe otro activo con ese nombre, el sistema lo impide hasta que lo renombres.
+- La página **Papelera** (menú lateral, solo admin) lista los productos eliminados con quién y cuándo los eliminó, y permite
+  **Restaurar** (vuelve al catálogo con su stock) o **Eliminar definitivamente** (borra el producto; las ventas, devoluciones
+  y movimientos se conservan como historial con el nombre congelado).
+
+Endpoints: `DELETE /api/productos/:id` (mover a la papelera), `PUT /api/productos/:id/restaurar` y
+`DELETE /api/productos/:id/definitivo` (admin).
+
 ## Códigos de barras y QR
 
 Cada producto tiene un **código interno** único (`NC-000001`) que se genera automáticamente al crearlo y no se puede editar.
+Cada **variante** (talle/color) recibe además su propio código estable: `NC-000001-01`, `NC-000001-02`, etc. Los códigos de variante se asignan al crear o editar el producto y, al arrancar el backend, una migración automática completa los productos que ya existían (los códigos no se reutilizan al borrar variantes).
 
 - **Código automático:** al abrir "Nuevo Producto" el código ya aparece generado y en solo lectura; no se puede
   escribir, escanear ni cambiar después. El servidor garantiza que no existan dos códigos iguales.
 - **Pistola lectora:** funciona en toda la app (Productos, Tickets, Devoluciones y formularios); detecta la
   ráfaga de tecleo + Enter. Si tu pistola no envía Enter, configurá el sufijo en el lector.
 - **Cámara del celular:** botón de cámara junto al buscador de Productos y en el carrito.
-  Requiere HTTPS; por IP local `http://192.168.x.x` el navegador bloquea la cámara.
-- **Escanear para vender:** con productos en el carrito, escanear agrega directo (si el producto
-  tiene variantes, se abre el selector). En mobile, abrí el carrito con el botón "Carrito" y usá
-  "Escanear" para agregar en serie.
+  Requiere HTTPS; por IP local `http://192.168.x.x` el navegador bloquea la cámara. En Productos la cámara abre en
+  **modo continuo** para escanear varios productos seguidos.
+- **Escanear para vender (automático):** al escanear, el producto se agrega directo al carrito (también con el carrito
+  vacío) y el carrito se abre con la fila recién agregada **resaltada en verde por unos segundos**. Si el producto tiene
+  variantes, el código de la variante define el talle/color exacto; si se escanea un código viejo a nivel producto con
+  varias variantes, se abre el selector.
 - **Tickets:** el ticket impreso incluye un QR con el número y el código de barras Code-128 de cada
   producto. En Tickets podés buscar por número de ticket o escanear el código de un producto para ver
   las ventas que lo contienen y hacer la devolución o el cambio.
