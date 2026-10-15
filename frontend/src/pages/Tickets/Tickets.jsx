@@ -204,14 +204,14 @@ const Tickets = () => {
                           <div className="flex items-center gap-2 flex-wrap">
                             <span className="font-bold text-ios-label tabular-nums tracking-wide">{getNumero(s)}</span>
                             {getEstadoTicket(s) && (
-                              <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold whitespace-nowrap ${getEstadoTicket(s).cls}`}>
+                              <span className={`inline-flex items-center justify-center leading-none px-2 py-0.5 rounded-full text-[10px] font-semibold whitespace-nowrap ${getEstadoTicket(s).cls}`}>
                                 {getEstadoTicket(s).label}
                               </span>
                             )}
                           </div>
                         </td>
                         <td className="px-4 py-3.5 text-ios-secondary">
-                          {items[0]?.producto?.nombre || 'Producto'}
+                          {items[0]?.producto?.nombre || items[0]?.nombre || 'Producto'}
                           {items.length > 1 && <span className="text-ios-tertiary"> +{items.length - 1} más</span>}
                           {items[0]?.producto?.codigo && (
                             <span className="block text-[11px] text-ios-tertiary mt-0.5">Cód. {items[0].producto.codigo}</span>
@@ -291,7 +291,7 @@ const Tickets = () => {
                     <div className="flex items-center justify-between gap-2 mb-3">
                       <p className="text-[22px] font-bold text-ios-green break-words min-w-0">{formatMoney(s.total)}</p>
                       <p className="text-xs text-ios-tertiary min-w-0 truncate text-right">
-                        {items[0]?.producto?.nombre || 'Producto'}
+                        {items[0]?.producto?.nombre || items[0]?.nombre || 'Producto'}
                         {items.length > 1 && ` +${items.length - 1} más`}
                       </p>
                     </div>
@@ -328,7 +328,7 @@ const Tickets = () => {
                         {items.map((item, idx) => (
                           <div key={idx} className="flex items-center justify-between gap-2 text-sm">
                             <div className="min-w-0">
-                              <p className="text-ios-label font-medium truncate">{item.producto?.nombre || 'Producto'}</p>
+                              <p className="text-ios-label font-medium truncate">{item.producto?.nombre || item.nombre || 'Producto'}</p>
                               <p className="text-xs text-ios-tertiary">
                                 {item.producto?.codigo ? `Cód. ${item.producto.codigo} · ` : ''}
                                 {item.producto?.categoria || '—'}

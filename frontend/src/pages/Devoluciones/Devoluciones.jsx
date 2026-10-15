@@ -82,10 +82,10 @@ const Devoluciones = () => {
                 {returns.map((r) => (
                   <tr key={r._id} className="border-t border-ios-separator/30 hover:bg-ios-hover/[0.03] transition-colors">
                     <td className="px-5 py-3.5 font-semibold text-ios-label">
-                      {r.producto?.nombre || 'Producto eliminado'}
+                      {r.producto?.nombre || r.productoNombre || 'Producto eliminado'}
                       {r.productoCargar && (
                         <span className="block text-[11px] font-normal text-ios-tint mt-0.5">
-                          Cambiado por: {r.productoCargar.nombre} × {r.cantidadCargar}
+                          Cambiado por: {r.productoCargar.nombre || r.productoCargarNombre || 'Producto eliminado'} × {r.cantidadCargar}
                         </span>
                       )}
                     </td>

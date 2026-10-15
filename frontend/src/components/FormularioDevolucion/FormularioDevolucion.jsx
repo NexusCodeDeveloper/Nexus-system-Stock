@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { crearDevolucion } from '../../api/devoluciones';
-import { intercambiarProducto, obtenerProductos, obtenerProductoPorCodigo } from '../../api/productos';
+import { intercambiarProducto, obtenerProductos, obtenerProducto, obtenerProductoPorCodigo } from '../../api/productos';
 import { useIosAlert } from '../alerts';
 import { obtenerMensajeErrorApi } from '../../utils/apiError';
 import IosModal from '../ui/IosModal';
@@ -28,6 +28,7 @@ const FormularioDevolucion = ({ sale, open, onClose, onDone, defaultExchange = f
 
   const [products, setProducts] = useState([]);
   const [productsError, setProductsError] = useState('');
+  const [codigosVariantes, setCodigosVariantes] = useState({});
   const [itemIdx, setItemIdx] = useState(0);
   const [cantidad, setCantidad] = useState('1');
   const [motivo, setMotivo] = useState('');
@@ -45,30 +46,58 @@ const FormularioDevolucion = ({ sale, open, onClose, onDone, defaultExchange = f
   const item = items[itemIdx] || items[0] || {};
   const maxCantidad = Number(item.cantidad) || 0;
 
+  const codigoDeItem = (it) => {
+    const id = String(getItemId(it) || '');
+    const variantes = codigosVariantes[id] || [];
+    if (!variantes.length) return '';
+    const norm = (v) => String(v ?? '').trim().toLowerCase();
+    const match = variantes.find(
+      (v) => norm(v.talle) === norm(it.talle) && norm(v.color) === norm(it.color)
+    );
+    return match?.codigo || '';
+  };
+
   useEffect(() => {
-    if (open && sale) {
-      const saleItems = getItems(sale);
-      const codigoBuscado = String(initialCodigo || '').trim().toLowerCase();
-      const idx = codigoBuscado
-        ? saleItems.findIndex((it) => String(it.producto?.codigo || '').toLowerCase() === codigoBuscado)
-        : -1;
-      const idxFinal = idx !== -1 ? idx : 0;
-      setItemIdx(idxFinal);
-      setCantidad(String(saleItems[idxFinal]?.cantidad || 1));
-      setMotivo('');
-      setOtroMotivo('');
-      setExchangeActivo(defaultExchange);
-      setExchangeSearch('');
-      setExchangeTarget(null);
-      setExchangeCantidad('1');
-      setExchangeVariantIdx('');
-      setMetodoPago(sale.pagos?.[0]?.metodo || 'efectivo');
-      setProducts([]);
-      setProductsError('');
-      if (codigoBuscado && idx === -1) {
-        toast({ message: `El código "${initialCodigo}" no está en este ticket`, duration: 2600 });
+    if (!open || !sale) return undefined;
+    let cancelado = false;
+    const saleItems = getItems(sale);
+    const codigoBuscado = String(initialCodigo || '').trim().toLowerCase();
+    const idx = codigoBuscado
+      ? saleItems.findIndex((it) => String(it.producto?.codigo || '').toLowerCase() === codigoBuscado)
+      : -1;
+    const idxFinal = idx !== -1 ? idx : 0;
+    setItemIdx(idxFinal);
+    setCantidad(String(saleItems[idxFinal]?.cantidad || 1));
+    setMotivo('');
+    setOtroMotivo('');
+    setExchangeActivo(defaultExchange);
+    setExchangeSearch('');
+    setExchangeTarget(null);
+    setExchangeCantidad('1');
+    setExchangeVariantIdx('');
+    setMetodoPago(sale.pagos?.[0]?.metodo || 'efectivo');
+    setProducts([]);
+    setProductsError('');
+    setCodigosVariantes({});
+    const idsProductos = [...new Set(
+      saleItems.map((it) => String(getItemId(it) || '')).filter(Boolean)
+    )];
+    Promise.all(idsProductos.map(async (id) => {
+      try {
+        const { data } = await obtenerProducto(id);
+        return [id, data?.variantes || []];
+      } catch {
+        return [id, []];
       }
+    })).then((pares) => {
+      if (!cancelado) setCodigosVariantes(Object.fromEntries(pares));
+    });
+    if (codigoBuscado && idx === -1) {
+      toast({ message: `El código "${initialCodigo}" no está en este ticket`, duration: 2600 });
     }
+    return () => {
+      cancelado = true;
+    };
   }, [open, sale, defaultExchange, initialCodigo, toast]);
 
   useEffect(() => {
@@ -267,6 +296,7 @@ const FormularioDevolucion = ({ sale, open, onClose, onDone, defaultExchange = f
                 <option key={i} value={i} className="bg-ios-surface2">
                   {getItemNombre(it)}
                   {[it.talle, it.color].filter(Boolean).join(' / ') ? ` — ${[it.talle, it.color].filter(Boolean).join(' / ')}` : ''}
+                  {` · ${codigoDeItem(it) || 'sin código'}`}
                   {' '}({it.cantidad} unid.)
                 </option>
               ))}
@@ -280,7 +310,7 @@ const FormularioDevolucion = ({ sale, open, onClose, onDone, defaultExchange = f
             {[item.talle, item.color].filter(Boolean).join(' / ') && (
               <span className="text-ios-tertiary font-normal"> — {[item.talle, item.color].filter(Boolean).join(' / ')}</span>
             )}
-            <span className="text-ios-tertiary font-normal"> · {maxCantidad} unid. · {formatMoney(item.precio)}</span>
+            <span className="text-ios-tertiary font-normal"> · {codigoDeItem(item) || 'sin código'} · {maxCantidad} unid. · {formatMoney(item.precio)}</span>
           </p>
         )}
 
@@ -367,7 +397,7 @@ const FormularioDevolucion = ({ sale, open, onClose, onDone, defaultExchange = f
                       <option value="" className="bg-ios-surface2">Seleccionar...</option>
                       {exchangeTarget.variantes.map((v, i) => (
                         <option key={i} value={String(i)} className="bg-ios-surface2">
-                          {variantLabel(v)} (stock: {v.cantidad})
+                          {variantLabel(v)} · {v.codigo || 'sin código'} (stock: {v.cantidad})
                         </option>
                       ))}
                     </IosSelect>
