@@ -1,11 +1,13 @@
 import mongoose from 'mongoose';
 import Producto from './ProductoModel.js';
+import AumentoPrecio from './AumentoPrecioModel.js';
 import Devolucion from '../Devolucion/DevolucionModel.js';
 import Venta from '../Venta/VentaModel.js';
 import Proveedor from '../Proveedor/ProveedorModel.js';
 import Contador from '../Venta/ContadorModel.js';
 import MovimientoStock from '../MovimientoStock/MovimientoStockModel.js';
-import { schemaCrearProducto, schemaActualizarProducto, schemaIntercambio, schemaAgregarStock, schemaMovimientoStock, schemaDeposito, schemaPasarSalon } from './ProductoSchema.js';
+import Promocion from '../Promocion/PromocionModel.js';
+import { schemaCrearProducto, schemaActualizarProducto, schemaIntercambio, schemaAgregarStock, schemaMovimientoStock, schemaDeposito, schemaPasarSalon, schemaAumentoPrecio } from './ProductoSchema.js';
 import { enviarEvento, enviarStockBajo } from '../../services/PushService.js';
 import { indiceDeVariante, depositoDe } from '../../utils/VariantesUtils.js';
 import { ejecutarCambio } from '../Devolucion/DevolucionService.js';
@@ -13,6 +15,9 @@ import { responderErrorDeServicio } from '../../utils/RespuestaErrorUtils.js';
 import { conReintentos } from '../../utils/TransaccionesUtils.js';
 import { promocionesVigentes } from '../Promocion/PromocionService.js';
 import { ofertaDeProducto } from '../../utils/PreciosUtils.js';
+import { aCentavos, deCentavos } from '../../utils/DineroUtils.js';
+import { faltanCodigosDeVariante, variantePorCodigo } from '../../utils/CodigosVarianteUtils.js';
+import logger from '../../utils/LoggerUtils.js';
 
 const escaparRegex = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -201,15 +206,62 @@ export const obtenerProductoPorCodigo = async (req, res, next) => {
     if (!codigo) {
       return res.status(400).json({ message: 'El código es requerido' });
     }
-    const product = await buscarPorCodigoExacto(codigo);
+    let product = await buscarPorCodigoExacto(codigo);
+    let variante = null;
+    if (!product) {
+      product = await Producto.findOne({
+        variantes: { $elemMatch: { codigo: { $regex: `^${escaparRegex(codigo)}$`, $options: 'i' } } },
+      });
+      if (product) {
+        const encontrada = variantePorCodigo(product, codigo);
+        if (encontrada) variante = { talle: encontrada.talle || '', color: encontrada.color || '' };
+      }
+    }
     if (!product) {
       return res.status(404).json({ message: `No existe un producto con el código "${codigo}"` });
     }
+    if (product.enPapelera) {
+      const esAdmin = req.usuario?.rol === 'admin';
+      return res.status(410).json({
+        message: esAdmin
+          ? `"${product.nombre}" está en la papelera. Restauralo desde la papelera para venderlo.`
+          : 'Este producto no está disponible para la venta.',
+        code: 'EN_PAPELERA',
+      });
+    }
     const promociones = await promocionesVigentes();
-    res.json({ ...product.toJSON(), oferta: ofertaDeProducto(product, promociones) });
+    res.json({
+      ...product.toJSON(),
+      oferta: ofertaDeProducto(product, promociones),
+      ...(variante ? { variante } : {}),
+    });
   } catch (error) {
     next(error);
   }
+};
+
+export const migrarCodigosVariante = async () => {
+  const productos = await Producto.find({
+    codigo: { $nin: [null, ''] },
+    'variantes.0': { $exists: true },
+  }).select('nombre codigo variantes siguienteSufijoVariante');
+
+  let migrados = 0;
+  for (const producto of productos) {
+    try {
+      if (!faltanCodigosDeVariante(producto)) continue;
+      await producto.save();
+      migrados += 1;
+    } catch (error) {
+      logger.warn('No se pudieron generar los códigos de variante del producto', {
+        motivo: error?.message || 'Error desconocido',
+        producto: producto.nombre || String(producto._id),
+        origen: 'backend',
+        lugar: 'migrarCodigosVariante',
+      });
+    }
+  }
+  return migrados;
 };
 
 export const siguienteCodigo = async (req, res, next) => {
@@ -399,6 +451,14 @@ export const actualizarProducto = async (req, res, next) => {
           movimientos.push({ talle: '', color: '', tipo: 'ajuste_deposito', cantidad: Math.abs(delta) });
         }
       }
+    }
+
+    if (data.variantes) {
+      data.variantes = data.variantes.map((v) => {
+        const idxPrevio = indiceDeVariante(product, v.talle, v.color);
+        const codigoPrevio = idxPrevio === -1 ? null : product.variantes[idxPrevio]?.codigo;
+        return codigoPrevio ? { ...v, codigo: codigoPrevio } : v;
+      });
     }
 
     Object.assign(product, data);
