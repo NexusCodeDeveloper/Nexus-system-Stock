@@ -2,6 +2,8 @@ import { aCentavos, deCentavos } from './DineroUtils.js';
 
 export const TIPOS_PROMOCION = ['porcentaje', 'monto'];
 
+export const TIPOS_AUMENTO_PRECIO = ['porcentaje', 'monto'];
+
 /** La promoción está vigente ahora mismo (y no fue cancelada). */
 export const promocionVigente = (promo, ahora = new Date()) =>
   Boolean(promo) && promo.activa !== false && new Date(promo.desde) <= ahora && new Date(promo.hasta) >= ahora;
