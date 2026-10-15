@@ -19,7 +19,7 @@ const MEDIDA_DEFAULT = { ancho: 60, alto: 40 };
 const clamp = (valor, min, max) => Math.min(Math.max(Number(valor) || min, min), max);
 
 export const printLabel = async (producto, opciones = {}) => {
-  const codigo = String(producto?.codigo || '').trim();
+  const codigo = String(opciones.codigo || producto?.codigo || '').trim();
   if (!codigo) return false;
 
   const total = clamp(opciones.cantidad || 1, 1, MAX_ETIQUETAS);
@@ -27,6 +27,7 @@ export const printLabel = async (producto, opciones = {}) => {
   const guias = opciones.guias !== false;
   const mostrarQr = opciones.mostrarQr !== false;
   const mostrarPrecio = opciones.mostrarPrecio !== false;
+  const varianteTexto = String(opciones.varianteTexto || '').trim();
   const ancho = clamp(opciones.medida?.ancho || MEDIDA_DEFAULT.ancho, 20, A4_ANCHO);
   const alto = clamp(opciones.medida?.alto || MEDIDA_DEFAULT.alto, 10, A4_ALTO);
 
@@ -66,6 +67,7 @@ export const printLabel = async (producto, opciones = {}) => {
 
   const etiquetaHtml = `<div class="etiqueta${modo === 'hoja' && guias ? ' guia' : ''}">
     <p class="nombre">${escapeHtml(producto.nombre || '')}</p>
+    ${varianteTexto ? `<p class="variante">${escapeHtml(varianteTexto)}</p>` : ''}
     ${mostrarPrecio && producto.precio ? `<p class="precio">${formatMoney(precioVigente(producto))}</p>` : ''}
     ${qrDataUrl ? `<img class="qr" src="${qrDataUrl}" alt="QR" />` : ''}
     ${barcodeDataUrl ? `<img class="barras" src="${barcodeDataUrl}" alt="Código de barras" />` : ''}
@@ -131,6 +133,7 @@ ${paginasCss}
     overflow: hidden;
   }
   .nombre { font-size: 10px; font-weight: bold; text-align: center; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin: 0; flex: 0 0 auto; }
+  .variante { font-size: 9px; font-weight: bold; text-align: center; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin: 0; flex: 0 0 auto; }
   .precio { font-size: 11px; font-weight: bold; margin: 0; flex: 0 0 auto; }
   .qr { width: ${qrMm}mm; height: ${qrMm}mm; min-height: 6mm; flex: 0 1 auto; object-fit: contain; }
   .barras { max-width: 100%; height: ${barrasMm}mm; min-height: 5mm; flex: 0 1 auto; object-fit: contain; }

@@ -127,6 +127,7 @@ const FormularioProducto = ({ initial, onSubmit, onCancel, isSubmitting: externa
     (sum, v) => sum + (Number(v.deposito) || 0),
     0
   );
+  const tieneVariantes = form.variants.length > 0;
 
   const validate = () => {
     const errs = {};
@@ -248,14 +249,14 @@ const FormularioProducto = ({ initial, onSubmit, onCancel, isSubmitting: externa
               return (
                 <span
                   key={c}
-                  className="inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full bg-ios-surface2 border border-ios-separator/40 text-ios-secondary"
+                  className="inline-flex items-center justify-center gap-1.5 leading-none text-xs font-medium px-2.5 py-1 rounded-full bg-ios-surface2 border border-ios-separator/40 text-ios-secondary"
                 >
                   {c}
                   <span className="text-ios-tertiary">({count})</span>
                   <button
                     type="button"
                     onClick={() => handleRemoveColor(c)}
-                    className="text-ios-tertiary hover:text-ios-red transition-colors"
+                    className="p-0.5 btn-icono btn-icono-rojo"
                   >
                     <IconX className="w-3 h-3" />
                   </button>
@@ -289,41 +290,61 @@ const FormularioProducto = ({ initial, onSubmit, onCancel, isSubmitting: externa
                       Sin variantes aún — agregue talle y cantidad
                     </p>
                   )}
-                  <div className="space-y-2">
-                    {idxs.map((i) => (
-                      <div key={i} className="flex items-center gap-2">
-                        <input
-                          type="text"
-                          placeholder="Talle (opc.)"
-                          value={form.variants[i].talle}
-                          onChange={(e) => updateVariant(i, 'talle', e.target.value)}
-                          className="flex-1 min-w-0 sm:flex-none w-24 px-3 py-2 bg-ios-surface rounded-ios-card text-ios-label placeholder:text-ios-tertiary focus:outline-none focus:ring-2 focus:ring-ios-tint/40 transition-all text-sm"
-                        />
-                        <input
-                          type="number"
-                          min="0"
-                          placeholder="Cant. depósito"
-                          value={form.variants[i].deposito}
-                          onChange={(e) => updateVariant(i, 'deposito', e.target.value)}
-                          className="flex-1 min-w-0 sm:flex-none w-24 px-3 py-2 bg-ios-surface rounded-ios-card text-ios-label placeholder:text-ios-tertiary focus:outline-none focus:ring-2 focus:ring-ios-tint/40 transition-all text-sm"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => removeVariant(i)}
-                          className="p-2 text-ios-red hover:bg-ios-red/15 dark:hover:bg-ios-red/10 rounded-lg transition-all"
-                        >
-                          <IconX className="w-4 h-4" />
-                        </button>
+                  <div className="flex flex-col sm:flex-row gap-3">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[10px] uppercase tracking-wider text-ios-tertiary font-semibold mb-1.5">Detalle</p>
+                      <div className="space-y-2">
+                        {idxs.map((i) => (
+                          <div key={i} className="flex items-center gap-2">
+                            <input
+                              type="text"
+                              placeholder="Talle (opc.)"
+                              value={form.variants[i].talle}
+                              onChange={(e) => updateVariant(i, 'talle', e.target.value)}
+                              className="h-10 flex-1 min-w-0 sm:flex-none sm:w-28 px-3 bg-ios-surface rounded-ios-card text-ios-label placeholder:text-ios-tertiary focus:outline-none focus:ring-2 focus:ring-ios-tint/40 transition-all text-sm"
+                            />
+                            <input
+                              type="number"
+                              min="0"
+                              placeholder="Cant. depósito"
+                              value={form.variants[i].deposito}
+                              onChange={(e) => updateVariant(i, 'deposito', e.target.value)}
+                              className="h-10 flex-1 min-w-0 sm:flex-none w-24 px-3 bg-ios-surface rounded-ios-card text-ios-label placeholder:text-ios-tertiary focus:outline-none focus:ring-2 focus:ring-ios-tint/40 transition-all text-sm"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => removeVariant(i)}
+                              className="h-10 w-10 shrink-0 flex items-center justify-center btn-icono btn-icono-rojo rounded-lg"
+                            >
+                              <IconX className="w-4 h-4" />
+                            </button>
+                          </div>
+                        ))}
                       </div>
-                    ))}
+                      <button
+                        type="button"
+                        onClick={() => addVariantToColor(color)}
+                        className="mt-2 text-xs text-ios-green hover:text-ios-green dark:hover:text-ios-green/80 transition-colors font-medium"
+                      >
+                        + Agregar talle
+                      </button>
+                    </div>
+                    {idxs.length > 0 && (
+                      <div className="sm:w-40 shrink-0">
+                        <p className="text-[10px] uppercase tracking-wider text-ios-tertiary font-semibold mb-1.5">Código</p>
+                        <div className="space-y-2">
+                          {idxs.map((i) => (
+                            <div
+                              key={i}
+                              className="h-10 flex items-center px-3 rounded-ios-card bg-ios-surface2/60 text-[11px] text-ios-tertiary tabular-nums truncate"
+                            >
+                              {form.variants[i].codigo || 'Se asigna al guardar'}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => addVariantToColor(color)}
-                    className="mt-2 text-xs text-ios-green hover:text-ios-green dark:hover:text-ios-green/80 transition-colors font-medium"
-                  >
-                    + Agregar talle
-                  </button>
                 </div>
               );
             })}
@@ -386,21 +407,25 @@ const FormularioProducto = ({ initial, onSubmit, onCancel, isSubmitting: externa
             placeholder={generandoCodigo ? 'Generando…' : '—'}
             className={`${campoCls('codigo')} opacity-70 cursor-default`}
           />
-          <IosButton
-            type="button"
-            variant="tinted"
-            size="sm"
-            onClick={imprimirEtiqueta}
-            disabled={generandoCodigo || !form.codigo.trim()}
-          >
-            <IconPrint className="w-3.5 h-3.5" />
-            Etiqueta
-          </IosButton>
+          {!tieneVariantes && (
+            <IosButton
+              type="button"
+              variant="tinted"
+              size="sm"
+              onClick={imprimirEtiqueta}
+              disabled={generandoCodigo || !form.codigo.trim()}
+            >
+              <IconPrint className="w-3.5 h-3.5" />
+              Etiqueta
+            </IosButton>
+          )}
         </div>
         <p className="text-ios-tertiary text-[11px] mt-1">
           {generandoCodigo
             ? 'Generando código…'
-            : 'Se genera automáticamente al crear el producto y no se puede modificar.'}
+            : tieneVariantes
+              ? 'Cada variante recibe su propio código (por ejemplo, NC-000123-01). Las etiquetas se imprimen desde Depósito: menú del producto → Etiqueta. Si cambiás el talle o el color de una variante, al guardar recibe un código nuevo.'
+              : 'Se genera automáticamente al crear el producto y no se puede modificar.'}
         </p>
         {errText('codigo')}
       </div>
