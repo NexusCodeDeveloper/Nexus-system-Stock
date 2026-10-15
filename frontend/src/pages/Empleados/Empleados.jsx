@@ -465,7 +465,7 @@ const Empleados = () => {
                       {esMismo(emp) && (
                         <button
                           onClick={() => handleReiniciar(emp)}
-                          className="text-ios-secondary text-xs border border-ios-separator/50 px-2.5 py-1 rounded-ios-pill hover:bg-ios-hover/[0.05] transition-all font-semibold"
+                          className="btn-vivo btn-vivo-gris text-xs px-2.5 py-1 rounded-ios-pill font-semibold"
                         >
                           Reiniciar clave
                         </button>
@@ -476,13 +476,13 @@ const Empleados = () => {
                     <>
                       <button
                         onClick={() => handleEditar(emp)}
-                        className="text-ios-tint text-xs border border-ios-tint/50 dark:border-ios-tint/30 px-2.5 py-1 rounded-ios-pill hover:bg-ios-tint/15 dark:hover:bg-ios-tint/10 transition-all font-semibold"
+                        className="btn-vivo btn-vivo-azul text-xs px-2.5 py-1 rounded-ios-pill font-semibold"
                       >
                         Editar
                       </button>
                       <button
                         onClick={() => handleReiniciar(emp)}
-                        className="text-ios-secondary text-xs border border-ios-separator/50 px-2.5 py-1 rounded-ios-pill hover:bg-ios-hover/[0.05] transition-all font-semibold"
+                        className="btn-vivo btn-vivo-gris text-xs px-2.5 py-1 rounded-ios-pill font-semibold"
                       >
                         Reiniciar clave
                       </button>
@@ -490,13 +490,13 @@ const Empleados = () => {
                         <>
                           <button
                             onClick={() => handleCambiarActivo(emp)}
-                            className="text-ios-secondary text-xs border border-ios-separator/50 px-2.5 py-1 rounded-ios-pill hover:bg-ios-hover/[0.05] transition-all font-semibold"
+                            className="btn-vivo btn-vivo-gris text-xs px-2.5 py-1 rounded-ios-pill font-semibold"
                           >
                             {emp.activo ? 'Desactivar' : 'Activar'}
                           </button>
                           <button
                             onClick={() => handleEliminar(emp)}
-                            className="text-ios-red text-xs border border-ios-red/50 dark:border-ios-red/30 px-2.5 py-1 rounded-ios-pill hover:bg-ios-red/15 dark:hover:bg-ios-red/10 transition-all font-semibold"
+                            className="btn-vivo btn-vivo-rojo text-xs px-2.5 py-1 rounded-ios-pill font-semibold"
                           >
                             Eliminar
                           </button>

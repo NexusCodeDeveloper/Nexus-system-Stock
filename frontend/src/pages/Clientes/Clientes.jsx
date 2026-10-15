@@ -340,14 +340,14 @@ const Clientes = () => {
                   <div className="flex items-center gap-1 shrink-0">
                     <button
                       onClick={() => handleEditar(cliente)}
-                      className="p-1.5 text-ios-tint hover:bg-ios-tint/15 dark:hover:bg-ios-tint/10 rounded-lg transition-colors"
+                      className="p-1.5 btn-icono btn-icono-azul"
                       aria-label="Editar cliente"
                     >
                       <IconPencil className="w-4 h-4" />
                     </button>
                     <button
                       onClick={() => handleEliminar(cliente)}
-                      className="p-1.5 text-ios-red hover:bg-ios-red/15 dark:hover:bg-ios-red/10 rounded-lg transition-colors"
+                      className="p-1.5 btn-icono btn-icono-rojo"
                       aria-label="Eliminar cliente"
                     >
                       <IconTrash className="w-4 h-4" />

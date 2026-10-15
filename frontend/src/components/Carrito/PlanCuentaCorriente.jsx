@@ -87,19 +87,19 @@ const PlanCuentaCorriente = () => {
         <button
           type="button"
           onClick={() => setShowSelector(true)}
-          className="w-full flex items-center justify-between gap-2 px-3.5 py-2.5 bg-ios-surface3 rounded-ios-control text-left hover:bg-ios-separator/40 dark:bg-ios-surface2 dark:hover:bg-ios-surface3 transition-colors"
+          className="w-full flex items-center justify-between gap-2 px-3.5 py-2.5 rounded-ios-control text-left btn-vivo btn-vivo-gris"
         >
           {sellCliente ? (
             <span className="min-w-0">
-              <span className="block text-sm font-semibold text-ios-label truncate">{sellCliente.nombre}</span>
-              <span className="block text-[11px] text-ios-tertiary tabular-nums">
+              <span className="block text-sm font-semibold text-white truncate">{sellCliente.nombre}</span>
+              <span className="block text-[11px] text-white/70 tabular-nums">
                 Saldo actual: {formatMoney(sellCliente.saldo)}
               </span>
             </span>
           ) : (
-            <span className="text-sm text-ios-tertiary">Elegir cliente…</span>
+            <span className="text-sm text-white/85">Elegir cliente…</span>
           )}
-          <IconChevronRight className="w-4 h-4 text-ios-tertiary shrink-0" />
+          <IconChevronRight className="w-4 h-4 text-white/70 shrink-0" />
         </button>
       </div>
 

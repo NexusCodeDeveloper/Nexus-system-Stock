@@ -464,7 +464,7 @@ const ClienteDetalle = ({ cliente, open, onClose, onCambio }) => {
                 <button
                   type="button"
                   onClick={abrirAjustes}
-                  className="p-1.5 text-ios-tertiary hover:text-ios-label hover:bg-ios-surface3 rounded-lg transition-colors"
+                  className="p-1.5 btn-icono btn-icono-gris"
                   title="Configuración de cuentas corrientes"
                   aria-label="Configuración de cuentas corrientes"
                 >
@@ -628,7 +628,7 @@ const ClienteDetalle = ({ cliente, open, onClose, onCambio }) => {
                       {esPago(movimiento) && (
                         <button
                           onClick={() => handleEditar(movimiento)}
-                          className="p-1.5 text-ios-tint hover:bg-ios-tint/15 dark:hover:bg-ios-tint/10 rounded-lg transition-colors"
+                          className="p-1.5 btn-icono btn-icono-azul"
                           aria-label="Editar pago"
                         >
                           <IconPencil className="w-4 h-4" />
@@ -637,7 +637,7 @@ const ClienteDetalle = ({ cliente, open, onClose, onCambio }) => {
                       {!esMovimientoDeSistema(movimiento) && (
                         <button
                           onClick={() => pedirAnular(movimiento)}
-                          className="p-1.5 text-ios-red hover:bg-ios-red/15 dark:hover:bg-ios-red/10 rounded-lg transition-colors"
+                          className="p-1.5 btn-icono btn-icono-rojo"
                           aria-label="Anular movimiento"
                         >
                           <IconX className="w-4 h-4" />
