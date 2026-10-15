@@ -3,6 +3,8 @@ import { campoCentavos, campoCentavosPositivo } from '../../utils/DineroUtils.js
 
 const itemSchema = new mongoose.Schema({
   producto: { type: mongoose.Schema.Types.ObjectId, ref: 'Producto', required: true },
+  nombre: { type: String, trim: true, default: '' },
+  codigo: { type: String, trim: true, default: '' },
   cantidad: { type: Number, required: true, min: 1 },
   precio: { ...campoCentavosPositivo, required: true },
   talle: { type: String, default: '' },
