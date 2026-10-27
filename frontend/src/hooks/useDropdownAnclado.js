@@ -14,12 +14,15 @@ export const useDropdownAnclado = () => {
     if (!menu || !rect) return;
     const W = menu.offsetWidth;
     const H = menu.offsetHeight;
+    const nav = document.querySelector('nav');
+    const navHeight = nav ? nav.getBoundingClientRect().height : 0;
+    const bottomLimit = window.matchMedia('(max-width: 767px)').matches ? navHeight + GAP : 0;
     let x = rect.left;
     let y = rect.bottom + GAP;
-    if (y + H > window.innerHeight) {
+    if (y + H > window.innerHeight - bottomLimit) {
       y = rect.top - GAP - H;
     }
-    y = Math.max(GAP, Math.min(y, window.innerHeight - H - GAP));
+    y = Math.max(GAP, Math.min(y, window.innerHeight - H - GAP - bottomLimit));
     if (x + W > window.innerWidth) {
       x = rect.right - W;
     }
