@@ -12,7 +12,7 @@ const AvisoNuevaNotificacion = () => {
   return (
     <>
       {nuevasCompletadas.length > 0 && isAdmin && (
-        <div className="pointer-events-none fixed bottom-24 right-4 md:bottom-6 md:right-6 z-[70] w-[320px] max-w-[calc(100vw-2rem)] bg-ios-surface border border-ios-green/40 rounded-ios-alert shadow-ios-alert p-3.5 animate-ios-toast">
+        <div className="pointer-events-none fixed right-4 z-[70] w-[320px] max-w-[calc(100vw-2rem)] bg-ios-surface border border-ios-green/40 rounded-ios-alert shadow-ios-alert p-3.5 animate-ios-toast mobile-alert">
           <div className="flex items-start gap-3">
             <span className="w-9 h-9 rounded-full bg-ios-green/15 text-ios-green flex items-center justify-center shrink-0">
               <IconCheck className="w-4 h-4" strokeWidth={2.5} />
@@ -50,7 +50,7 @@ const AvisoNuevaNotificacion = () => {
       {pendientes.length > 0 && (
         <div
           className={`fixed right-4 z-[70] max-w-[320px] bg-ios-surface border border-ios-separator/40 rounded-ios-alert shadow-ios-alert p-3.5 flex items-start gap-3 pointer-events-none ${
-            nuevasCompletadas.length > 0 && isAdmin ? 'bottom-44 md:bottom-24' : 'bottom-24 md:bottom-6'
+            nuevasCompletadas.length > 0 && isAdmin ? 'mobile-alert-stack' : 'mobile-alert'
           }`}
         >
           <span className="w-9 h-9 rounded-full bg-ios-orange/15 text-ios-orange flex items-center justify-center shrink-0">
