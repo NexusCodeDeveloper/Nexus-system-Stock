@@ -9,13 +9,13 @@ const pagoSchema = z.object({
   metodo: z.enum(METODOS_PAGO, {
     errorMap: () => ({ message: 'El método de pago es inválido' }),
   }),
-  monto: z.number().finite().min(0, 'El monto debe ser mayor o igual a 0'),
+  monto: z.number().finite().min(0, 'El monto debe ser mayor o igual a 0').max(9999999.99, 'El monto es demasiado alto'),
 });
 
 const itemSchema = z.object({
   producto: objectId,
   cantidad: z.number().int().positive('Debe vender al menos 1'),
-  precio: z.number().finite().min(0, 'Precio debe ser mayor o igual a 0').optional(),
+  precio: z.number().finite().min(0, 'Precio debe ser mayor o igual a 0').max(99999999.99, 'El precio es demasiado alto').optional(),
   talle: z.string().optional().default(''),
   color: z.string().optional().default(''),
 });
@@ -52,7 +52,7 @@ const planCuotasSchema = z.object({
 
 export const schemaCrearVenta = z.object({
   articulos: z.array(itemSchema).min(1, 'Debe incluir al menos un producto'),
-  empleado: z.string().min(1, 'El nombre del empleado es requerido').optional(),
+  empleado: z.string().trim().min(1, 'El nombre del empleado es requerido').max(80, 'El nombre del empleado es demasiado largo').optional(),
   pagos: z.array(pagoSchema).min(1).max(3, 'No se pueden usar más de 3 métodos de pago'),
   descuento: z.number().finite().min(0).max(100).optional().default(0),
   offset: z.number().int().optional(),
@@ -88,7 +88,7 @@ const nombreCaja = z
 
 export const schemaAbrirCaja = z.object({
   nombre: nombreCaja,
-  fondoInicial: z.number().finite().min(0, 'El fondo no puede ser negativo').optional().default(0),
+  fondoInicial: z.number().finite().min(0, 'El fondo no puede ser negativo').max(9999999.99, 'El fondo es demasiado alto').optional().default(0),
   offset: z.number().int().optional(),
 });
 
