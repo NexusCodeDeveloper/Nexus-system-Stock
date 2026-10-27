@@ -9,8 +9,7 @@ import Devolucion from '../modules/Devolucion/DevolucionModel.js';
 import Cliente from '../modules/Cliente/ClienteModel.js';
 import MovimientoCuentaCorriente from '../modules/MovimientoCuentaCorriente/MovimientoCuentaCorrienteModel.js';
 import Notificacion from '../modules/Notificacion/NotificacionModel.js';
-import { obtenerNotificaciones, completarNotificacion, reabrirNotificacion } from '../modules/Notificacion/NotificacionController.js';
-import { crearVenta, abrirCaja, cerrarCaja, obtenerCajaAbierta } from '../modules/Venta/VentaController.js';
+import { crearVenta, abrirCaja, cerrarCaja, obtenerCajaAbierta, construirEventoVentaEmpleado } from '../modules/Venta/VentaController.js';
 import { crearRetiroCaja, obtenerDisponibleCaja } from '../modules/RetiroCaja/RetiroCajaController.js';
 import { ejecutarDevolucion, ejecutarCambio, revertirDevolucion } from '../modules/Devolucion/DevolucionService.js';
 import { intercambiarProducto } from '../modules/Producto/ProductoController.js';
@@ -483,60 +482,34 @@ test('montoEnCuentaCorriente y montoDevueltoEnCuentaCorriente prorratean el spli
   assert.equal(montoDevueltoEnCuentaCorriente([], 100), 0);
 });
 
-test('una venta de empleado genera un aviso informativo solo para admins', async () => {
+test('construirEventoVentaEmpleado arma el push para admins solo con empleados', () => {
+  const venta = {
+    ticketNumero: 'T-ABC12345',
+    total: 20000,
+    articulos: [{ cantidad: 2 }],
+    clienteNombre: 'Ana Lopez',
+    pagos: [{ metodo: 'efectivo' }],
+  };
+  const evento = construirEventoVentaEmpleado(venta, { rol: 'user', nombre: 'Empleado Uno' });
+
+  assert.equal(evento.tipo, 'venta');
+  assert.equal(evento.para, 'admins');
+  assert.equal(evento.url, '/ventas');
+  assert.match(evento.titulo, /Empleado Uno/);
+  assert.match(evento.mensaje, /T-ABC12345/);
+  assert.match(evento.mensaje, /20\.000,00/);
+  assert.match(evento.mensaje, /Ana Lopez/);
+  assert.match(evento.mensaje, /Efectivo/);
+
+  assert.equal(construirEventoVentaEmpleado(venta, { rol: 'admin', nombre: 'Admin' }), null);
+  assert.equal(construirEventoVentaEmpleado(null, { rol: 'user', nombre: 'Empleado Uno' }), null);
+});
+
+test('una venta de empleado no crea avisos persistentes', async () => {
   const empleado = { id: '507f1f77bcf86cd799439012', nombre: 'Empleado Uno', email: 'emp@x.com', rol: 'user' };
   await abrirCajaDeHoy();
 
   const venta = await vender({ pagos: [{ metodo: 'efectivo', monto: 20000 }] }, empleado);
   assert.equal(venta.status, 201);
-
-  const aviso = await Notificacion.findOne({ tipo: 'venta' });
-  assert.ok(aviso, 'debería existir el aviso de venta');
-  assert.equal(aviso.estado, 'informativo');
-  assert.equal(aviso.soloAdmin, true);
-  assert.equal(aviso.nuevaParaAdmin, false);
-  assert.equal(String(aviso.creadoPor), empleado.id);
-  assert.equal(String(aviso.venta), String(venta.body._id));
-  assert.match(aviso.titulo, /Empleado Uno/);
-  assert.match(aviso.descripcion, /Ticket/);
-  assert.match(aviso.descripcion, /20\.000,00/);
-  assert.match(aviso.descripcion, /Efectivo/);
-
-  const delAdmin = await runHandler(obtenerNotificaciones, { usuario: admin });
-  const delEmpleado = await runHandler(obtenerNotificaciones, { usuario: empleado });
-  assert.ok(delAdmin.body.some((n) => String(n._id) === String(aviso._id)));
-  assert.equal(delEmpleado.body.some((n) => String(n._id) === String(aviso._id)), false);
-});
-
-test('una venta hecha por admin no genera aviso informativo', async () => {
-  await abrirCajaDeHoy();
-  const venta = await vender({ pagos: [{ metodo: 'efectivo', monto: 10000 }] });
-  assert.equal(venta.status, 201);
-  assert.equal(await Notificacion.countDocuments({ tipo: 'venta' }), 0);
-});
-
-test('un aviso de venta no se puede completar ni reabrir', async () => {
-  const aviso = await Notificacion.create({
-    titulo: 'Venta de Empleado',
-    descripcion: 'Ticket T-TEST · 1 unidad · $10.000,00.',
-    estado: 'informativo',
-    tipo: 'venta',
-    creadoPor: admin.id,
-    soloAdmin: true,
-  });
-
-  const completar = await runHandler(completarNotificacion, {
-    params: { id: String(aviso._id) },
-    body: { comentario: '' },
-    usuario: admin,
-  });
-  assert.equal(completar.status, 400);
-  assert.match(completar.body.message, /informativo/i);
-
-  const reabrir = await runHandler(reabrirNotificacion, {
-    params: { id: String(aviso._id) },
-    usuario: admin,
-  });
-  assert.equal(reabrir.status, 400);
-  assert.match(reabrir.body.message, /informativo/i);
+  assert.equal(await Notificacion.countDocuments({}), 0);
 });

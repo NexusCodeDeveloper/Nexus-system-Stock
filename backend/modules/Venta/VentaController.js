@@ -3,7 +3,6 @@ import Venta from './VentaModel.js';
 import Producto from '../Producto/ProductoModel.js';
 import Devolucion from '../Devolucion/DevolucionModel.js';
 import Cliente from '../Cliente/ClienteModel.js';
-import Notificacion from '../Notificacion/NotificacionModel.js';
 import CierreCaja from './CierreCajaModel.js';
 import RetiroCaja from '../RetiroCaja/RetiroCajaModel.js';
 import RetiroCajaDia from '../RetiroCaja/RetiroCajaDiaModel.js';
@@ -46,9 +45,9 @@ const resumenPagos = (pagos = []) =>
       .filter(Boolean)
   )].join(' + ');
 
-/** Aviso informativo para los admins cuando la venta la hizo un empleado. No se envía push. */
-const avisarVentaEmpleado = async (venta, usuario) => {
-  if (!venta || usuario?.rol !== 'user') return;
+/** Push nativo para los admins cuando la venta la hizo un empleado. No persiste ningún aviso. */
+export const construirEventoVentaEmpleado = (venta, usuario) => {
+  if (!venta || usuario?.rol !== 'user') return null;
   const unidades = (venta.articulos || []).reduce(
     (total, item) => total + (Number(item.cantidad) || 0),
     0
@@ -63,18 +62,13 @@ const avisarVentaEmpleado = async (venta, usuario) => {
   const pagos = resumenPagos(venta.pagos);
   if (pagos) partes.push(`Pago: ${pagos}`);
 
-  await Notificacion.create({
-    titulo: `Venta de ${usuario.nombre}`,
-    descripcion: `${partes.join(' · ')}.`,
-    estado: 'informativo',
+  return {
     tipo: 'venta',
-    creadoPor: usuario.id,
-    destinatario: null,
-    destinatarioNombre: '',
-    nuevaParaAdmin: false,
-    soloAdmin: true,
-    venta: venta._id,
-  });
+    titulo: `Nueva venta de ${usuario.nombre}`,
+    mensaje: `${partes.join(' · ')}.`,
+    url: '/ventas',
+    para: 'admins',
+  };
 };
 
 export const crearVenta = async (req, res, next) => {
@@ -218,23 +212,15 @@ export const crearVenta = async (req, res, next) => {
 
     await session.commitTransaction();
 
-    try {
-      await avisarVentaEmpleado(savedSale, req.usuario);
-    } catch (error) {
-      logger.error('No se pudo crear el aviso informativo de la venta', {
-        motivo: error.message,
-        origen: 'backend',
-        lugar: 'VentaController.js → avisarVentaEmpleado',
-        stack: error.stack,
-      });
-    }
+    const eventoVentaEmpleado = construirEventoVentaEmpleado(savedSale, req.usuario);
+    if (eventoVentaEmpleado) void enviarEvento(eventoVentaEmpleado);
 
     void enviarStockBajo(productosVendidos);
     void enviarEvento({
       tipo: 'venta',
       titulo: 'Nueva venta',
       mensaje: `$${Number(total).toLocaleString('es-AR', { minimumFractionDigits: 2 })} · ${req.usuario.nombre}`,
-      url: '/sales',
+      url: '/ventas',
       para: { usuarioId: req.usuario.id, nombre: req.usuario.nombre },
     });
 

@@ -14,13 +14,8 @@ const notificationSchema = new mongoose.Schema(
     },
     estado: {
       type: String,
-      enum: ['pendiente', 'realizado', 'informativo'],
+      enum: ['pendiente', 'realizado'],
       default: 'pendiente',
-    },
-    tipo: {
-      type: String,
-      enum: ['aviso', 'venta'],
-      default: 'aviso',
     },
     creadoPor: {
       type: mongoose.Schema.Types.ObjectId,
@@ -75,12 +70,6 @@ const notificationSchema = new mongoose.Schema(
     cuota: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'CuotaCuentaCorriente',
-      default: null,
-    },
-    /** Venta que originó el aviso informativo para administradores. */
-    venta: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'Venta',
       default: null,
     },
     vistosPor: {
