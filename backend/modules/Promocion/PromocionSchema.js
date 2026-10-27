@@ -12,7 +12,7 @@ export const schemaCrearPromocion = z
     tipo: z.enum(['porcentaje', 'monto'], {
       errorMap: () => ({ message: 'El tipo de descuento es inválido' }),
     }),
-    valor: z.number('El descuento debe ser un número').finite('El descuento debe ser un número').positive('El descuento debe ser mayor a 0'),
+    valor: z.number('El descuento debe ser un número').finite('El descuento debe ser un número').positive('El descuento debe ser mayor a 0').max(99999999.99, 'El descuento es demasiado alto'),
     desde: fecha,
     hasta: fecha,
     todos: z.boolean().optional().default(false),
