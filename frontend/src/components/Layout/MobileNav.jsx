@@ -29,7 +29,7 @@ const MobileNav = () => {
     return 0;
   };
   return (
-    <nav className="fixed bottom-0 inset-x-0 z-40 md:hidden bg-ios-surface/90 backdrop-blur-2xl border-t border-ios-separator/50 safe-bottom">
+    <nav className="fixed bottom-0 inset-x-0 z-40 md:hidden bg-ios-surface/90 backdrop-blur-2xl border-t border-ios-separator/50 safe-bottom safe-x">
       <div className="overflow-x-auto overscroll-x-contain no-scrollbar">
         <div className="flex w-max mx-auto items-stretch gap-1 px-3">
           {visibleLinks.map((link) => (
