@@ -1,6 +1,6 @@
 import { IconMagnifyingGlass, IconX } from './icons';
 
-const IosSearch = ({ value, onChange, placeholder = 'Buscar', className = '', autoFocus }) => (
+const IosSearch = ({ value, onChange, placeholder = 'Buscar', className = '', autoFocus, maxLength = 100 }) => (
   <div className={`relative ${className}`}>
     <div className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ios-tertiary">
       <IconMagnifyingGlass className="w-4 h-4" />
@@ -8,9 +8,10 @@ const IosSearch = ({ value, onChange, placeholder = 'Buscar', className = '', au
     <input
       type="text"
       value={value}
-      onChange={(e) => onChange(e.target.value)}
+      onChange={(e) => onChange(e.target.value.slice(0, maxLength))}
       placeholder={placeholder}
       autoFocus={autoFocus}
+      maxLength={maxLength}
       className="w-full pl-9 pr-8 py-2 bg-ios-surface rounded-ios-control text-ios-label placeholder:text-ios-tertiary focus:outline-none focus:ring-2 focus:ring-ios-tint/40 transition-all text-sm"
     />
     {value && (
