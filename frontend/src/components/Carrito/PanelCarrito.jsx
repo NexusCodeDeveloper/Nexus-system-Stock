@@ -7,6 +7,7 @@ import { IosField, IosInput, IosSelect } from '../ui/IosForm';
 import { IconX } from '../ui/icons';
 import { useIosAlert } from '../alerts';
 import { formatMoney } from '../../utils/format';
+import { CANTIDAD, limitarTexto } from '../../utils/validacion';
 import PlanCuentaCorriente from './PlanCuentaCorriente';
 
 const PanelCarrito = () => {
@@ -98,10 +99,11 @@ const PanelCarrito = () => {
                 <input
                   type="text"
                   inputMode="numeric"
+                  maxLength={6}
                   value={item.cantidad}
                   onChange={(e) => {
-                    const v = e.target.value;
-                    if (v === '' || /^\d+$/.test(v)) updateCartItem(idx, 'cantidad', v);
+                    const v = limitarTexto(e.target.value, 6);
+                    if (v === '' || (/^\d+$/.test(v) && Number(v) <= CANTIDAD.max)) updateCartItem(idx, 'cantidad', v);
                   }}
                   className="w-14 px-2 py-1 text-center bg-ios-surface2 rounded-lg text-ios-label text-sm [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                 />
@@ -131,6 +133,7 @@ const PanelCarrito = () => {
               <IosInput
                 type="text"
                 inputMode="numeric"
+                maxLength={3}
                 value={sellDescuento}
                 onChange={(e) => {
                   const v = e.target.value;
@@ -190,9 +193,10 @@ const PanelCarrito = () => {
                 <input
                   type="text"
                   inputMode="numeric"
+                  maxLength={12}
                   value={sellMonto2}
                   onChange={(e) => {
-                    const v = e.target.value;
+                    const v = limitarTexto(e.target.value, 12);
                     if (v === '' || /^\d+(\.\d{0,2})?$/.test(v)) setSellMonto2(v);
                   }}
                   className="w-20 px-2 py-2 bg-ios-surface2 rounded-ios-control text-ios-label text-sm text-right focus:outline-none focus:ring-2 focus:ring-ios-tint/40 transition-all [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
