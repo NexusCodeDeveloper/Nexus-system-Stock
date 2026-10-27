@@ -7,6 +7,7 @@ import { precioVigente } from '../utils/precios';
 import { useAutenticacion } from './autenticacionContexto';
 import { useIosAlert } from '../components/alerts';
 import { obtenerMensajeErrorApi } from '../utils/apiError';
+import { CANTIDAD, FINANCIACION } from '../utils/validacion';
 import IosModal from '../components/ui/IosModal';
 import IosButton from '../components/ui/IosButton';
 import { IconCash } from '../components/ui/icons';
@@ -222,8 +223,16 @@ export const CarritoProvider = ({ children }) => {
       alert({ icon: 'warning', title: 'Montos incorrectos', message: 'El primer monto debe ser mayor a $0' });
       return;
     }
-    if (cart.some((i) => !Number.isFinite(i.precio) || i.precio <= 0 || !Number.isInteger(Number(i.cantidad)) || Number(i.cantidad) < 1)) {
-      alert({ icon: 'warning', title: 'Carrito inválido', message: 'Verifique cantidades y precios del carrito' });
+    if (cart.some((i) => !Number.isFinite(i.precio) || i.precio <= 0 || !Number.isInteger(Number(i.cantidad)) || Number(i.cantidad) < CANTIDAD.min || Number(i.cantidad) > CANTIDAD.max)) {
+      alert({ icon: 'warning', title: 'Carrito inválido', message: `Verifique cantidades (entre ${CANTIDAD.min} y ${CANTIDAD.max}) y precios del carrito` });
+      return;
+    }
+    if (sellInteres !== '' && (!Number.isFinite(Number(sellInteres)) || Number(sellInteres) < FINANCIACION.min || Number(sellInteres) > FINANCIACION.max)) {
+      alert({ icon: 'warning', title: 'Interés inválido', message: `El interés debe estar entre ${FINANCIACION.min}% y ${FINANCIACION.max}%` });
+      return;
+    }
+    if (sellMora !== '' && (!Number.isFinite(Number(sellMora)) || Number(sellMora) < FINANCIACION.min || Number(sellMora) > FINANCIACION.max)) {
+      alert({ icon: 'warning', title: 'Mora inválida', message: `La mora debe estar entre ${FINANCIACION.min}% y ${FINANCIACION.max}%` });
       return;
     }
     const usaCuentaCorriente = sellSplit
