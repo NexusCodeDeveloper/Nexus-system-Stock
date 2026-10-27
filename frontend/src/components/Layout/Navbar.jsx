@@ -26,7 +26,7 @@ const Navbar = () => {
   };
 
   return (
-    <header className="bg-ios-surface/60 backdrop-blur-2xl border-b border-ios-separator/40 px-4 sm:px-6 py-2.5 flex items-center justify-between z-10 shrink-0">
+    <header className="bg-ios-surface/60 backdrop-blur-2xl border-b border-ios-separator/40 px-4 sm:px-6 py-2.5 safe-top-bar flex items-center justify-between z-10 shrink-0">
       <div className="ml-auto flex items-center gap-2 sm:gap-3">
         <button
           type="button"
