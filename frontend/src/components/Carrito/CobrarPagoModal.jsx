@@ -6,6 +6,7 @@ import IosModal from '../ui/IosModal';
 import IosButton from '../ui/IosButton';
 import { IosField, IosInput, IosSelect } from '../ui/IosForm';
 import { formatMoney } from '../../utils/format';
+import { LIMITES, validarMonto, validarTexto } from '../../utils/validacion';
 
 const FORMAS_PAGO = [
   { key: 'efectivo', label: 'Efectivo' },
@@ -27,6 +28,7 @@ const CobrarPagoModal = ({
   const [monto, setMonto] = useState('');
   const [formaPago, setFormaPago] = useState('efectivo');
   const [nota, setNota] = useState('');
+  const [errores, setErrores] = useState({});
   const [saving, setSaving] = useState(false);
   const [deuda, setDeuda] = useState(null);
 
@@ -35,6 +37,7 @@ const CobrarPagoModal = ({
       setMonto('');
       setFormaPago('efectivo');
       setNota('');
+      setErrores({});
       setSaving(false);
       setDeuda(null);
     }
@@ -59,17 +62,15 @@ const CobrarPagoModal = ({
 
   const handleGuardar = async () => {
     if (saving || sinDeuda) return;
+    const errs = {
+      monto: validarMonto(monto),
+      nota: validarTexto(nota, LIMITES.nota, 'La nota'),
+    };
+    setErrores(errs);
+    if (errs.monto || errs.nota) return;
     const montoNum = Number(monto);
-    if (!Number.isFinite(montoNum) || montoNum <= 0) {
-      alert({ icon: 'warning', title: 'Monto inválido', message: 'El monto debe ser mayor a 0' });
-      return;
-    }
     if (deuda !== null && montoNum > deuda + 0.001) {
-      alert({
-        icon: 'warning',
-        title: 'Monto mayor a la deuda',
-        message: `El pago no puede superar la deuda pendiente (${formatMoney(deuda)})`,
-      });
+      setErrores({ monto: `El pago no puede superar la deuda pendiente (${formatMoney(deuda)})` });
       return;
     }
     setSaving(true);
@@ -80,7 +81,7 @@ const CobrarPagoModal = ({
         monto: montoNum,
         formaPago,
         referencia: referencia || '',
-        nota,
+        nota: nota.trim(),
       });
       const imputadas = (res.data?.imputaciones || []).filter((i) => Number(i.pagado) > 0);
       toast({
@@ -107,14 +108,19 @@ const CobrarPagoModal = ({
       confirmDisabled={saving || sinDeuda}
     >
       <div className="space-y-3">
-        <IosField label="Monto" required>
+        <IosField label="Monto" required error={errores.monto}>
           <IosInput
             type="text"
             inputMode="decimal"
+            maxLength={12}
+            invalid={Boolean(errores.monto)}
             value={monto}
             onChange={(e) => {
               const v = e.target.value;
-              if (v === '' || /^\d+(\.\d{0,2})?$/.test(v)) setMonto(v);
+              if (v === '' || /^\d+(\.\d{0,2})?$/.test(v)) {
+                setErrores((prev) => ({ ...prev, monto: '' }));
+                setMonto(v);
+              }
             }}
             placeholder="0.00"
             autoFocus
@@ -143,8 +149,17 @@ const CobrarPagoModal = ({
             ))}
           </IosSelect>
         </IosField>
-        <IosField label="Nota">
-          <IosInput value={nota} onChange={(e) => setNota(e.target.value)} placeholder="Opcional" />
+        <IosField label="Nota" error={errores.nota}>
+          <IosInput
+            value={nota}
+            maxLength={LIMITES.nota.max}
+            invalid={Boolean(errores.nota)}
+            onChange={(e) => {
+              setErrores((prev) => ({ ...prev, nota: '' }));
+              setNota(e.target.value);
+            }}
+            placeholder="Opcional"
+          />
         </IosField>
         {referencia && (
           <p className="text-[11px] text-ios-tertiary">El pago queda referenciado al ticket {referencia}.</p>
