@@ -4,6 +4,7 @@ import IosToggle from '../ui/IosToggle';
 import { IosField, IosInput, IosSelect } from '../ui/IosForm';
 import { IconChevronRight } from '../ui/icons';
 import { formatMoney } from '../../utils/format';
+import { FINANCIACION } from '../../utils/validacion';
 import SelectorCliente from './SelectorCliente';
 
 const hoyISO = () => {
@@ -146,10 +147,13 @@ const PlanCuentaCorriente = () => {
             <IosInput
               type="text"
               inputMode="decimal"
+              maxLength={7}
               value={sellInteres}
               onChange={(e) => {
                 const v = e.target.value;
-                if (v === '' || /^\d{1,4}(\.\d{0,2})?$/.test(v)) setSellInteres(v);
+                if ((v === '' || /^\d{1,4}(\.\d{0,2})?$/.test(v)) && (v === '' || Number(v) <= FINANCIACION.max)) {
+                  setSellInteres(v);
+                }
               }}
               placeholder={`${Number(ajustesCuenta?.interesFinanciacionPorcentaje ?? 10)}% (por defecto)`}
             />
@@ -160,10 +164,13 @@ const PlanCuentaCorriente = () => {
           <IosInput
             type="text"
             inputMode="decimal"
+            maxLength={7}
             value={sellMora}
             onChange={(e) => {
               const v = e.target.value;
-              if (v === '' || /^\d{1,4}(\.\d{0,2})?$/.test(v)) setSellMora(v);
+              if ((v === '' || /^\d{1,4}(\.\d{0,2})?$/.test(v)) && (v === '' || Number(v) <= FINANCIACION.max)) {
+                setSellMora(v);
+              }
             }}
             placeholder={`${Number(ajustesCuenta?.tasaMoraMensualPorcentaje ?? 5)}% (por defecto)`}
           />
