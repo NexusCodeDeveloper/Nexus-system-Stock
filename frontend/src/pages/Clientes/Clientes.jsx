@@ -23,6 +23,13 @@ import IosSearch from '../../components/ui/IosSearch';
 import { IosField, IosInput } from '../../components/ui/IosForm';
 import { IconPlus, IconPencil, IconTrash, IconChevronRight, IconUsers } from '../../components/ui/icons';
 import { formatMoney, formatDate } from '../../utils/format';
+import {
+  hayErrores,
+  LIMITES,
+  validarEmail,
+  validarTelefono,
+  validarTexto,
+} from '../../utils/validacion';
 import ClienteDetalle from './ClienteDetalle';
 
 const formularioVacio = () => ({ nombre: '', documento: '', telefono: '', email: '', direccion: '' });
@@ -49,10 +56,12 @@ const Clientes = () => {
   const [showForm, setShowForm] = useState(false);
   const [editando, setEditando] = useState(null);
   const [form, setForm] = useState(formularioVacio());
+  const [errores, setErrores] = useState({});
   const [saving, setSaving] = useState(false);
   const [detalle, setDetalle] = useState(null);
   const [rechazando, setRechazando] = useState(null);
   const [motivoRechazo, setMotivoRechazo] = useState('');
+  const [errorMotivo, setErrorMotivo] = useState('');
   const [rechazandoSaving, setRechazandoSaving] = useState(false);
 
   useEffect(() => {
@@ -88,6 +97,7 @@ const Clientes = () => {
 
   const resetForm = () => {
     setForm(formularioVacio());
+    setErrores({});
     setEditando(null);
     setShowForm(false);
   };
@@ -95,11 +105,16 @@ const Clientes = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (saving) return;
+    const errs = {
+      nombre: validarTexto(form.nombre, LIMITES.nombre, 'El nombre'),
+      documento: validarTexto(form.documento, LIMITES.documento, 'El documento'),
+      telefono: validarTelefono(form.telefono),
+      email: validarEmail(form.email),
+      direccion: validarTexto(form.direccion, LIMITES.direccion, 'La dirección'),
+    };
+    setErrores(errs);
+    if (hayErrores(errs)) return;
     const nombre = form.nombre.trim();
-    if (!nombre) {
-      alert({ icon: 'warning', title: 'Campo requerido', message: 'El nombre es obligatorio' });
-      return;
-    }
     if (editando) {
       const ok = await confirm({
         icon: 'warning',
@@ -111,7 +126,13 @@ const Clientes = () => {
     }
     setSaving(true);
     try {
-      const datos = { ...form, nombre };
+      const datos = {
+        nombre,
+        documento: form.documento.trim(),
+        telefono: form.telefono.trim(),
+        email: form.email.trim(),
+        direccion: form.direccion.trim(),
+      };
       if (esAdmin) {
         if (editando) {
           await actualizarCliente(editando._id, datos);
@@ -186,15 +207,18 @@ const Clientes = () => {
   const handleRechazar = async () => {
     if (rechazandoSaving) return;
     const motivo = motivoRechazo.trim();
-    if (!motivo) {
-      alert({ icon: 'warning', title: 'Motivo requerido', message: 'Indicá por qué se rechaza la solicitud' });
+    const err = validarTexto(motivo, LIMITES.motivo, 'El motivo');
+    if (err) {
+      setErrorMotivo(err);
       return;
     }
+    setErrorMotivo('');
     setRechazandoSaving(true);
     try {
       await rechazarSolicitudCliente(rechazando._id, motivo);
       setRechazando(null);
       setMotivoRechazo('');
+      setErrorMotivo('');
       toast({ message: 'Solicitud rechazada' });
       cargarSolicitudes();
       refrescarPendientes();
@@ -370,27 +394,70 @@ const Clientes = () => {
         confirmDisabled={saving}
       >
         <form onSubmit={handleSubmit} className="space-y-3">
-          <IosField label="Nombre" required>
+          <IosField label="Nombre" required error={errores.nombre}>
             <IosInput
               value={form.nombre}
-              onChange={(e) => setForm((f) => ({ ...f, nombre: e.target.value }))}
+              maxLength={LIMITES.nombre.max}
+              invalid={Boolean(errores.nombre)}
+              onChange={(e) => {
+                setErrores((prev) => ({ ...prev, nombre: '' }));
+                setForm((f) => ({ ...f, nombre: e.target.value }));
+              }}
               placeholder="Nombre y apellido o razón social"
               autoFocus
             />
           </IosField>
           <div className="grid grid-cols-2 gap-3">
-            <IosField label="Documento">
-              <IosInput value={form.documento} onChange={(e) => setForm((f) => ({ ...f, documento: e.target.value }))} placeholder="DNI / CUIT" />
+            <IosField label="Documento" error={errores.documento}>
+              <IosInput
+                value={form.documento}
+                maxLength={LIMITES.documento.max}
+                invalid={Boolean(errores.documento)}
+                onChange={(e) => {
+                  setErrores((prev) => ({ ...prev, documento: '' }));
+                  setForm((f) => ({ ...f, documento: e.target.value }));
+                }}
+                placeholder="DNI / CUIT"
+              />
             </IosField>
-            <IosField label="Teléfono">
-              <IosInput value={form.telefono} onChange={(e) => setForm((f) => ({ ...f, telefono: e.target.value }))} placeholder="Opcional" />
+            <IosField label="Teléfono" error={errores.telefono}>
+              <IosInput
+                type="tel"
+                value={form.telefono}
+                maxLength={LIMITES.telefono.max}
+                invalid={Boolean(errores.telefono)}
+                onChange={(e) => {
+                  setErrores((prev) => ({ ...prev, telefono: '' }));
+                  setForm((f) => ({ ...f, telefono: e.target.value }));
+                }}
+                placeholder="Opcional"
+              />
             </IosField>
           </div>
-          <IosField label="Email">
-            <IosInput type="email" value={form.email} onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))} placeholder="Opcional" />
+          <IosField label="Email" error={errores.email}>
+            <IosInput
+              type="email"
+              value={form.email}
+              maxLength={LIMITES.email.max}
+              invalid={Boolean(errores.email)}
+              onChange={(e) => {
+                setErrores((prev) => ({ ...prev, email: '' }));
+                setForm((f) => ({ ...f, email: e.target.value }));
+              }}
+              placeholder="Opcional"
+            />
           </IosField>
-          <IosField label="Dirección">
-            <IosInput value={form.direccion} onChange={(e) => setForm((f) => ({ ...f, direccion: e.target.value }))} placeholder="Opcional" />
+          <IosField label="Dirección" error={errores.direccion}>
+            <IosInput
+              value={form.direccion}
+              maxLength={LIMITES.direccion.max}
+              invalid={Boolean(errores.direccion)}
+              onChange={(e) => {
+                setErrores((prev) => ({ ...prev, direccion: '' }));
+                setForm((f) => ({ ...f, direccion: e.target.value }));
+              }}
+              placeholder="Opcional"
+            />
           </IosField>
           {!esAdmin && (
             <p className="text-[12px] text-ios-tertiary leading-relaxed">
@@ -405,6 +472,7 @@ const Clientes = () => {
         onClose={() => {
           setRechazando(null);
           setMotivoRechazo('');
+          setErrorMotivo('');
         }}
         title="Rechazar solicitud"
         confirmText={rechazandoSaving ? 'Rechazando…' : 'Rechazar'}
@@ -415,8 +483,18 @@ const Clientes = () => {
         <p className="text-sm text-ios-secondary mb-3">
           Se rechaza el alta de <span className="font-semibold text-ios-label">{rechazando?.datos?.nombre}</span>. El empleado va a ver el motivo.
         </p>
-        <IosField label="Motivo" required>
-          <IosInput value={motivoRechazo} onChange={(e) => setMotivoRechazo(e.target.value)} placeholder="Ej: falta el documento" autoFocus />
+        <IosField label="Motivo" required error={errorMotivo}>
+          <IosInput
+            value={motivoRechazo}
+            maxLength={LIMITES.motivo.max}
+            invalid={Boolean(errorMotivo)}
+            onChange={(e) => {
+              setErrorMotivo('');
+              setMotivoRechazo(e.target.value);
+            }}
+            placeholder="Ej: falta el documento"
+            autoFocus
+          />
         </IosField>
       </IosModal>
 
