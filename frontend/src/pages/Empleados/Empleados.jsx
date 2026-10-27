@@ -17,6 +17,7 @@ import IosModal from '../../components/ui/IosModal';
 import IosSegmented from '../../components/ui/IosSegmented';
 import { IosField, IosInput } from '../../components/ui/IosForm';
 import { IconPlus } from '../../components/ui/icons';
+import { hayErrores, LIMITES, validarEmail, validarTexto } from '../../utils/validacion';
 
 const formularioVacio = () => ({
   nombre: '',
@@ -32,8 +33,10 @@ const Empleados = () => {
   const [editando, setEditando] = useState(null);
   const [guardando, setGuardando] = useState(false);
   const [form, setForm] = useState(formularioVacio());
+  const [errores, setErrores] = useState({});
   const [reiniciando, setReiniciando] = useState(null);
   const [claveNueva, setClaveNueva] = useState('');
+  const [errorClave, setErrorClave] = useState('');
   const [guardandoClave, setGuardandoClave] = useState(false);
 
   const empleadosApi = useApi(
@@ -52,6 +55,7 @@ const Empleados = () => {
 
   const resetForm = () => {
     setForm(formularioVacio());
+    setErrores({});
     setEditando(null);
     setMostrarForm(false);
   };
@@ -85,6 +89,13 @@ const Empleados = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (guardando) return;
+    const errs = {
+      nombre: validarTexto(form.nombre, LIMITES.nombre, 'El nombre'),
+      email: validarEmail(form.email, { requerido: true }),
+      clave: editando ? '' : validarTexto(form.clave, LIMITES.clave, 'La contraseña'),
+    };
+    setErrores(errs);
+    if (hayErrores(errs)) return;
     if (editando && form.rol === 'admin' && editando.rol !== 'admin') {
       const ok = await confirmar({
         icon: 'warning',
@@ -117,15 +128,15 @@ const Empleados = () => {
     try {
       if (editando) {
         await actualizarUsuario(editando._id, {
-          nombre: form.nombre,
-          email: form.email,
+          nombre: form.nombre.trim(),
+          email: form.email.trim(),
           rol: form.rol,
         });
         toast({ message: 'Empleado actualizado' });
       } else {
         await crearUsuario({
-          nombre: form.nombre,
-          email: form.email,
+          nombre: form.nombre.trim(),
+          email: form.email.trim(),
           clave: form.clave,
           rol: form.rol,
           activo: true,
@@ -144,11 +155,18 @@ const Empleados = () => {
   const handleReiniciar = (emp) => {
     setReiniciando(emp);
     setClaveNueva('');
+    setErrorClave('');
   };
 
   const handleGuardarClave = async (e) => {
     e.preventDefault();
     if (guardandoClave) return;
+    const err = validarTexto(claveNueva, LIMITES.clave, 'La contraseña');
+    if (err) {
+      setErrorClave(err);
+      return;
+    }
+    setErrorClave('');
     const ok = await confirmar({
       icon: 'warning',
       title: '¿Reiniciar la contraseña?',
@@ -162,6 +180,7 @@ const Empleados = () => {
       await reiniciarClave(reiniciando._id, claveNueva);
       setReiniciando(null);
       setClaveNueva('');
+      setErrorClave('');
       toast({ message: 'Contraseña actualizada' });
     } catch (err) {
       alerta({ icon: 'error', title: 'Error', message: obtenerMensajeErrorApi(err, 'Error al actualizar la contraseña') });
@@ -231,30 +250,45 @@ const Empleados = () => {
         maxWidth="max-w-lg"
       >
         <form onSubmit={handleSubmit} className="space-y-4">
-          <IosField label="Nombre" required>
+          <IosField label="Nombre" required error={errores.nombre}>
             <IosInput
               type="text"
               required
+              maxLength={LIMITES.nombre.max}
+              invalid={Boolean(errores.nombre)}
               value={form.nombre}
-              onChange={(e) => setForm({ ...form, nombre: e.target.value })}
+              onChange={(e) => {
+                setErrores((prev) => ({ ...prev, nombre: '' }));
+                setForm({ ...form, nombre: e.target.value });
+              }}
             />
           </IosField>
-          <IosField label="Email" required>
+          <IosField label="Email" required error={errores.email}>
             <IosInput
               type="email"
               required
+              maxLength={LIMITES.email.max}
+              invalid={Boolean(errores.email)}
               value={form.email}
-              onChange={(e) => setForm({ ...form, email: e.target.value })}
+              onChange={(e) => {
+                setErrores((prev) => ({ ...prev, email: '' }));
+                setForm({ ...form, email: e.target.value });
+              }}
             />
           </IosField>
           {!editando && (
-            <IosField label="Contraseña" required hint="Mínimo 6 caracteres">
+            <IosField label="Contraseña" required hint="Entre 6 y 72 caracteres" error={errores.clave}>
               <IosInput
                 type="password"
                 required
-                minLength={6}
+                minLength={LIMITES.clave.min}
+                maxLength={LIMITES.clave.max}
+                invalid={Boolean(errores.clave)}
                 value={form.clave}
-                onChange={(e) => setForm({ ...form, clave: e.target.value })}
+                onChange={(e) => {
+                  setErrores((prev) => ({ ...prev, clave: '' }));
+                  setForm({ ...form, clave: e.target.value });
+                }}
               />
             </IosField>
           )}
@@ -283,7 +317,10 @@ const Empleados = () => {
 
       <IosModal
         open={Boolean(reiniciando)}
-        onClose={() => setReiniciando(null)}
+        onClose={() => {
+          setReiniciando(null);
+          setErrorClave('');
+        }}
         title="Reiniciar contraseña"
         maxWidth="max-w-sm"
       >
@@ -291,13 +328,18 @@ const Empleados = () => {
           <p className="text-sm text-ios-secondary">
             Nueva contraseña para <span className="font-semibold text-ios-label">{reiniciando?.nombre}</span>
           </p>
-          <IosField label="Contraseña" required hint="Mínimo 6 caracteres">
+          <IosField label="Contraseña" required hint="Entre 6 y 72 caracteres" error={errorClave}>
             <IosInput
               type="password"
               required
-              minLength={6}
+              minLength={LIMITES.clave.min}
+              maxLength={LIMITES.clave.max}
+              invalid={Boolean(errorClave)}
               value={claveNueva}
-              onChange={(e) => setClaveNueva(e.target.value)}
+              onChange={(e) => {
+                setErrorClave('');
+                setClaveNueva(e.target.value);
+              }}
             />
           </IosField>
           <div className="flex justify-end gap-3 pt-2">
