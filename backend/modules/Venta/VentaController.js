@@ -3,6 +3,7 @@ import Venta from './VentaModel.js';
 import Producto from '../Producto/ProductoModel.js';
 import Devolucion from '../Devolucion/DevolucionModel.js';
 import Cliente from '../Cliente/ClienteModel.js';
+import Notificacion from '../Notificacion/NotificacionModel.js';
 import CierreCaja from './CierreCajaModel.js';
 import RetiroCaja from '../RetiroCaja/RetiroCajaModel.js';
 import RetiroCajaDia from '../RetiroCaja/RetiroCajaDiaModel.js';
@@ -30,6 +31,51 @@ import logger from '../../utils/LoggerUtils.js';
 
 const escaparRegex = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const redondear = (valor) => Math.round((Number(valor) || 0) * 100) / 100;
+
+const ETIQUETAS_METODO_PAGO = {
+  efectivo: 'Efectivo',
+  transferencia: 'Transferencia',
+  tarjeta: 'Tarjeta',
+  cuentaCorriente: 'Cuenta corriente',
+};
+
+const resumenPagos = (pagos = []) =>
+  [...new Set(
+    pagos
+      .map((pago) => ETIQUETAS_METODO_PAGO[pago.metodo] || pago.metodo)
+      .filter(Boolean)
+  )].join(' + ');
+
+/** Aviso informativo para los admins cuando la venta la hizo un empleado. No se envía push. */
+const avisarVentaEmpleado = async (venta, usuario) => {
+  if (!venta || usuario?.rol !== 'user') return;
+  const unidades = (venta.articulos || []).reduce(
+    (total, item) => total + (Number(item.cantidad) || 0),
+    0
+  );
+  const total = Number(venta.total) || 0;
+  const partes = [
+    `Ticket ${venta.ticketNumero || '—'}`,
+    unidades === 1 ? '1 unidad' : `${unidades} unidades`,
+    `$${total.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+  ];
+  if (venta.clienteNombre) partes.push(`Cliente: ${venta.clienteNombre}`);
+  const pagos = resumenPagos(venta.pagos);
+  if (pagos) partes.push(`Pago: ${pagos}`);
+
+  await Notificacion.create({
+    titulo: `Venta de ${usuario.nombre}`,
+    descripcion: `${partes.join(' · ')}.`,
+    estado: 'informativo',
+    tipo: 'venta',
+    creadoPor: usuario.id,
+    destinatario: null,
+    destinatarioNombre: '',
+    nuevaParaAdmin: false,
+    soloAdmin: true,
+    venta: venta._id,
+  });
+};
 
 export const crearVenta = async (req, res, next) => {
   let session;
@@ -171,6 +217,17 @@ export const crearVenta = async (req, res, next) => {
       .populate('articulos.producto', 'nombre codigo');
 
     await session.commitTransaction();
+
+    try {
+      await avisarVentaEmpleado(savedSale, req.usuario);
+    } catch (error) {
+      logger.error('No se pudo crear el aviso informativo de la venta', {
+        motivo: error.message,
+        origen: 'backend',
+        lugar: 'VentaController.js → avisarVentaEmpleado',
+        stack: error.stack,
+      });
+    }
 
     void enviarStockBajo(productosVendidos);
     void enviarEvento({

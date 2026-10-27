@@ -21,8 +21,15 @@ import { IconBell, IconPlus, IconPencil, IconTrash, IconCheck, IconRefresh, Icon
 import { formatDate } from '../../utils/format';
 import { hayErrores, LIMITES, validarTexto } from '../../utils/validacion';
 
-const EstadoBadge = ({ estado }) =>
-  estado === 'realizado' ? (
+const EstadoBadge = ({ estado, tipo }) => {
+  if (tipo === 'venta' || estado === 'informativo') {
+    return (
+      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-ios-pill bg-ios-tint/15 text-ios-tint text-[11px] font-semibold shrink-0">
+        Venta
+      </span>
+    );
+  }
+  return estado === 'realizado' ? (
     <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-ios-pill bg-ios-green/15 text-ios-green text-[11px] font-semibold shrink-0">
       <IconCheck className="w-3 h-3" strokeWidth={2.5} />
       Realizado
@@ -32,6 +39,7 @@ const EstadoBadge = ({ estado }) =>
       Pendiente
     </span>
   );
+};
 
 const Notificaciones = () => {
   const { usuario } = useAutenticacion();
@@ -51,6 +59,7 @@ const Notificaciones = () => {
   const [savingComplete, setSavingComplete] = useState(false);
 
   const isAdmin = usuario?.rol === 'admin';
+  const detalleInformativo = detail?.tipo === 'venta' || detail?.estado === 'informativo';
 
   const notificacionesApi = useApi(
     async () => {
@@ -306,7 +315,7 @@ const Notificaciones = () => {
                   {formatDate(n.fechaCreacion)}
                 </p>
               </div>
-              <EstadoBadge estado={n.estado} />
+              <EstadoBadge estado={n.estado} tipo={n.tipo} />
               <IconChevronRight className="w-4 h-4 text-ios-tertiary shrink-0" />
             </button>
           ))}
@@ -326,23 +335,23 @@ const Notificaciones = () => {
                 Marcar como realizado
               </IosButton>
             )}
-            {isAdmin && detail?.estado === 'realizado' && (
+            {isAdmin && detail?.estado === 'realizado' && !detalleInformativo && (
               <IosButton variant="gray" className="w-full py-3" onClick={async () => { const ok = await handleReopen(detail); if (ok) setDetail(null); }}>
                 <IconRefresh className="w-4 h-4" />
                 Reabrir aviso
               </IosButton>
             )}
+            {isAdmin && !detalleInformativo && (
+              <IosButton variant="tinted" className="w-full py-3" onClick={() => { openEdit(detail); setDetail(null); }}>
+                <IconPencil className="w-4 h-4" />
+                Editar aviso
+              </IosButton>
+            )}
             {isAdmin && (
-              <>
-                <IosButton variant="tinted" className="w-full py-3" onClick={() => { openEdit(detail); setDetail(null); }}>
-                  <IconPencil className="w-4 h-4" />
-                  Editar aviso
-                </IosButton>
-                <IosButton variant="destructiveTinted" className="w-full py-3" onClick={async () => { const ok = await handleDelete(detail); if (ok) setDetail(null); }}>
-                  <IconTrash className="w-4 h-4" />
-                  Eliminar aviso
-                </IosButton>
-              </>
+              <IosButton variant="destructiveTinted" className="w-full py-3" onClick={async () => { const ok = await handleDelete(detail); if (ok) setDetail(null); }}>
+                <IconTrash className="w-4 h-4" />
+                Eliminar aviso
+              </IosButton>
             )}
             <IosButton variant="gray" className="w-full py-3" onClick={() => setDetail(null)}>
               Cerrar
@@ -367,7 +376,9 @@ const Notificaciones = () => {
               </div>
             )}
             <div className="flex items-start justify-between gap-3">
-              <span className="text-ios-tertiary text-xs shrink-0 pt-0.5">Creado por</span>
+              <span className="text-ios-tertiary text-xs shrink-0 pt-0.5">
+                {detalleInformativo ? 'Empleado' : 'Creado por'}
+              </span>
               <span className="text-ios-secondary text-right text-[13px]">
                 {detail?.creadoPor?.nombre || '—'} · {formatDate(detail?.fechaCreacion)}
               </span>

@@ -87,6 +87,13 @@ export const crearNotificacion = async (req, res, next) => {
 export const actualizarNotificacion = async (req, res, next) => {
   try {
     const data = schemaActualizarNotificacion.parse(req.body);
+    const existente = await Notificacion.findById(req.params.id);
+    if (!existente) {
+      return res.status(404).json({ message: 'Aviso no encontrado' });
+    }
+    if (existente.estado === 'informativo' || existente.tipo === 'venta') {
+      return res.status(400).json({ message: 'El aviso de venta es informativo y no se puede editar' });
+    }
     const cambios = { ...data };
     if ('destinatario' in data) {
       Object.assign(cambios, await resolverDestinatario(data.destinatario));
@@ -123,7 +130,7 @@ export const completarNotificacion = async (req, res, next) => {
     const notificacion = await Notificacion.findOneAndUpdate(
       {
         _id: req.params.id,
-        estado: { $ne: 'realizado' },
+        estado: 'pendiente',
         ...(esAdmin
           ? {}
           : {
@@ -152,6 +159,9 @@ export const completarNotificacion = async (req, res, next) => {
       if (existe.estado === 'realizado') {
         return res.status(400).json({ message: 'Este aviso ya fue marcado como realizado' });
       }
+      if (existe.estado === 'informativo' || existe.tipo === 'venta') {
+        return res.status(400).json({ message: 'Este aviso es informativo y no requiere marcarse como realizado' });
+      }
       return res.status(403).json({ message: 'Este aviso está asignado a otro empleado' });
     }
     const pobladas = await poblarUsuarios(
@@ -177,6 +187,9 @@ export const reabrirNotificacion = async (req, res, next) => {
     const notificacion = await Notificacion.findById(req.params.id);
     if (!notificacion) {
       return res.status(404).json({ message: 'Aviso no encontrado' });
+    }
+    if (notificacion.estado === 'informativo' || notificacion.tipo === 'venta') {
+      return res.status(400).json({ message: 'El aviso de venta es informativo y no se puede reabrir' });
     }
     notificacion.estado = 'pendiente';
     notificacion.comentario = '';
