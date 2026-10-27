@@ -298,6 +298,79 @@ html {
   padding-top: env(safe-area-inset-top);
 }
 
+.app-shell {
+  height: 100vh;
+  height: 100dvh;
+}
+
+.safe-top-bar {
+  padding-top: max(0.625rem, env(safe-area-inset-top));
+}
+
+.safe-page-bottom {
+  padding-bottom: calc(7rem + env(safe-area-inset-bottom));
+}
+
+.safe-x {
+  padding-left: max(1rem, env(safe-area-inset-left));
+  padding-right: max(1rem, env(safe-area-inset-right));
+}
+
+.safe-sheet-x {
+  padding-left: max(1.25rem, env(safe-area-inset-left));
+  padding-right: max(1.25rem, env(safe-area-inset-right));
+}
+
+.toast-safe-top {
+  top: max(1rem, env(safe-area-inset-top));
+}
+
+.mobile-fab {
+  bottom: calc(5.5rem + env(safe-area-inset-bottom));
+}
+
+.mobile-alert {
+  bottom: calc(9.5rem + env(safe-area-inset-bottom));
+}
+
+.mobile-alert-stack {
+  bottom: calc(15rem + env(safe-area-inset-bottom));
+}
+
+.mobile-banner {
+  bottom: calc(20rem + env(safe-area-inset-bottom));
+}
+
+.scanner-shell {
+  padding-top: max(1rem, env(safe-area-inset-top));
+  padding-bottom: max(1rem, env(safe-area-inset-bottom));
+  padding-left: max(1rem, env(safe-area-inset-left));
+  padding-right: max(1rem, env(safe-area-inset-right));
+}
+
+@media (min-width: 768px) {
+  .safe-page-bottom {
+    padding-bottom: 1.5rem;
+  }
+
+  .mobile-alert {
+    bottom: 1.5rem;
+  }
+
+  .mobile-alert-stack {
+    bottom: 6rem;
+  }
+
+  .mobile-banner {
+    bottom: 1.5rem;
+  }
+
+  .safe-x {
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+}
+
 .no-scrollbar {
   scrollbar-width: none;
   -ms-overflow-style: none;
