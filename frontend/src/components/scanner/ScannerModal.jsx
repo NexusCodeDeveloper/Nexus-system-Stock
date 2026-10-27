@@ -153,12 +153,12 @@ const ScannerModal = ({ open, onClose, onLeer, continuo = false, titulo = 'Escan
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-[110] bg-black/80 backdrop-blur-sm flex items-center justify-center px-4">
+    <div className="fixed inset-0 z-[110] bg-black/80 backdrop-blur-sm flex items-center justify-center overflow-y-auto scanner-shell">
       <div
         role="dialog"
         aria-modal="true"
         aria-label={titulo}
-        className="w-full max-w-md bg-ios-surface rounded-[28px] overflow-hidden border border-ios-separator/40 shadow-ios-alert"
+        className="w-full max-w-md max-h-[92dvh] overflow-y-auto bg-ios-surface rounded-[28px] border border-ios-separator/40 shadow-ios-alert"
       >
         <div className="flex items-center justify-between px-5 py-4 border-b border-ios-separator/40">
           <p className="text-ios-label font-semibold">{titulo}</p>
