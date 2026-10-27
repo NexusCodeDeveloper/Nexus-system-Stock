@@ -113,9 +113,9 @@ const IosModal = ({
                 )}
               </div>
             )}
-            <div className="px-5 pt-3 pb-4 overflow-y-auto flex-1">{children}</div>
+            <div className="px-5 pt-3 pb-4 overflow-y-auto flex-1 safe-sheet-x">{children}</div>
             {(footer || onConfirm) && (
-              <div className="px-5 pb-6 pt-2 border-t border-ios-separator/50 shrink-0 safe-bottom">
+              <div className="px-5 pb-6 pt-2 border-t border-ios-separator/50 shrink-0 safe-bottom safe-sheet-x">
                 {(footer || (
                   <div className="flex gap-3">
                     {showCancel && (
