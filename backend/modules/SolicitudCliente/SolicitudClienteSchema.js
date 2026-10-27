@@ -7,6 +7,8 @@ export const schemaCrearSolicitud = z.object({
     telefono: z.string().trim().max(40, 'El teléfono es demasiado largo').optional().default(''),
     email: z
       .string()
+      .trim()
+      .max(254, 'El email es demasiado largo')
       .email('Email inválido')
       .optional()
       .or(z.literal('')),
