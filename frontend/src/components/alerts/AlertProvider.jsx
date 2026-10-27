@@ -100,7 +100,7 @@ const AlertProvider = ({ children }) => {
       {children}
 
       {toasts.length > 0 && (
-        <div className="fixed top-4 inset-x-0 z-[95] flex flex-col items-center gap-2 px-4 pointer-events-none">
+        <div className="fixed inset-x-0 z-[95] flex flex-col items-center gap-2 px-4 pointer-events-none toast-safe-top">
           {toasts.map((t) => (
             <Toast key={t.id} toast={t} />
           ))}
