@@ -7,6 +7,7 @@ import { useIosAlert } from '../../components/alerts';
 import IosModal from '../../components/ui/IosModal';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
 import { IosField, IosInput } from '../../components/ui/IosForm';
+import { hayErrores, LIMITES, validarMonto, validarTexto } from '../../utils/validacion';
 
 const today = () => {
   const d = new Date();
@@ -20,6 +21,7 @@ const RetiroModal = ({ open, onClose, onDone, usuario, esAdmin }) => {
   const { show: alert, confirm, toast } = useIosAlert();
   const [monto, setMonto] = useState('');
   const [motivo, setMotivo] = useState('');
+  const [errores, setErrores] = useState({});
   const [saving, setSaving] = useState(false);
 
   const retirosApi = useApi(
@@ -48,17 +50,20 @@ const RetiroModal = ({ open, onClose, onDone, usuario, esAdmin }) => {
     if (!open) return;
     setMonto('');
     setMotivo('');
+    setErrores({});
     fetchWithdrawals();
     fetchAvailableCash();
   }, [open, fetchWithdrawals, fetchAvailableCash]);
 
   const confirmWithdrawal = async () => {
     if (saving) return;
+    const errs = {
+      monto: validarMonto(monto),
+      motivo: validarTexto(motivo, LIMITES.motivo, 'El motivo'),
+    };
+    setErrores(errs);
+    if (hayErrores(errs)) return;
     const montoNum = Number(monto);
-    if (!Number.isFinite(montoNum) || montoNum <= 0) {
-      alert({ icon: 'warning', title: 'Monto inválido', message: 'Debe ingresar un monto mayor a $0' });
-      return;
-    }
     if (efectivoDisponible == null) {
       alert({
         icon: 'warning',
@@ -69,11 +74,7 @@ const RetiroModal = ({ open, onClose, onDone, usuario, esAdmin }) => {
       return;
     }
     if (montoNum > efectivoDisponible) {
-      alert({ icon: 'warning', title: 'Sin efectivo suficiente', message: `Solo hay ${formatMoney(efectivoDisponible)} disponibles en caja` });
-      return;
-    }
-    if (!motivo.trim()) {
-      alert({ icon: 'warning', title: 'Campo requerido', message: 'Debe ingresar el motivo del retiro' });
+      setErrores({ monto: `Solo hay ${formatMoney(efectivoDisponible)} disponibles en caja` });
       return;
     }
     setSaving(true);
@@ -142,23 +143,33 @@ const RetiroModal = ({ open, onClose, onDone, usuario, esAdmin }) => {
         )}
 
         <div className="bg-ios-surface rounded-2xl border border-ios-separator/30 p-4 space-y-3">
-          <IosField label="Monto a retirar" required>
+          <IosField label="Monto a retirar" required error={errores.monto}>
             <IosInput
               type="text"
               inputMode="decimal"
+              maxLength={12}
+              invalid={Boolean(errores.monto)}
               value={monto}
               onChange={(e) => {
                 const v = e.target.value;
-                if (v === '' || /^\d+(\.\d{0,2})?$/.test(v)) setMonto(v);
+                if (v === '' || /^\d+(\.\d{0,2})?$/.test(v)) {
+                  setErrores((prev) => ({ ...prev, monto: '' }));
+                  setMonto(v);
+                }
               }}
               placeholder="0.00"
             />
           </IosField>
-          <IosField label="Motivo" required>
+          <IosField label="Motivo" required error={errores.motivo}>
             <IosInput
               type="text"
+              maxLength={LIMITES.motivo.max}
+              invalid={Boolean(errores.motivo)}
               value={motivo}
-              onChange={(e) => setMotivo(e.target.value)}
+              onChange={(e) => {
+                setErrores((prev) => ({ ...prev, motivo: '' }));
+                setMotivo(e.target.value);
+              }}
               placeholder="Ej: pago a proveedor, gastos menores..."
             />
           </IosField>
