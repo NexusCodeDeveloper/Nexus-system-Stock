@@ -31,6 +31,8 @@ import { escucharPush } from '../../services/GestorPush';
 import { getItem, setItem } from '../../utils/storage';
 import { useAutenticacion } from '../../context/autenticacionContexto';
 import { useLector } from '../../context/lectorContexto';
+import ScannerButton from '../../components/scanner/ScannerButton';
+import ScannerModal from '../../components/scanner/ScannerModal';
 import { useIosAlert } from '../../components/alerts';
 import IosButton from '../../components/ui/IosButton';
 import IosModal from '../../components/ui/IosModal';
@@ -118,6 +120,7 @@ const Deposito = () => {
   const { dropdown, menuRef: dropdownRef, toggle: openDropdown, close: cerrarDropdown } = useDropdownAnclado();
 
   const [stockModal, setStockModal] = useState(null);
+  const [scannerOpen, setScannerOpen] = useState(false);
   const [modalCantidad, setModalCantidad] = useState('1');
   const [modalVariantIdx, setModalVariantIdx] = useState('');
   const [modalNuevoTalle, setModalNuevoTalle] = useState('');
@@ -280,7 +283,10 @@ const Deposito = () => {
     }
   };
 
-  useLector(manejarCodigoEscaneado, !stockModal && !etiquetaModal && !showForm && !dropdown.product);
+  useLector(
+    manejarCodigoEscaneado,
+    !scannerOpen && !stockModal && !etiquetaModal && !showForm && !dropdown.product
+  );
 
   useEffect(() => {
     if (!pendienteMenu) return;
@@ -1126,7 +1132,7 @@ const Deposito = () => {
                 );
               })}
             </div>
-            <div className="flex lg:hidden items-center gap-2 flex-wrap">
+            <div className="flex lg:hidden items-center gap-2 overflow-x-auto no-scrollbar pb-1">
               {accionesDeposito.map((accion) => {
                 const Icono = accion.icono;
                 return (
@@ -1134,7 +1140,7 @@ const Deposito = () => {
                     key={accion.key}
                     type="button"
                     onClick={accion.onClick}
-                    className={`btn-vivo inline-flex items-center justify-center gap-2 rounded-ios-pill px-4 py-2.5 text-sm font-semibold text-white ${accion.face} ${accion.glow}`}
+                    className={`btn-vivo shrink-0 inline-flex items-center justify-center gap-2 rounded-ios-pill px-4 py-2.5 text-sm font-semibold text-white ${accion.face} ${accion.glow}`}
                   >
                     <Icono className="w-4 h-4" />
                     {accion.label}
@@ -1249,16 +1255,20 @@ const Deposito = () => {
               )}
             </div>
           )}
-          <div className="mb-4 flex items-center gap-3 flex-wrap">
+          <div className="mb-4 flex items-center gap-2 flex-wrap">
             <IosSearch
               value={search}
               onChange={setSearch}
               placeholder="Buscar por nombre, categoría o código..."
-              className="w-full md:w-96"
+              className="min-w-0 flex-1 md:w-96 md:flex-none"
+            />
+            <ScannerButton
+              onClick={() => setScannerOpen(true)}
+              title="Escanear QR o código de barras"
             />
             <button
               onClick={() => setSoloConStock(!soloConStock)}
-              className={`px-3.5 py-2 rounded-ios-pill text-sm font-medium transition-all duration-150 active:scale-[0.97] ${
+              className={`shrink-0 px-3.5 py-2 rounded-ios-pill text-sm font-medium transition-all duration-150 active:scale-[0.97] ${
                 soloConStock
                   ? 'btn-vivo btn-vivo-violeta font-semibold'
                   : 'btn-vivo btn-vivo-gris'
@@ -1524,7 +1534,7 @@ const Deposito = () => {
 
       {tab === 'movimientos' && esAdmin && (
         <>
-          <div className="mb-4 flex items-center gap-3 flex-wrap">
+          <div className="mb-4 grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center sm:gap-3">
             <IosSearch
               value={movBuscar}
               onChange={(v) => {
@@ -1532,12 +1542,12 @@ const Deposito = () => {
                 setMovLimit(100);
               }}
               placeholder="Buscar por producto..."
-              className="w-full sm:w-72"
+              className="col-span-2 w-full sm:w-72"
             />
             <IosSelect
               value={movTipo}
               onChange={(e) => { setMovTipo(e.target.value); setMovLimit(100); }}
-              className="w-full sm:w-56"
+              className="col-span-2 w-full sm:w-56"
             >
               <option value="" className="bg-ios-surface2">Todos los movimientos</option>
               {Object.entries(TIPOS).map(([key, info]) => (
@@ -1549,7 +1559,7 @@ const Deposito = () => {
               max={hoyISO()}
               value={movDesde}
               onChange={(e) => { setMovDesde(e.target.value); setMovLimit(100); }}
-              className={`px-3.5 py-2.5 bg-ios-surface2 rounded-ios-control text-ios-label text-sm focus:outline-none focus:ring-2 focus:ring-ios-tint/40 ${errorFiltroMov ? 'ring-2 ring-ios-red/60' : ''}`}
+              className={`w-full px-2.5 py-2.5 bg-ios-surface2 rounded-ios-control text-ios-label text-sm focus:outline-none focus:ring-2 focus:ring-ios-tint/40 sm:px-3.5 ${errorFiltroMov ? 'ring-2 ring-ios-red/60' : ''}`}
               aria-label="Desde"
             />
             <input
@@ -1557,15 +1567,15 @@ const Deposito = () => {
               max={hoyISO()}
               value={movHasta}
               onChange={(e) => { setMovHasta(e.target.value); setMovLimit(100); }}
-              className={`px-3.5 py-2.5 bg-ios-surface2 rounded-ios-control text-ios-label text-sm focus:outline-none focus:ring-2 focus:ring-ios-tint/40 ${errorFiltroMov ? 'ring-2 ring-ios-red/60' : ''}`}
+              className={`w-full px-2.5 py-2.5 bg-ios-surface2 rounded-ios-control text-ios-label text-sm focus:outline-none focus:ring-2 focus:ring-ios-tint/40 sm:px-3.5 ${errorFiltroMov ? 'ring-2 ring-ios-red/60' : ''}`}
               aria-label="Hasta"
             />
             {errorFiltroMov && (
-              <p className="w-full text-ios-red text-xs font-medium">{errorFiltroMov}</p>
+              <p className="col-span-2 w-full text-ios-red text-xs font-medium">{errorFiltroMov}</p>
             )}
             <button
               onClick={exportarMovimientosCsv}
-              className="btn-vivo btn-vivo-gris px-3.5 py-2 rounded-ios-pill text-sm font-medium"
+              className="col-span-2 btn-vivo btn-vivo-gris w-full px-3.5 py-2 rounded-ios-pill text-sm font-medium sm:w-auto"
             >
               Exportar CSV
             </button>
@@ -1632,7 +1642,7 @@ const Deposito = () => {
           <div className="fixed inset-0 z-30" onClick={cerrarDropdown} />
           <div
             ref={dropdownRef}
-            className="fixed z-40 w-52 bg-ios-surface/95 backdrop-blur-2xl border border-white/10 rounded-2xl shadow-ios-alert p-1.5 animate-ios-modal"
+            className="fixed z-50 w-52 max-h-[min(70dvh,20rem)] overflow-y-auto bg-ios-surface/95 backdrop-blur-2xl border border-white/10 rounded-2xl shadow-ios-alert p-1.5 animate-ios-modal"
             style={{ left: dropdown.x, top: dropdown.y }}
           >
             <button
@@ -2329,6 +2339,13 @@ const Deposito = () => {
           </>
         )}
       </IosModal>
+
+      <ScannerModal
+        open={scannerOpen}
+        onClose={() => setScannerOpen(false)}
+        onLeer={manejarCodigoEscaneado}
+        titulo="Escanear producto"
+      />
     </div>
   );
 };
