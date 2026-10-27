@@ -293,8 +293,15 @@ app.use('/api', (req, res) => {
 
 if (!isDev && !process.env.VERCEL) {
   const frontendDist = path.resolve(__dirname, '..', 'frontend', 'dist');
-  app.use(express.static(frontendDist));
+  app.use(express.static(frontendDist, {
+    setHeaders: (res, filePath) => {
+      if (filePath.endsWith('index.html') || filePath.endsWith('sw.js')) {
+        res.setHeader('Cache-Control', 'no-store');
+      }
+    },
+  }));
   app.use((req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
     res.sendFile(path.join(frontendDist, 'index.html'), (error) => {
       if (!error || res.headersSent) return;
       res.status(404).json({ message: 'Frontend no compilado' });
