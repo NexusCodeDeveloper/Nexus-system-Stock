@@ -11,6 +11,7 @@ import ScannerButton from '../scanner/ScannerButton';
 import ScannerModal from '../scanner/ScannerModal';
 import { useLector } from '../../context/lectorContexto';
 import { formatMoney } from '../../utils/format';
+import { CANTIDAD, hayErrores, LIMITES, validarEntero, validarTexto } from '../../utils/validacion';
 
 const variantLabel = (v) => [v.talle, v.color].filter(Boolean).join(' / ') || 'Base';
 
@@ -39,6 +40,7 @@ const FormularioDevolucion = ({ sale, open, onClose, onDone, defaultExchange = f
   const [exchangeCantidad, setExchangeCantidad] = useState('1');
   const [exchangeVariantIdx, setExchangeVariantIdx] = useState('');
   const [metodoPago, setMetodoPago] = useState('efectivo');
+  const [errores, setErrores] = useState({});
   const [saving, setSaving] = useState(false);
   const [scannerOpen, setScannerOpen] = useState(false);
 
@@ -79,6 +81,7 @@ const FormularioDevolucion = ({ sale, open, onClose, onDone, defaultExchange = f
     setProducts([]);
     setProductsError('');
     setCodigosVariantes({});
+    setErrores({});
     const idsProductos = [...new Set(
       saleItems.map((it) => String(getItemId(it) || '')).filter(Boolean)
     )];
@@ -131,6 +134,7 @@ const FormularioDevolucion = ({ sale, open, onClose, onDone, defaultExchange = f
   const selectItem = (idx) => {
     setItemIdx(idx);
     setCantidad(String(items[idx]?.cantidad || 1));
+    setErrores((prev) => ({ ...prev, cantidad: '' }));
   };
 
   const cantidadDevolver = Number(cantidad) || 0;
@@ -147,18 +151,23 @@ const FormularioDevolucion = ({ sale, open, onClose, onDone, defaultExchange = f
   const confirmar = async () => {
     if (saving) return;
     const motivoFinal = motivo === 'Otro' ? otroMotivo.trim() : motivo.trim();
-    if (!motivoFinal) {
-      alert({ icon: 'warning', title: 'Campo requerido', message: 'Debe ingresar un motivo' });
-      return;
+    const errs = {
+      motivo: validarTexto(motivoFinal, LIMITES.motivo, 'El motivo'),
+      cantidad: validarEntero(cantidad, {
+        min: CANTIDAD.min,
+        max: maxCantidad,
+        etiqueta: 'La cantidad a devolver',
+      }),
+    };
+    if (exchangeActivo) {
+      errs.exchangeCantidad = validarEntero(exchangeCantidad, {
+        min: CANTIDAD.min,
+        max: CANTIDAD.max,
+        etiqueta: 'La cantidad a cargar',
+      });
     }
-    if (cantidadDevolver < 1) {
-      alert({ icon: 'warning', title: 'Cantidad inválida', message: 'Debe devolver al menos 1 unidad' });
-      return;
-    }
-    if (cantidadDevolver > maxCantidad) {
-      alert({ icon: 'warning', title: 'Cantidad inválida', message: `Solo hay ${maxCantidad} unidad(es) de este producto en el ticket` });
-      return;
-    }
+    setErrores(errs);
+    if (hayErrores(errs)) return;
 
     let payload;
     let esCambio = false;
@@ -169,10 +178,6 @@ const FormularioDevolucion = ({ sale, open, onClose, onDone, defaultExchange = f
       }
       if (exchangeTarget.variantes?.length > 0 && exchangeVariantIdx === '') {
         alert({ icon: 'warning', title: 'Campo requerido', message: 'Debe seleccionar la variante del producto nuevo' });
-        return;
-      }
-      if (cantidadCargar < 1) {
-        alert({ icon: 'warning', title: 'Cantidad inválida', message: 'Debe cargar al menos 1 unidad' });
         return;
       }
       const excVariant = exchangeTarget.variantes?.[Number(exchangeVariantIdx)];
@@ -314,14 +319,19 @@ const FormularioDevolucion = ({ sale, open, onClose, onDone, defaultExchange = f
           </p>
         )}
 
-        <IosField label="Cantidad a devolver" hint={`Disponible en el ticket: ${maxCantidad}`}>
+        <IosField label="Cantidad a devolver" hint={`Disponible en el ticket: ${maxCantidad}`} error={errores.cantidad}>
           <IosInput
             type="text"
             inputMode="numeric"
+            maxLength={6}
+            invalid={Boolean(errores.cantidad)}
             value={cantidad}
             onChange={(e) => {
               const v = e.target.value;
-              if (v === '' || /^\d+$/.test(v)) setCantidad(v);
+              if ((v === '' || /^\d+$/.test(v)) && (v === '' || Number(v) <= CANTIDAD.max)) {
+                setErrores((prev) => ({ ...prev, cantidad: '' }));
+                setCantidad(v);
+              }
             }}
           />
         </IosField>
@@ -403,14 +413,19 @@ const FormularioDevolucion = ({ sale, open, onClose, onDone, defaultExchange = f
                     </IosSelect>
                   </IosField>
                 )}
-                <IosField label="Cantidad a cargar">
+                <IosField label="Cantidad a cargar" error={errores.exchangeCantidad}>
                   <IosInput
                     type="text"
                     inputMode="numeric"
+                    maxLength={6}
+                    invalid={Boolean(errores.exchangeCantidad)}
                     value={exchangeCantidad}
                     onChange={(e) => {
                       const v = e.target.value;
-                      if (v === '' || /^\d+$/.test(v)) setExchangeCantidad(v);
+                      if ((v === '' || /^\d+$/.test(v)) && (v === '' || Number(v) <= CANTIDAD.max)) {
+                        setErrores((prev) => ({ ...prev, exchangeCantidad: '' }));
+                        setExchangeCantidad(v);
+                      }
                     }}
                   />
                 </IosField>
@@ -444,8 +459,15 @@ const FormularioDevolucion = ({ sale, open, onClose, onDone, defaultExchange = f
           </>
         )}
 
-        <IosField label="Motivo" required>
-          <IosSelect value={motivo} onChange={(e) => setMotivo(e.target.value)}>
+        <IosField label="Motivo" required error={motivo !== 'Otro' ? errores.motivo : ''}>
+          <IosSelect
+            value={motivo}
+            invalid={Boolean(motivo !== 'Otro' && errores.motivo)}
+            onChange={(e) => {
+              setErrores((prev) => ({ ...prev, motivo: '' }));
+              setMotivo(e.target.value);
+            }}
+          >
             <option value="" className="bg-ios-surface2">Seleccionar motivo</option>
             <option value="Defectuoso" className="bg-ios-surface2">Defectuoso</option>
             <option value="Cambio de talla" className="bg-ios-surface2">Cambio de talla</option>
@@ -456,11 +478,16 @@ const FormularioDevolucion = ({ sale, open, onClose, onDone, defaultExchange = f
         </IosField>
 
         {motivo === 'Otro' && (
-          <IosField label="Detalle del motivo">
+          <IosField label="Detalle del motivo" error={errores.motivo}>
             <IosInput
               type="text"
               value={otroMotivo}
-              onChange={(e) => setOtroMotivo(e.target.value)}
+              maxLength={LIMITES.motivo.max}
+              invalid={Boolean(errores.motivo)}
+              onChange={(e) => {
+                setErrores((prev) => ({ ...prev, motivo: '' }));
+                setOtroMotivo(e.target.value);
+              }}
               placeholder="Escribí el motivo..."
             />
           </IosField>
