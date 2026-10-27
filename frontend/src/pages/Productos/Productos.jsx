@@ -14,6 +14,7 @@ import { formatMoney, formatDate } from '../../utils/format';
 import { precioVigente, tieneOferta, etiquetaOferta } from '../../utils/precios';
 import { depositoTotal, tieneStockBajo, soloEnDeposito, paramsProductos } from '../../utils/productos';
 import { calcularPagina } from '../../utils/paginacion';
+import { CANTIDAD, limitarTexto } from '../../utils/validacion';
 import { useApi } from '../../hooks/useApi';
 import { useCategorias } from '../../hooks/useCategorias';
 import { useDropdownAnclado } from '../../hooks/useDropdownAnclado';
@@ -91,10 +92,12 @@ const Productos = () => {
   const [scannerContinuo, setScannerContinuo] = useState(false);
   const [quickAdd, setQuickAdd] = useState(null);
   const [qaCantidad, setQaCantidad] = useState('1');
+  const [qaError, setQaError] = useState('');
   const [qaVariantIdx, setQaVariantIdx] = useState('');
 
   const [retirarModal, setRetirarModal] = useState(null);
   const [retirarCantidad, setRetirarCantidad] = useState('1');
+  const [retirarError, setRetirarError] = useState('');
   const [retirarVariantIdx, setRetirarVariantIdx] = useState('');
   const [retirarSaving, setRetirarSaving] = useState(false);
 
@@ -228,14 +231,15 @@ const Productos = () => {
   const openQuickAdd = (product) => {
     setQuickAdd(product);
     setQaCantidad('1');
+    setQaError('');
     setQaVariantIdx('');
   };
 
   const confirmQuickAdd = () => {
     if (!quickAdd) return;
     const cantidad = Number(qaCantidad);
-    if (cantidad < 1) {
-      alert({ icon: 'warning', title: 'Cantidad inválida' });
+    if (!Number.isInteger(cantidad) || cantidad < CANTIDAD.min || cantidad > CANTIDAD.max) {
+      setQaError(`La cantidad debe estar entre ${CANTIDAD.min} y ${CANTIDAD.max}`);
       return;
     }
     if (quickAdd.variantes?.length > 0 && qaVariantIdx === '') {
@@ -250,9 +254,10 @@ const Productos = () => {
       (i) => i.producto === quickAdd._id && i.talle === talle && i.color === color
     );
     if (Number(enCarrito?.cantidad || 0) + cantidad > stockDisponible) {
-      alert({ icon: 'warning', title: 'Stock insuficiente', message: `Solo hay ${stockDisponible} unidad(es) disponible(s)` });
+      setQaError(`Solo hay ${stockDisponible} unidad(es) disponible(s)`);
       return;
     }
+    setQaError('');
     addItem({
       producto: quickAdd._id,
       nombre: quickAdd.nombre,
@@ -270,6 +275,7 @@ const Productos = () => {
   const openRetirar = (product) => {
     setRetirarModal(product);
     setRetirarCantidad('1');
+    setRetirarError('');
     setRetirarVariantIdx(product?.variantes?.length === 1 ? '0' : '');
   };
 
@@ -286,14 +292,15 @@ const Productos = () => {
       return;
     }
     const cantidad = Number(retirarCantidad);
-    if (!Number.isInteger(cantidad) || cantidad < 1) {
-      alert({ icon: 'warning', title: 'Cantidad inválida', message: 'Debe ingresar al menos 1 unidad' });
+    if (!Number.isInteger(cantidad) || cantidad < CANTIDAD.min || cantidad > CANTIDAD.max) {
+      setRetirarError(`La cantidad debe estar entre ${CANTIDAD.min} y ${CANTIDAD.max}`);
       return;
     }
     if (retirarDisponible != null && cantidad > retirarDisponible) {
-      alert({ icon: 'warning', title: 'Stock insuficiente', message: `Solo hay ${retirarDisponible} unidad(es) en salón` });
+      setRetirarError(`Solo hay ${retirarDisponible} unidad(es) en salón`);
       return;
     }
+    setRetirarError('');
     setRetirarSaving(true);
     try {
       await retirarStock(retirarModal._id, { cantidad, talle: retirarVariant?.talle || '', color: retirarVariant?.color || '' });
@@ -625,13 +632,18 @@ const Productos = () => {
       >
         <p className="text-ios-secondary text-sm mb-4 font-medium">{quickAdd?.nombre}</p>
         <div className="space-y-4">
-          <IosField label="Cantidad">
+          <IosField label="Cantidad" error={qaError}>
             <IosInput
               type="text" inputMode="numeric"
+              maxLength={6}
+              invalid={Boolean(qaError)}
               value={qaCantidad}
               onChange={(e) => {
                 const v = e.target.value;
-                if (v === '' || /^\d+$/.test(v)) setQaCantidad(v);
+                if ((v === '' || /^\d+$/.test(v)) && (v === '' || Number(v) <= CANTIDAD.max)) {
+                  setQaError('');
+                  setQaCantidad(v);
+                }
               }}
             />
           </IosField>
@@ -738,10 +750,11 @@ const Productos = () => {
               <div className="flex flex-wrap items-center gap-2 sm:ml-auto w-full sm:w-auto">
                 <input
                   type="text" inputMode="numeric"
+                  maxLength={6}
                   value={item.cantidad}
                   onChange={(e) => {
-                    const v = e.target.value;
-                    if (v === '' || /^\d+$/.test(v)) updateCartItem(idx, 'cantidad', v);
+                    const v = limitarTexto(e.target.value, 6);
+                    if (v === '' || (/^\d+$/.test(v) && Number(v) <= CANTIDAD.max)) updateCartItem(idx, 'cantidad', v);
                   }}
                   className="w-14 sm:w-16 px-2 py-1.5 text-center bg-ios-surface2 rounded-lg text-ios-label text-sm [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                 />
@@ -777,6 +790,7 @@ const Productos = () => {
             <IosField label="Descuento">
               <IosInput
                 type="text" inputMode="numeric"
+                maxLength={3}
                 value={sellDescuento}
                 onChange={(e) => {
                   const v = e.target.value;
@@ -828,9 +842,10 @@ const Productos = () => {
                   <span className="text-sm text-ios-tertiary font-mono">$</span>
                   <input
                     type="text" inputMode="numeric"
+                    maxLength={12}
                     value={sellMonto2}
                     onChange={(e) => {
-                      const v = e.target.value;
+                      const v = limitarTexto(e.target.value, 12);
                       if (v === '' || /^\d*\.?\d{0,2}$/.test(v)) setSellMonto2(v);
                     }}
                     className="w-24 sm:w-28 px-3 py-2.5 bg-ios-surface2 rounded-ios-control text-ios-label text-sm text-right focus:outline-none focus:ring-2 focus:ring-ios-tint/40 transition-all [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
@@ -882,13 +897,18 @@ const Productos = () => {
         </p>
         <div className="space-y-4">
           {renderVariantSelect(retirarVariants, retirarVariantIdx, setRetirarVariantIdx)}
-          <IosField label="Unidades a retirar" hint={`Disponible en salón: ${retirarDisponible ?? '—'}`}>
+          <IosField label="Unidades a retirar" hint={`Disponible en salón: ${retirarDisponible ?? '—'}`} error={retirarError}>
             <IosInput
               type="text" inputMode="numeric"
+              maxLength={6}
+              invalid={Boolean(retirarError)}
               value={retirarCantidad}
               onChange={(e) => {
                 const v = e.target.value;
-                if (v === '' || /^\d+$/.test(v)) setRetirarCantidad(v);
+                if ((v === '' || /^\d+$/.test(v)) && (v === '' || Number(v) <= CANTIDAD.max)) {
+                  setRetirarError('');
+                  setRetirarCantidad(v);
+                }
               }}
             />
           </IosField>
