@@ -9,6 +9,21 @@ import { formatDate, formatMoney } from '../../utils/format';
 import { precioVigente, tieneOferta, etiquetaOferta } from '../../utils/precios';
 import { depositoTotal, salonTotal, variantLabel, paramsProductos } from '../../utils/productos';
 import { calcularPagina } from '../../utils/paginacion';
+import {
+  AUMENTO_MONTO,
+  AUMENTO_PORCENTAJE,
+  CANTIDAD,
+  ETIQUETA_CANTIDAD,
+  hayErrores,
+  hoyISO,
+  LIMITES,
+  MONTO,
+  PORCENTAJE,
+  validarEntero,
+  validarNumero,
+  validarRangoFechas,
+  validarTexto,
+} from '../../utils/validacion';
 import { useApi } from '../../hooks/useApi';
 import { useCategorias } from '../../hooks/useCategorias';
 import { useDropdownAnclado } from '../../hooks/useDropdownAnclado';
@@ -108,6 +123,7 @@ const Deposito = () => {
   const [modalNuevoTalle, setModalNuevoTalle] = useState('');
   const [modalNuevoColor, setModalNuevoColor] = useState('');
   const [modalFijar, setModalFijar] = useState(false);
+  const [modalErrors, setModalErrors] = useState({});
   const [modalSaving, setModalSaving] = useState(false);
 
   const [showForm, setShowForm] = useState(false);
@@ -124,6 +140,7 @@ const Deposito = () => {
   const [etiquetaAlto, setEtiquetaAlto] = useState('40');
   const [etiquetaPrecio, setEtiquetaPrecio] = useState(true);
   const [etiquetaQr, setEtiquetaQr] = useState(true);
+  const [etiquetaErrors, setEtiquetaErrors] = useState({});
   const [etiquetaSaving, setEtiquetaSaving] = useState(false);
 
   const [movTipo, setMovTipo] = useState('');
@@ -140,10 +157,12 @@ const Deposito = () => {
   const [todosSel, setTodosSel] = useState(false);
   const [showPromo, setShowPromo] = useState(false);
   const [promoSaving, setPromoSaving] = useState(false);
+  const [promoErrors, setPromoErrors] = useState({});
   const [showGestion, setShowGestion] = useState(false);
   const [gestionTab, setGestionTab] = useState('ofertas');
   const [showAumento, setShowAumento] = useState(false);
   const [aumentoSaving, setAumentoSaving] = useState(false);
+  const [aumentoError, setAumentoError] = useState('');
   const [aumentoForm, setAumentoForm] = useState({ tipo: 'porcentaje', valor: '' });
   const [previewProductos, setPreviewProductos] = useState([]);
   const [previewLoading, setPreviewLoading] = useState(false);
@@ -162,6 +181,7 @@ const Deposito = () => {
     hasta: '',
     todos: false,
   });
+  const errorFiltroMov = validarRangoFechas(movDesde, movHasta);
 
   const { categorias, recargarCategorias } = useCategorias();
   const productosApi = useApi(
@@ -341,10 +361,10 @@ const Deposito = () => {
   }, [location.state, location.pathname, navigate]);
 
   useEffect(() => {
-    if (tab !== 'movimientos' || !esAdmin) return undefined;
+    if (tab !== 'movimientos' || !esAdmin || errorFiltroMov) return undefined;
     recargarMovimientos();
     return undefined;
-  }, [tab, movTipo, movBuscarDebounced, movDesde, movHasta, movLimit, esAdmin, recargarMovimientos]);
+  }, [tab, movTipo, movBuscarDebounced, movDesde, movHasta, movLimit, esAdmin, recargarMovimientos, errorFiltroMov]);
 
   const handleDelete = async (p) => {
     cerrarDropdown();
@@ -391,6 +411,7 @@ const Deposito = () => {
     setEtiquetaAlto(prefs.alto ? String(prefs.alto) : '40');
     setEtiquetaPrecio(prefs.precio !== false);
     setEtiquetaQr(prefs.qr !== false);
+    setEtiquetaErrors({});
     setEtiquetaModal(p);
   };
 
@@ -406,20 +427,22 @@ const Deposito = () => {
 
   const confirmarEtiqueta = async () => {
     if (!etiquetaModal || etiquetaSaving) return;
+    const errs = {
+      cantidad: validarEntero(etiquetaCantidad, {
+        ...ETIQUETA_CANTIDAD,
+        etiqueta: 'La cantidad de etiquetas',
+      }),
+      ancho: etiquetaMedida === 'custom'
+        ? validarNumero(etiquetaAncho, { min: 20, max: 210, etiqueta: 'El ancho' })
+        : '',
+      alto: etiquetaMedida === 'custom'
+        ? validarNumero(etiquetaAlto, { min: 10, max: 297, etiqueta: 'El alto' })
+        : '',
+    };
+    setEtiquetaErrors(errs);
+    if (hayErrores(errs)) return;
     const cantidad = Number(etiquetaCantidad);
-    if (!Number.isInteger(cantidad) || cantidad < 1 || cantidad > 100) {
-      alert({ icon: 'warning', title: 'Cantidad inválida', message: 'Ingresá un número entre 1 y 100' });
-      return;
-    }
     const { ancho, alto } = medidaEtiqueta;
-    if (ancho < 20 || ancho > 210 || alto < 10 || alto > 297) {
-      alert({
-        icon: 'warning',
-        title: 'Medida inválida',
-        message: 'Ingresá un ancho entre 20 y 210 mm y un alto entre 10 y 297 mm',
-      });
-      return;
-    }
 
     const variantes = etiquetaModal.variantes || [];
     let codigoEtiqueta = etiquetaModal.codigo;
@@ -482,6 +505,7 @@ const Deposito = () => {
     setModalNuevoTalle('');
     setModalNuevoColor('');
     setModalFijar(false);
+    setModalErrors({});
   };
 
   const modalProducto = stockModal?.producto;
@@ -498,25 +522,27 @@ const Deposito = () => {
   const confirmarModal = async () => {
     if (!stockModal || modalSaving) return;
     const esFijar = stockModal.modo === 'cargar' && modalFijar;
-    const cantidad = Number(modalCantidad);
-    if (!Number.isInteger(cantidad) || cantidad < 0 || (!esFijar && cantidad < 1)) {
-      alert({
-        icon: 'warning',
-        title: 'Cantidad inválida',
-        message: esFijar ? 'Ingresá una cantidad válida (0 o más)' : 'Debe ser al menos 1',
-      });
-      return;
+    const errs = {
+      cantidad: validarEntero(modalCantidad, {
+        min: esFijar ? 0 : 1,
+        max: CANTIDAD.max,
+        etiqueta: 'La cantidad',
+      }),
+      talle: modalEsNueva ? validarTexto(modalNuevoTalle, LIMITES.talle, 'El talle') : '',
+      color: modalEsNueva ? validarTexto(modalNuevoColor, LIMITES.color, 'El color') : '',
+    };
+    if (modalEsNueva && !modalNuevoTalle.trim() && !modalNuevoColor.trim()) {
+      errs.talle = 'Ingresá el talle o el color de la nueva variante';
     }
+    setModalErrors(errs);
+    if (hayErrores(errs)) return;
+    const cantidad = Number(modalCantidad);
     if (modalVariants.length > 0 && modalVariantIdx === '') {
       alert({ icon: 'warning', title: 'Campo requerido', message: 'Seleccioná la variante' });
       return;
     }
-    if (modalEsNueva && !modalNuevoTalle.trim() && !modalNuevoColor.trim()) {
-      alert({ icon: 'warning', title: 'Campo requerido', message: 'Ingresá el talle o el color de la nueva variante' });
-      return;
-    }
     if (stockModal.modo === 'reponer' && cantidad > disponibleModal) {
-      alert({ icon: 'warning', title: 'Stock insuficiente', message: `Solo hay ${disponibleModal} unidad(es) en depósito` });
+      setModalErrors({ cantidad: `Solo hay ${disponibleModal} unidad(es) en depósito` });
       return;
     }
     if (esFijar && cantidad === disponibleModal) {
@@ -752,30 +778,34 @@ const Deposito = () => {
       hasta: isoLocalParaInput(fin),
       todos: false,
     });
+    setPromoErrors({});
     setShowPromo(true);
   };
 
   const guardarPromo = async () => {
     if (promoSaving) return;
+    const errs = {
+      nombre: validarTexto(promoForm.nombre, LIMITES.nombrePromocion, 'El nombre'),
+      valor: validarNumero(promoForm.valor, {
+        min: 0.01,
+        max: promoForm.tipo === 'porcentaje' ? PORCENTAJE.max : MONTO.max,
+        etiqueta: 'El descuento',
+      }),
+      desde: validarTexto(promoForm.desde, { min: 1, max: 30 }, 'La fecha de inicio'),
+      hasta: validarTexto(promoForm.hasta, { min: 1, max: 30 }, 'La fecha de fin'),
+    };
+    if (!errs.desde && !errs.hasta && promoForm.hasta <= promoForm.desde) {
+      errs.hasta = 'La fecha de fin debe ser posterior a la de inicio';
+    }
+    setPromoErrors(errs);
+    if (hayErrores(errs)) return;
     if (!promoForm.todos && seleccionados.size === 0) {
       alert({ icon: 'warning', title: 'Sin productos', message: 'Seleccioná al menos un producto o aplicá a todos' });
       return;
     }
     const valor = Number(promoForm.valor);
-    if (!Number.isFinite(valor) || valor <= 0) {
-      alert({ icon: 'warning', title: 'Descuento inválido', message: 'El descuento debe ser mayor a 0' });
-      return;
-    }
-    if (promoForm.tipo === 'porcentaje' && valor > 100) {
-      alert({ icon: 'warning', title: 'Porcentaje inválido', message: 'El porcentaje no puede superar el 100%' });
-      return;
-    }
     const desde = new Date(promoForm.desde);
     const hasta = new Date(promoForm.hasta);
-    if (Number.isNaN(desde.getTime()) || Number.isNaN(hasta.getTime()) || hasta <= desde) {
-      alert({ icon: 'warning', title: 'Fechas inválidas', message: 'La fecha de fin debe ser posterior a la de inicio' });
-      return;
-    }
     setPromoSaving(true);
     try {
       await crearPromocion({
@@ -884,6 +914,7 @@ const Deposito = () => {
 
   const abrirAumento = async () => {
     setAumentoForm({ tipo: 'porcentaje', valor: '' });
+    setAumentoError('');
     setShowAumento(true);
     setPreviewLoading(true);
     try {
@@ -926,19 +957,18 @@ const Deposito = () => {
 
   const guardarAumento = async () => {
     if (aumentoSaving) return;
+    const err = validarNumero(aumentoForm.valor, {
+      min: 0.01,
+      max: aumentoForm.tipo === 'porcentaje' ? AUMENTO_PORCENTAJE.max : AUMENTO_MONTO.max,
+      etiqueta: 'El aumento',
+    });
+    setAumentoError(err);
+    if (err) return;
     if (seleccionados.size === 0) {
       alert({ icon: 'warning', title: 'Sin productos', message: 'Seleccioná al menos un producto para aplicar el aumento' });
       return;
     }
     const valor = Number(aumentoForm.valor);
-    if (!Number.isFinite(valor) || valor <= 0) {
-      alert({ icon: 'warning', title: 'Aumento inválido', message: 'El aumento debe ser mayor a 0' });
-      return;
-    }
-    if (aumentoForm.tipo === 'porcentaje' && valor > 10000) {
-      alert({ icon: 'warning', title: 'Porcentaje inválido', message: 'El porcentaje no puede superar el 10000%' });
-      return;
-    }
     const ok = await confirm({
       icon: 'warning',
       title: '¿Aplicar el aumento?',
@@ -1516,18 +1546,23 @@ const Deposito = () => {
             </IosSelect>
             <input
               type="date"
+              max={hoyISO()}
               value={movDesde}
               onChange={(e) => { setMovDesde(e.target.value); setMovLimit(100); }}
-              className="px-3.5 py-2.5 bg-ios-surface2 rounded-ios-control text-ios-label text-sm focus:outline-none focus:ring-2 focus:ring-ios-tint/40"
+              className={`px-3.5 py-2.5 bg-ios-surface2 rounded-ios-control text-ios-label text-sm focus:outline-none focus:ring-2 focus:ring-ios-tint/40 ${errorFiltroMov ? 'ring-2 ring-ios-red/60' : ''}`}
               aria-label="Desde"
             />
             <input
               type="date"
+              max={hoyISO()}
               value={movHasta}
               onChange={(e) => { setMovHasta(e.target.value); setMovLimit(100); }}
-              className="px-3.5 py-2.5 bg-ios-surface2 rounded-ios-control text-ios-label text-sm focus:outline-none focus:ring-2 focus:ring-ios-tint/40"
+              className={`px-3.5 py-2.5 bg-ios-surface2 rounded-ios-control text-ios-label text-sm focus:outline-none focus:ring-2 focus:ring-ios-tint/40 ${errorFiltroMov ? 'ring-2 ring-ios-red/60' : ''}`}
               aria-label="Hasta"
             />
+            {errorFiltroMov && (
+              <p className="w-full text-ios-red text-xs font-medium">{errorFiltroMov}</p>
+            )}
             <button
               onClick={exportarMovimientosCsv}
               className="btn-vivo btn-vivo-gris px-3.5 py-2 rounded-ios-pill text-sm font-medium"
@@ -1709,19 +1744,29 @@ const Deposito = () => {
 
             {modalEsNueva && (
               <div className="grid grid-cols-2 gap-3">
-                <IosField label="Talle nuevo">
+                <IosField label="Talle nuevo" error={modalErrors.talle}>
                   <IosInput
                     type="text"
+                    maxLength={LIMITES.talle.max}
+                    invalid={Boolean(modalErrors.talle)}
                     value={modalNuevoTalle}
-                    onChange={(e) => setModalNuevoTalle(e.target.value)}
+                    onChange={(e) => {
+                      setModalErrors((prev) => ({ ...prev, talle: '' }));
+                      setModalNuevoTalle(e.target.value);
+                    }}
                     placeholder="Ej: XL"
                   />
                 </IosField>
-                <IosField label="Color nuevo">
+                <IosField label="Color nuevo" error={modalErrors.color}>
                   <IosInput
                     type="text"
+                    maxLength={LIMITES.color.max}
+                    invalid={Boolean(modalErrors.color)}
                     value={modalNuevoColor}
-                    onChange={(e) => setModalNuevoColor(e.target.value)}
+                    onChange={(e) => {
+                      setModalErrors((prev) => ({ ...prev, color: '' }));
+                      setModalNuevoColor(e.target.value);
+                    }}
                     placeholder="Ej: Azul"
                   />
                 </IosField>
@@ -1757,6 +1802,7 @@ const Deposito = () => {
 
             <IosField
               label="Cantidad"
+              error={modalErrors.cantidad}
               hint={
                 stockModal.modo === 'reponer'
                   ? `Disponible en depósito: ${disponibleModal}`
@@ -1768,10 +1814,15 @@ const Deposito = () => {
               <IosInput
                 type="text"
                 inputMode="numeric"
+                maxLength={6}
+                invalid={Boolean(modalErrors.cantidad)}
                 value={modalCantidad}
                 onChange={(e) => {
                   const v = e.target.value;
-                  if (v === '' || /^\d+$/.test(v)) setModalCantidad(v);
+                  if ((v === '' || /^\d+$/.test(v)) && (v === '' || Number(v) <= CANTIDAD.max)) {
+                    setModalErrors((prev) => ({ ...prev, cantidad: '' }));
+                    setModalCantidad(v);
+                  }
                 }}
               />
             </IosField>
@@ -1884,39 +1935,58 @@ const Deposito = () => {
 
             {etiquetaMedida === 'custom' && (
               <div className="grid grid-cols-2 gap-3">
-                <IosField label="Ancho (mm)">
+                <IosField label="Ancho (mm)" hint="Entre 20 y 210 mm" error={etiquetaErrors.ancho}>
                   <IosInput
                     type="text"
                     inputMode="numeric"
+                    maxLength={3}
+                    invalid={Boolean(etiquetaErrors.ancho)}
                     value={etiquetaAncho}
                     onChange={(e) => {
                       const v = e.target.value;
-                      if (v === '' || /^\d{1,3}$/.test(v)) setEtiquetaAncho(v);
+                      if (v === '' || /^\d{1,3}$/.test(v)) {
+                        setEtiquetaErrors((prev) => ({ ...prev, ancho: '' }));
+                        setEtiquetaAncho(v);
+                      }
                     }}
                   />
                 </IosField>
-                <IosField label="Alto (mm)">
+                <IosField label="Alto (mm)" hint="Entre 10 y 297 mm" error={etiquetaErrors.alto}>
                   <IosInput
                     type="text"
                     inputMode="numeric"
+                    maxLength={3}
+                    invalid={Boolean(etiquetaErrors.alto)}
                     value={etiquetaAlto}
                     onChange={(e) => {
                       const v = e.target.value;
-                      if (v === '' || /^\d{1,3}$/.test(v)) setEtiquetaAlto(v);
+                      if (v === '' || /^\d{1,3}$/.test(v)) {
+                        setEtiquetaErrors((prev) => ({ ...prev, alto: '' }));
+                        setEtiquetaAlto(v);
+                      }
                     }}
                   />
                 </IosField>
               </div>
             )}
 
-            <IosField label="Cantidad de etiquetas" hint="Entre 1 y 100">
+            <IosField
+              label="Cantidad de etiquetas"
+              hint={`Entre ${ETIQUETA_CANTIDAD.min} y ${ETIQUETA_CANTIDAD.max}`}
+              error={etiquetaErrors.cantidad}
+            >
               <IosInput
                 type="text"
                 inputMode="numeric"
+                maxLength={3}
+                invalid={Boolean(etiquetaErrors.cantidad)}
                 value={etiquetaCantidad}
                 onChange={(e) => {
                   const v = e.target.value;
-                  if (v === '' || /^\d{1,3}$/.test(v)) setEtiquetaCantidad(v);
+                  if (v === '' || /^\d{1,3}$/.test(v)) {
+                    setEtiquetaErrors((prev) => ({ ...prev, cantidad: '' }));
+                    setEtiquetaCantidad(v);
+                  }
                 }}
               />
             </IosField>
@@ -1959,10 +2029,15 @@ const Deposito = () => {
         confirmDisabled={promoSaving}
       >
         <div className="space-y-3">
-          <IosField label="Nombre (opcional)">
+          <IosField label="Nombre (opcional)" error={promoErrors.nombre}>
             <IosInput
               value={promoForm.nombre}
-              onChange={(e) => setPromoForm((f) => ({ ...f, nombre: e.target.value }))}
+              maxLength={LIMITES.nombrePromocion.max}
+              invalid={Boolean(promoErrors.nombre)}
+              onChange={(e) => {
+                setPromoErrors((prev) => ({ ...prev, nombre: '' }));
+                setPromoForm((f) => ({ ...f, nombre: e.target.value }));
+              }}
               placeholder="Ej: Oferta de primavera"
             />
           </IosField>
@@ -1973,32 +2048,45 @@ const Deposito = () => {
                 <option value="monto" className="bg-ios-surface2">Monto fijo ($)</option>
               </IosSelect>
             </IosField>
-            <IosField label={promoForm.tipo === 'porcentaje' ? 'Descuento (%)' : 'Descuento ($)'} required>
+            <IosField label={promoForm.tipo === 'porcentaje' ? 'Descuento (%)' : 'Descuento ($)'} required error={promoErrors.valor}>
               <IosInput
                 type="text"
                 inputMode="decimal"
+                maxLength={12}
+                invalid={Boolean(promoErrors.valor)}
                 value={promoForm.valor}
                 onChange={(e) => {
                   const v = e.target.value;
-                  if (v === '' || /^\d{0,5}(\.\d{0,2})?$/.test(v)) setPromoForm((f) => ({ ...f, valor: v }));
+                  if (v === '' || /^\d{0,8}(\.\d{0,2})?$/.test(v)) {
+                    setPromoErrors((prev) => ({ ...prev, valor: '' }));
+                    setPromoForm((f) => ({ ...f, valor: v }));
+                  }
                 }}
                 placeholder={promoForm.tipo === 'porcentaje' ? 'Ej: 20' : 'Ej: 1500'}
               />
             </IosField>
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <IosField label="Desde" required>
+            <IosField label="Desde" required error={promoErrors.desde}>
               <IosInput
                 type="datetime-local"
+                invalid={Boolean(promoErrors.desde)}
                 value={promoForm.desde}
-                onChange={(e) => setPromoForm((f) => ({ ...f, desde: e.target.value }))}
+                onChange={(e) => {
+                  setPromoErrors((prev) => ({ ...prev, desde: '' }));
+                  setPromoForm((f) => ({ ...f, desde: e.target.value }));
+                }}
               />
             </IosField>
-            <IosField label="Hasta" required>
+            <IosField label="Hasta" required error={promoErrors.hasta}>
               <IosInput
                 type="datetime-local"
+                invalid={Boolean(promoErrors.hasta)}
                 value={promoForm.hasta}
-                onChange={(e) => setPromoForm((f) => ({ ...f, hasta: e.target.value }))}
+                onChange={(e) => {
+                  setPromoErrors((prev) => ({ ...prev, hasta: '' }));
+                  setPromoForm((f) => ({ ...f, hasta: e.target.value }));
+                }}
               />
             </IosField>
           </div>
@@ -2033,14 +2121,19 @@ const Deposito = () => {
                 <option value="monto" className="bg-ios-surface2">Monto fijo ($)</option>
               </IosSelect>
             </IosField>
-            <IosField label={aumentoForm.tipo === 'porcentaje' ? 'Aumento (%)' : 'Aumento ($)'} required>
+            <IosField label={aumentoForm.tipo === 'porcentaje' ? 'Aumento (%)' : 'Aumento ($)'} required error={aumentoError}>
               <IosInput
                 type="text"
                 inputMode="decimal"
+                maxLength={12}
+                invalid={Boolean(aumentoError)}
                 value={aumentoForm.valor}
                 onChange={(e) => {
                   const v = e.target.value;
-                  if (v === '' || /^\d{0,5}(\.\d{0,2})?$/.test(v)) setAumentoForm((f) => ({ ...f, valor: v }));
+                  if (v === '' || /^\d{0,8}(\.\d{0,2})?$/.test(v)) {
+                    setAumentoError('');
+                    setAumentoForm((f) => ({ ...f, valor: v }));
+                  }
                 }}
                 placeholder={aumentoForm.tipo === 'porcentaje' ? 'Ej: 10' : 'Ej: 500'}
               />
