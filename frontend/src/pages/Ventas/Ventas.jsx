@@ -7,6 +7,7 @@ import Ticket, { printTicket } from '../../components/Ticket/Ticket';
 import FormularioDevolucion from '../../components/FormularioDevolucion/FormularioDevolucion';
 import { obtenerMensajeErrorApi } from '../../utils/apiError';
 import { formatMoney, formatDate, formatDateSafe, formatDateShort } from '../../utils/format';
+import { validarRangoFechas } from '../../utils/validacion';
 import { escucharPush } from '../../services/GestorPush';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
 import { useAutenticacion } from '../../context/autenticacionContexto';
@@ -235,10 +236,16 @@ const Ventas = () => {
   const [resendingId, setResendingId] = useState(null);
   const [withdrawalOpen, setWithdrawalOpen] = useState(false);
 
+  const errorRangoVentas = validarRangoFechas(desde, hasta);
+  const errorRangoCierres = validarRangoFechas(cDesde, cHasta);
+
   const { caja, refresh: refreshCaja, openAbrir, openCerrar, diaCompleto, esDeHoy } = useCaja();
 
   const ventasApi = useApi(
     async () => {
+      if (desde && hasta && desde > hasta) {
+        return { data: { ventas: [], total: 0 }, stats: null, mostSold: [] };
+      }
       const tz = new Date().getTimezoneOffset();
       const [ventasRes, statsRes, mostSoldRes] = await Promise.all([
         obtenerVentas({ desde, hasta, offset: tz }),
@@ -256,6 +263,7 @@ const Ventas = () => {
   );
   const closesApi = useApi(
     async () => {
+      if (cDesde && cHasta && cDesde > cHasta) return [];
       const res = await obtenerCierresCaja({
         desde: cDesde,
         hasta: cHasta,
@@ -452,6 +460,8 @@ const Ventas = () => {
         <IosField label="Desde">
           <IosInput
             type="date"
+            max={today()}
+            invalid={Boolean(errorRangoVentas)}
             value={desde}
             onChange={(e) => {
               setDesde(e.target.value);
@@ -463,6 +473,8 @@ const Ventas = () => {
         <IosField label="Hasta">
           <IosInput
             type="date"
+            max={today()}
+            invalid={Boolean(errorRangoVentas)}
             value={hasta}
             onChange={(e) => {
               setHasta(e.target.value);
@@ -472,6 +484,7 @@ const Ventas = () => {
           />
         </IosField>
       </div>
+      {errorRangoVentas && <p className="text-ios-red text-xs font-medium">{errorRangoVentas}</p>}
       <div className="grid grid-cols-2 gap-2 sm:flex">
         {periodos.map((p) => (
           <button
@@ -924,6 +937,8 @@ const Ventas = () => {
                 <IosField label="Desde">
                   <IosInput
                     type="date"
+                    max={today()}
+                    invalid={Boolean(errorRangoCierres)}
                     value={cDesde}
                     onChange={(e) => {
                       setCDesde(e.target.value);
@@ -934,6 +949,8 @@ const Ventas = () => {
                 <IosField label="Hasta">
                   <IosInput
                     type="date"
+                    max={today()}
+                    invalid={Boolean(errorRangoCierres)}
                     value={cHasta}
                     onChange={(e) => {
                       setCHasta(e.target.value);
@@ -942,6 +959,7 @@ const Ventas = () => {
                   />
                 </IosField>
               </div>
+              {errorRangoCierres && <p className="text-ios-red text-xs font-medium">{errorRangoCierres}</p>}
               <div className="flex items-center gap-3 shrink-0">
                 <span className="text-xs text-ios-tertiary uppercase tracking-wider font-semibold">
                   Vista por día
