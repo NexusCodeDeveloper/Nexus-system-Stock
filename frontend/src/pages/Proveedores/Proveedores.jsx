@@ -14,6 +14,13 @@ import IosButton from '../../components/ui/IosButton';
 import IosModal from '../../components/ui/IosModal';
 import { IosField, IosInput } from '../../components/ui/IosForm';
 import { IconPlus } from '../../components/ui/icons';
+import {
+  hayErrores,
+  LIMITES,
+  validarEmail,
+  validarTelefono,
+  validarTexto,
+} from '../../utils/validacion';
 
 const Proveedores = () => {
   const { usuario, esAdmin } = useAutenticacion();
@@ -27,6 +34,7 @@ const Proveedores = () => {
     email: '',
     direccion: '',
   });
+  const [errores, setErrores] = useState({});
 
   const proveedoresApi = useApi(
     async () => {
@@ -44,6 +52,7 @@ const Proveedores = () => {
 
   const resetForm = () => {
     setForm({ nombre: '', telefono: '', email: '', direccion: '' });
+    setErrores({});
     setEditing(null);
     setShowForm(false);
   };
@@ -64,6 +73,20 @@ const Proveedores = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (saving) return;
+    const errs = {
+      nombre: validarTexto(form.nombre, LIMITES.nombre, 'El nombre'),
+      telefono: validarTelefono(form.telefono),
+      email: validarEmail(form.email),
+      direccion: validarTexto(form.direccion, LIMITES.direccion, 'La dirección'),
+    };
+    setErrores(errs);
+    if (hayErrores(errs)) return;
+    const datos = {
+      nombre: form.nombre.trim(),
+      telefono: form.telefono.trim(),
+      email: form.email.trim(),
+      direccion: form.direccion.trim(),
+    };
     if (editing) {
       const ok = await confirm({
         icon: 'warning',
@@ -76,9 +99,9 @@ const Proveedores = () => {
     setSaving(true);
     try {
       if (editing) {
-        await actualizarProveedor(editing._id, form);
+        await actualizarProveedor(editing._id, datos);
       } else {
-        await crearProveedor(form);
+        await crearProveedor(datos);
       }
       resetForm();
       fetchSuppliers();
@@ -142,33 +165,53 @@ const Proveedores = () => {
         maxWidth="max-w-md"
       >
         <form onSubmit={handleSubmit} className="space-y-4">
-          <IosField label="Nombre" required>
+          <IosField label="Nombre" required error={errores.nombre}>
             <IosInput
               type="text"
               required
+              maxLength={LIMITES.nombre.max}
+              invalid={Boolean(errores.nombre)}
               value={form.nombre}
-              onChange={(e) => setForm({ ...form, nombre: e.target.value })}
+              onChange={(e) => {
+                setErrores((prev) => ({ ...prev, nombre: '' }));
+                setForm({ ...form, nombre: e.target.value });
+              }}
             />
           </IosField>
-          <IosField label="Teléfono">
+          <IosField label="Teléfono" error={errores.telefono}>
             <IosInput
-              type="text"
+              type="tel"
+              maxLength={LIMITES.telefono.max}
+              invalid={Boolean(errores.telefono)}
               value={form.telefono}
-              onChange={(e) => setForm({ ...form, telefono: e.target.value })}
+              onChange={(e) => {
+                setErrores((prev) => ({ ...prev, telefono: '' }));
+                setForm({ ...form, telefono: e.target.value });
+              }}
             />
           </IosField>
-          <IosField label="Email">
+          <IosField label="Email" error={errores.email}>
             <IosInput
               type="email"
+              maxLength={LIMITES.email.max}
+              invalid={Boolean(errores.email)}
               value={form.email}
-              onChange={(e) => setForm({ ...form, email: e.target.value })}
+              onChange={(e) => {
+                setErrores((prev) => ({ ...prev, email: '' }));
+                setForm({ ...form, email: e.target.value });
+              }}
             />
           </IosField>
-          <IosField label="Dirección">
+          <IosField label="Dirección" error={errores.direccion}>
             <IosInput
               type="text"
+              maxLength={LIMITES.direccion.max}
+              invalid={Boolean(errores.direccion)}
               value={form.direccion}
-              onChange={(e) => setForm({ ...form, direccion: e.target.value })}
+              onChange={(e) => {
+                setErrores((prev) => ({ ...prev, direccion: '' }));
+                setForm({ ...form, direccion: e.target.value });
+              }}
             />
           </IosField>
           <div className="flex justify-end gap-3 pt-2">
