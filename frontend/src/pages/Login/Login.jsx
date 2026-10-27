@@ -2,12 +2,14 @@ import { useEffect, useRef, useState } from 'react';
 import { iniciarSesion } from '../../api/autenticacion';
 import { useAutenticacion } from '../../context/autenticacionContexto';
 import { obtenerMensajeErrorApi } from '../../utils/apiError';
+import { hayErrores, LIMITES, validarEmail, validarTexto } from '../../utils/validacion';
 import { useIosAlert } from '../../components/alerts';
 import IosButton from '../../components/ui/IosButton';
 import { IconEye, IconEyeOff } from '../../components/ui/icons';
 
 const LoginModal = () => {
   const [form, setForm] = useState({ email: '', clave: '' });
+  const [errores, setErrores] = useState({});
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [showPw, setShowPw] = useState(false);
@@ -25,6 +27,12 @@ const LoginModal = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (loading) return;
+    const errs = {
+      email: validarEmail(form.email, { requerido: true }),
+      clave: validarTexto(form.clave, LIMITES.claveLogin, 'La contraseña'),
+    };
+    setErrores(errs);
+    if (hayErrores(errs)) return;
     setError('');
     setLoading(true);
     try {
@@ -78,12 +86,21 @@ const LoginModal = () => {
               id="login-email"
               type="email"
               required
+              maxLength={LIMITES.email.max}
+              autoComplete="email"
               value={form.email}
-              onChange={(e) => setForm({ ...form, email: e.target.value })}
-              className="w-full px-4 py-3 bg-ios-surface2 rounded-ios-control text-ios-label placeholder:text-ios-tertiary focus:outline-none focus:ring-2 focus:ring-ios-tint/40 transition-all"
+              onChange={(e) => {
+                setErrores((prev) => ({ ...prev, email: '' }));
+                setForm((prev) => ({ ...prev, email: e.target.value.slice(0, LIMITES.email.max) }));
+              }}
+              aria-invalid={Boolean(errores.email) || undefined}
+              className={`w-full px-4 py-3 bg-ios-surface2 rounded-ios-control text-ios-label placeholder:text-ios-tertiary focus:outline-none focus:ring-2 focus:ring-ios-tint/40 transition-all ${
+                errores.email ? 'ring-2 ring-ios-red/60' : ''
+              }`}
               placeholder="usuario@ejemplo.com"
               autoFocus
             />
+            {errores.email && <p className="text-ios-red text-xs mt-1 font-medium">{errores.email}</p>}
           </div>
           <div className="space-y-1.5">
             <label htmlFor="login-clave" className="text-[13px] text-ios-secondary font-medium ml-1">Contraseña</label>
@@ -92,9 +109,18 @@ const LoginModal = () => {
                 id="login-clave"
                 type={showPw ? 'text' : 'password'}
                 required
+                minLength={LIMITES.claveLogin.min}
+                maxLength={LIMITES.claveLogin.max}
+                autoComplete="current-password"
                 value={form.clave}
-                onChange={(e) => setForm({ ...form, clave: e.target.value })}
-                className="w-full px-4 py-3 pr-11 bg-ios-surface2 rounded-ios-control text-ios-label placeholder:text-ios-tertiary focus:outline-none focus:ring-2 focus:ring-ios-tint/40 transition-all"
+                onChange={(e) => {
+                  setErrores((prev) => ({ ...prev, clave: '' }));
+                  setForm((prev) => ({ ...prev, clave: e.target.value.slice(0, LIMITES.claveLogin.max) }));
+                }}
+                aria-invalid={Boolean(errores.clave) || undefined}
+                className={`w-full px-4 py-3 pr-11 bg-ios-surface2 rounded-ios-control text-ios-label placeholder:text-ios-tertiary focus:outline-none focus:ring-2 focus:ring-ios-tint/40 transition-all ${
+                  errores.clave ? 'ring-2 ring-ios-red/60' : ''
+                }`}
                 placeholder="••••••••"
               />
               <button
@@ -106,6 +132,7 @@ const LoginModal = () => {
                 {showPw ? <IconEyeOff className="w-5 h-5" /> : <IconEye className="w-5 h-5" />}
               </button>
             </div>
+            {errores.clave && <p className="text-ios-red text-xs mt-1 font-medium">{errores.clave}</p>}
           </div>
           <IosButton
             type="submit"
