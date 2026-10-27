@@ -26,7 +26,7 @@ function App() {
 
   if (!autenticacion) {
     return (
-      <div className="flex items-center justify-center h-screen bg-ios-bg px-6">
+      <div className="flex items-center justify-center app-shell bg-ios-bg px-6">
         <div className="text-center max-w-sm">
           <p className="text-ios-label font-semibold mb-2">La app se actualizó</p>
           <p className="text-ios-secondary text-sm mb-4">
@@ -48,7 +48,7 @@ function App() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-screen bg-ios-bg">
+      <div className="flex items-center justify-center app-shell bg-ios-bg">
         <LoadingSpinner size="h-10 w-10" />
       </div>
     )
