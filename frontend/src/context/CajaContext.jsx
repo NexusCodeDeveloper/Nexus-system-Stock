@@ -9,6 +9,7 @@ import { IosField, IosInput } from '../components/ui/IosForm';
 import IosSegmented from '../components/ui/IosSegmented';
 import IosToggle from '../components/ui/IosToggle';
 import { formatMoney, formatDateShort } from '../utils/format';
+import { LIMITES, MONTO, validarNumero, validarTexto } from '../utils/validacion';
 
 const hora = (fecha) =>
   fecha ? new Date(fecha).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }) : '';
@@ -66,6 +67,8 @@ export const CajaProvider = ({ children }) => {
   const [showCerrar, setShowCerrar] = useState(false);
   const [nombre, setNombre] = useState('');
   const [fondo, setFondo] = useState('');
+  const [errorNombre, setErrorNombre] = useState('');
+  const [errorFondo, setErrorFondo] = useState('');
   const [turno, setTurno] = useState('manana');
   const [enviarReporteDia, setEnviarReporteDia] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -98,11 +101,14 @@ export const CajaProvider = ({ children }) => {
   const openAbrir = useCallback(() => {
     setNombre('');
     setFondo('');
+    setErrorNombre('');
+    setErrorFondo('');
     setShowAbrir(true);
   }, []);
 
   const openCerrar = useCallback(() => {
     setNombre('');
+    setErrorNombre('');
     setTurno(turnoSugerido());
     setEnviarReporteDia(true);
     setShowCerrar(true);
@@ -112,10 +118,11 @@ export const CajaProvider = ({ children }) => {
   const confirmarAbrir = useCallback(async () => {
     if (saving) return;
     const n = nombre.trim();
-    if (n.length < 2) {
-      alert({ icon: 'warning', title: 'Nombre requerido', message: 'Cargá el nombre de quien abre la caja' });
-      return;
-    }
+    const errNombre = validarTexto(n, LIMITES.nombreCaja, 'El nombre');
+    const errFondo = fondo === '' ? '' : validarNumero(fondo, { min: 0, max: MONTO.max, etiqueta: 'El fondo inicial' });
+    setErrorNombre(errNombre);
+    setErrorFondo(errFondo);
+    if (errNombre || errFondo) return;
     setSaving(true);
     try {
       await abrirCaja({ nombre: n, fondoInicial: Number(fondo) || 0, offset: new Date().getTimezoneOffset() });
@@ -132,10 +139,9 @@ export const CajaProvider = ({ children }) => {
   const confirmarCerrar = useCallback(async () => {
     if (saving) return;
     const n = nombre.trim();
-    if (n.length < 2) {
-      alert({ icon: 'warning', title: 'Nombre requerido', message: 'Cargá el nombre de quien cierra la caja' });
-      return;
-    }
+    const errNombre = validarTexto(n, LIMITES.nombreCaja, 'El nombre');
+    setErrorNombre(errNombre);
+    if (errNombre) return;
     setSaving(true);
     try {
       const res = await cerrarCaja({
@@ -219,22 +225,33 @@ export const CajaProvider = ({ children }) => {
         maxWidth="max-w-sm"
       >
         <div className="space-y-4">
-          <IosField label="Nombre de quien abre" required>
+          <IosField label="Nombre de quien abre" required error={errorNombre}>
             <IosInput
               type="text"
+              minLength={LIMITES.nombreCaja.min}
+              maxLength={LIMITES.nombreCaja.max}
+              invalid={Boolean(errorNombre)}
               value={nombre}
-              onChange={(e) => setNombre(e.target.value)}
+              onChange={(e) => {
+                setErrorNombre('');
+                setNombre(e.target.value);
+              }}
               placeholder="Escribí tu nombre"
             />
           </IosField>
-          <IosField label="Fondo inicial" hint="La plata que ya hay en la caja (cambio). Opcional.">
+          <IosField label="Fondo inicial" hint="La plata que ya hay en la caja (cambio). Opcional." error={errorFondo}>
             <IosInput
               type="text"
               inputMode="decimal"
+              maxLength={12}
+              invalid={Boolean(errorFondo)}
               value={fondo}
               onChange={(e) => {
                 const v = e.target.value;
-                if (v === '' || /^\d+(\.\d{0,2})?$/.test(v)) setFondo(v);
+                if (v === '' || /^\d+(\.\d{0,2})?$/.test(v)) {
+                  setErrorFondo('');
+                  setFondo(v);
+                }
               }}
               placeholder="0.00"
             />
@@ -287,11 +304,17 @@ export const CajaProvider = ({ children }) => {
             </div>
           )}
 
-          <IosField label="Nombre de quien cierra" required>
+          <IosField label="Nombre de quien cierra" required error={errorNombre}>
             <IosInput
               type="text"
+              minLength={LIMITES.nombreCaja.min}
+              maxLength={LIMITES.nombreCaja.max}
+              invalid={Boolean(errorNombre)}
               value={nombre}
-              onChange={(e) => setNombre(e.target.value)}
+              onChange={(e) => {
+                setErrorNombre('');
+                setNombre(e.target.value);
+              }}
               placeholder="Escribí tu nombre"
             />
           </IosField>
