@@ -19,6 +19,7 @@ import { useNotificaciones } from '../../context/notificacionContexto';
 import { useIosAlert } from '../../components/alerts';
 import { IconBell, IconPlus, IconPencil, IconTrash, IconCheck, IconRefresh, IconChevronRight } from '../../components/ui/icons';
 import { formatDate } from '../../utils/format';
+import { hayErrores, LIMITES, validarTexto } from '../../utils/validacion';
 
 const EstadoBadge = ({ estado }) =>
   estado === 'realizado' ? (
@@ -41,10 +42,12 @@ const Notificaciones = () => {
   const [savingNotif, setSavingNotif] = useState(false);
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState({ titulo: '', descripcion: '', destinatario: '', destinatarioEliminado: false });
+  const [errores, setErrores] = useState({});
   const [empleados, setEmpleados] = useState([]);
 
   const [completeTarget, setCompleteTarget] = useState(null);
   const [comment, setComment] = useState('');
+  const [errorComentario, setErrorComentario] = useState('');
   const [savingComplete, setSavingComplete] = useState(false);
 
   const isAdmin = usuario?.rol === 'admin';
@@ -85,6 +88,7 @@ const Notificaciones = () => {
   const openCreate = () => {
     setEditing(null);
     setForm({ titulo: '', descripcion: '', destinatario: '', destinatarioEliminado: false });
+    setErrores({});
     setFormOpen(true);
   };
 
@@ -98,14 +102,17 @@ const Notificaciones = () => {
       destinatario: eliminado ? '__eliminado__' : asignado,
       destinatarioEliminado: eliminado,
     });
+    setErrores({});
     setFormOpen(true);
   };
 
   const handleSave = async () => {
-    if (!form.titulo.trim() || !form.descripcion.trim()) {
-      alert({ icon: 'warning', title: 'Campos requeridos', message: 'Debe completar título y descripción' });
-      return;
-    }
+    const errs = {
+      titulo: validarTexto(form.titulo, LIMITES.tituloAviso, 'El título'),
+      descripcion: validarTexto(form.descripcion, LIMITES.descripcionAviso, 'La descripción'),
+    };
+    setErrores(errs);
+    if (hayErrores(errs)) return;
     if (form.destinatarioEliminado) {
       alert({
         icon: 'warning',
@@ -134,8 +141,8 @@ const Notificaciones = () => {
     }
     setSavingNotif(true);
     const payload = {
-      titulo: form.titulo,
-      descripcion: form.descripcion,
+      titulo: form.titulo.trim(),
+      descripcion: form.descripcion.trim(),
       destinatario: form.destinatario || null,
     };
     try {
@@ -189,6 +196,12 @@ const Notificaciones = () => {
 
   const handleComplete = async () => {
     if (!completeTarget || savingComplete) return;
+    const err = validarTexto(comment, LIMITES.comentarioAviso, 'El comentario');
+    if (err) {
+      setErrorComentario(err);
+      return;
+    }
+    setErrorComentario('');
     setSavingComplete(true);
     try {
       await completarNotificacion(completeTarget._id, {
@@ -197,6 +210,7 @@ const Notificaciones = () => {
       toast({ message: 'Aviso marcado como realizado' });
       setCompleteTarget(null);
       setComment('');
+      setErrorComentario('');
       fetchNotifications();
       refresh();
     } catch (err) {
@@ -237,6 +251,7 @@ const Notificaciones = () => {
   const openComplete = (n) => {
     setDetail(null);
     setComment('');
+    setErrorComentario('');
     setCompleteTarget(n);
   };
 
@@ -388,18 +403,28 @@ const Notificaciones = () => {
         confirmDisabled={savingNotif}
       >
         <div className="space-y-4">
-          <IosField label="Título" required>
+          <IosField label="Título" required error={errores.titulo}>
             <IosInput
               value={form.titulo}
-              onChange={(e) => setForm({ ...form, titulo: e.target.value })}
+              maxLength={LIMITES.tituloAviso.max}
+              invalid={Boolean(errores.titulo)}
+              onChange={(e) => {
+                setErrores((prev) => ({ ...prev, titulo: '' }));
+                setForm({ ...form, titulo: e.target.value });
+              }}
               placeholder="Ej: Limpiar la tienda"
             />
           </IosField>
-          <IosField label="Descripción" required>
+          <IosField label="Descripción" required error={errores.descripcion}>
             <IosTextArea
               rows={4}
               value={form.descripcion}
-              onChange={(e) => setForm({ ...form, descripcion: e.target.value })}
+              maxLength={LIMITES.descripcionAviso.max}
+              invalid={Boolean(errores.descripcion)}
+              onChange={(e) => {
+                setErrores((prev) => ({ ...prev, descripcion: '' }));
+                setForm({ ...form, descripcion: e.target.value });
+              }}
               placeholder="Detalle de la tarea para el empleado…"
             />
           </IosField>
@@ -441,11 +466,16 @@ const Notificaciones = () => {
               {usuario?.nombre || '—'}
             </div>
           </IosField>
-          <IosField label="Comentario (opcional)" hint="Contanos cómo quedó el trabajo">
+          <IosField label="Comentario (opcional)" hint="Contanos cómo quedó el trabajo" error={errorComentario}>
             <IosTextArea
               rows={3}
               value={comment}
-              onChange={(e) => setComment(e.target.value)}
+              maxLength={LIMITES.comentarioAviso.max}
+              invalid={Boolean(errorComentario)}
+              onChange={(e) => {
+                setErrorComentario('');
+                setComment(e.target.value);
+              }}
               placeholder="Ej: Limpie la tienda y dejé todo en orden…"
             />
           </IosField>
