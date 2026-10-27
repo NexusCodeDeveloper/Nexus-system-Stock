@@ -23,6 +23,18 @@ import LoadingSpinner from '../../components/common/LoadingSpinner';
 import { IconPencil, IconX, IconSettings, IconPrint, IconCash } from '../../components/ui/icons';
 import { formatMoney } from '../../utils/format';
 import { printEstadoCuenta } from '../../utils/printEstadoCuenta';
+import {
+  DIAS_AVISO,
+  FINANCIACION,
+  hayErrores,
+  LIMITES,
+  validarEntero,
+  validarFecha,
+  validarMonto,
+  validarNumero,
+  validarRangoFechas,
+  validarTexto,
+} from '../../utils/validacion';
 
 const ORIGENES = [
   { key: 'factura', label: 'Factura' },
@@ -98,9 +110,11 @@ const ClienteDetalle = ({ cliente, open, onClose, onCambio }) => {
   const [showForm, setShowForm] = useState(false);
   const [editando, setEditando] = useState(null);
   const [form, setForm] = useState(formularioVacio());
+  const [errores, setErrores] = useState({});
   const [saving, setSaving] = useState(false);
   const [anulando, setAnulando] = useState(null);
   const [motivoAnular, setMotivoAnular] = useState('');
+  const [errorMotivo, setErrorMotivo] = useState('');
   const [anulandoSaving, setAnulandoSaving] = useState(false);
   const [showAjustes, setShowAjustes] = useState(false);
   const [ajustes, setAjustes] = useState({
@@ -108,11 +122,13 @@ const ClienteDetalle = ({ cliente, open, onClose, onCambio }) => {
     tasaMoraMensualPorcentaje: '',
     diasAvisoVencimiento: '',
   });
+  const [erroresAjustes, setErroresAjustes] = useState({});
   const [ajustesSaving, setAjustesSaving] = useState(false);
   const [showFormato, setShowFormato] = useState(false);
   const [imprimiendo, setImprimiendo] = useState(false);
 
   const clienteId = cliente?._id;
+  const errorFiltros = validarRangoFechas(filtros.desde, filtros.hasta);
 
   const movimientosApi = useApi(
     async () => {
@@ -177,11 +193,12 @@ const ClienteDetalle = ({ cliente, open, onClose, onCambio }) => {
   }, [open, clienteId, cargarSaldo, cargarCuotas, cliente?.totalDebitos, cliente?.totalCreditos, cliente?.saldo]);
 
   useEffect(() => {
-    if (open && clienteId) cargarMovimientos();
-  }, [open, clienteId, filtros.tipo, filtros.origen, filtros.desde, filtros.hasta, buscarDebounced, cargarMovimientos]);
+    if (open && clienteId && !errorFiltros) cargarMovimientos();
+  }, [open, clienteId, filtros.tipo, filtros.origen, filtros.desde, filtros.hasta, buscarDebounced, cargarMovimientos, errorFiltros]);
 
   const resetForm = () => {
     setForm(formularioVacio());
+    setErrores({});
     setEditando(null);
     setShowForm(false);
   };
@@ -219,11 +236,15 @@ const ClienteDetalle = ({ cliente, open, onClose, onCambio }) => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (saving) return;
+    const errs = {
+      monto: validarMonto(form.monto),
+      fecha: validarFecha(form.fecha, { max: hoyLocal() }),
+      referencia: validarTexto(form.referencia, LIMITES.referencia, 'La referencia'),
+      nota: validarTexto(form.nota, LIMITES.nota, 'La nota'),
+    };
+    setErrores(errs);
+    if (hayErrores(errs)) return;
     const montoNum = Number(form.monto);
-    if (!Number.isFinite(montoNum) || montoNum <= 0) {
-      alert({ icon: 'warning', title: 'Monto inválido', message: 'El monto debe ser mayor a 0' });
-      return;
-    }
     const saldoActual = Number(saldo.saldo) || 0;
     const deudaDisponible = saldoActual + (editando ? Number(editando.monto) || 0 : 0);
     if (deudaDisponible <= 0) {
@@ -255,8 +276,8 @@ const ClienteDetalle = ({ cliente, open, onClose, onCambio }) => {
         monto: montoNum,
         formaPago: form.formaPago,
         fecha: form.fecha || undefined,
-        referencia: form.referencia,
-        nota: form.nota,
+        referencia: form.referencia.trim(),
+        nota: form.nota.trim(),
       };
       let imputaciones = [];
       if (editando) {
@@ -308,21 +329,25 @@ const ClienteDetalle = ({ cliente, open, onClose, onCambio }) => {
       referencia: movimiento.referencia || '',
       nota: movimiento.nota || '',
     });
+    setErrores({});
     setShowForm(true);
   };
 
   const handleAnular = async () => {
     if (anulandoSaving) return;
     const motivo = motivoAnular.trim();
-    if (!motivo) {
-      alert({ icon: 'warning', title: 'Motivo requerido', message: 'Indicá por qué se anula el movimiento' });
+    const err = validarTexto(motivo, LIMITES.motivo, 'El motivo');
+    if (err) {
+      setErrorMotivo(err);
       return;
     }
+    setErrorMotivo('');
     setAnulandoSaving(true);
     try {
       await anularMovimientoCuenta(clienteId, anulando._id, motivo);
       setAnulando(null);
       setMotivoAnular('');
+      setErrorMotivo('');
       toast({ message: 'Movimiento anulado' });
       refrescar();
     } catch (err) {
@@ -343,11 +368,13 @@ const ClienteDetalle = ({ cliente, open, onClose, onCambio }) => {
     if (ok) {
       setAnulando(movimiento);
       setMotivoAnular('');
+      setErrorMotivo('');
     }
   };
 
   const abrirFormulario = () => {
     setForm(formularioVacio());
+    setErrores({});
     setEditando(null);
     setShowForm(true);
   };
@@ -388,6 +415,7 @@ const ClienteDetalle = ({ cliente, open, onClose, onCambio }) => {
         tasaMoraMensualPorcentaje: String(res.data?.tasaMoraMensualPorcentaje ?? ''),
         diasAvisoVencimiento: String(res.data?.diasAvisoVencimiento ?? ''),
       });
+      setErroresAjustes({});
       setShowAjustes(true);
     } catch (err) {
       alert({ icon: 'error', title: 'Error', message: obtenerMensajeErrorApi(err, 'No se pudieron cargar los ajustes') });
@@ -396,13 +424,25 @@ const ClienteDetalle = ({ cliente, open, onClose, onCambio }) => {
 
   const guardarAjustes = async () => {
     if (ajustesSaving) return;
+    const errs = {
+      interes: validarNumero(ajustes.interesFinanciacionPorcentaje, {
+        ...FINANCIACION,
+        etiqueta: 'El interés de financiación',
+      }),
+      mora: validarNumero(ajustes.tasaMoraMensualPorcentaje, {
+        ...FINANCIACION,
+        etiqueta: 'La tasa de mora',
+      }),
+      dias: validarEntero(ajustes.diasAvisoVencimiento, {
+        ...DIAS_AVISO,
+        etiqueta: 'Los días de aviso',
+      }),
+    };
+    setErroresAjustes(errs);
+    if (hayErrores(errs)) return;
     const interes = Number(ajustes.interesFinanciacionPorcentaje);
     const mora = Number(ajustes.tasaMoraMensualPorcentaje);
     const dias = Number(ajustes.diasAvisoVencimiento);
-    if (![interes, mora, dias].every((n) => Number.isFinite(n) && n >= 0)) {
-      alert({ icon: 'warning', title: 'Valores inválidos', message: 'Los porcentajes y los días deben ser números mayores o iguales a 0' });
-      return;
-    }
     const ok = await confirm({
       icon: 'warning',
       title: '¿Guardar la configuración?',
@@ -571,17 +611,22 @@ const ClienteDetalle = ({ cliente, open, onClose, onCambio }) => {
           </IosSelect>
           <IosInput
             type="date"
+            max={hoyLocal()}
+            invalid={Boolean(errorFiltros)}
             value={filtros.desde}
             onChange={(e) => setFiltros((f) => ({ ...f, desde: e.target.value }))}
             aria-label="Desde"
           />
           <IosInput
             type="date"
+            max={hoyLocal()}
+            invalid={Boolean(errorFiltros)}
             value={filtros.hasta}
             onChange={(e) => setFiltros((f) => ({ ...f, hasta: e.target.value }))}
             aria-label="Hasta"
           />
         </div>
+        {errorFiltros && <p className="text-ios-red text-xs font-medium">{errorFiltros}</p>}
         <IosSearch
           value={filtros.buscar}
           onChange={(v) => setFiltros((f) => ({ ...f, buscar: v }))}
@@ -662,21 +707,35 @@ const ClienteDetalle = ({ cliente, open, onClose, onCambio }) => {
       >
         <form onSubmit={handleSubmit} className="space-y-3">
           <div className="grid grid-cols-2 gap-3">
-            <IosField label="Monto" required>
+            <IosField label="Monto" required error={errores.monto}>
               <IosInput
                 type="text"
                 inputMode="decimal"
+                maxLength={12}
+                invalid={Boolean(errores.monto)}
                 value={form.monto}
                 onChange={(e) => {
                   const v = e.target.value;
-                  if (v === '' || /^\d+(\.\d{0,2})?$/.test(v)) setForm((f) => ({ ...f, monto: v }));
+                  if (v === '' || /^\d+(\.\d{0,2})?$/.test(v)) {
+                    setErrores((prev) => ({ ...prev, monto: '' }));
+                    setForm((f) => ({ ...f, monto: v }));
+                  }
                 }}
                 placeholder="0.00"
                 autoFocus
               />
             </IosField>
-            <IosField label="Fecha">
-              <IosInput type="date" value={form.fecha} onChange={(e) => setForm((f) => ({ ...f, fecha: e.target.value }))} />
+            <IosField label="Fecha" error={errores.fecha}>
+              <IosInput
+                type="date"
+                max={hoyLocal()}
+                invalid={Boolean(errores.fecha)}
+                value={form.fecha}
+                onChange={(e) => {
+                  setErrores((prev) => ({ ...prev, fecha: '' }));
+                  setForm((f) => ({ ...f, fecha: e.target.value }));
+                }}
+              />
             </IosField>
           </div>
           <IosField label="Forma de pago" required>
@@ -686,18 +745,28 @@ const ClienteDetalle = ({ cliente, open, onClose, onCambio }) => {
               ))}
             </IosSelect>
           </IosField>
-          <IosField label="Referencia" hint="Factura, recibo o ticket (opcional)">
+          <IosField label="Referencia" hint="Factura, recibo o ticket (opcional)" error={errores.referencia}>
             <IosInput
               value={form.referencia}
-              onChange={(e) => setForm((f) => ({ ...f, referencia: e.target.value }))}
+              maxLength={LIMITES.referencia.max}
+              invalid={Boolean(errores.referencia)}
+              onChange={(e) => {
+                setErrores((prev) => ({ ...prev, referencia: '' }));
+                setForm((f) => ({ ...f, referencia: e.target.value }));
+              }}
               placeholder="Ej: T-000123"
             />
           </IosField>
-          <IosField label="Nota">
+          <IosField label="Nota" error={errores.nota}>
             <IosTextArea
               rows={2}
               value={form.nota}
-              onChange={(e) => setForm((f) => ({ ...f, nota: e.target.value }))}
+              maxLength={LIMITES.nota.max}
+              invalid={Boolean(errores.nota)}
+              onChange={(e) => {
+                setErrores((prev) => ({ ...prev, nota: '' }));
+                setForm((f) => ({ ...f, nota: e.target.value }));
+              }}
               placeholder="Detalle opcional"
             />
           </IosField>
@@ -709,6 +778,7 @@ const ClienteDetalle = ({ cliente, open, onClose, onCambio }) => {
         onClose={() => {
           setAnulando(null);
           setMotivoAnular('');
+          setErrorMotivo('');
         }}
         title="Anular movimiento"
         confirmText={anulandoSaving ? 'Anulando…' : 'Anular'}
@@ -719,10 +789,15 @@ const ClienteDetalle = ({ cliente, open, onClose, onCambio }) => {
         <p className="text-sm text-ios-secondary mb-3">
           El movimiento no se borra: queda registrado como anulado y deja de contar para el saldo.
         </p>
-        <IosField label="Motivo" required>
+        <IosField label="Motivo" required error={errorMotivo}>
           <IosInput
             value={motivoAnular}
-            onChange={(e) => setMotivoAnular(e.target.value)}
+            maxLength={LIMITES.motivo.max}
+            invalid={Boolean(errorMotivo)}
+            onChange={(e) => {
+              setErrorMotivo('');
+              setMotivoAnular(e.target.value);
+            }}
             placeholder="Ej: pago duplicado"
             autoFocus
           />
@@ -741,42 +816,51 @@ const ClienteDetalle = ({ cliente, open, onClose, onCambio }) => {
           Valores por defecto que verá el vendedor al cargar una venta en cuotas. Solo el administrador puede cambiarlos.
         </p>
         <div className="space-y-3">
-          <IosField label="Interés de financiación por defecto (%)">
+          <IosField label="Interés de financiación por defecto (%)" error={erroresAjustes.interes}>
             <IosInput
               type="text"
               inputMode="decimal"
+              maxLength={7}
+              invalid={Boolean(erroresAjustes.interes)}
               value={ajustes.interesFinanciacionPorcentaje}
               onChange={(e) => {
                 const v = e.target.value;
                 if (v === '' || /^\d{0,4}(\.\d{0,2})?$/.test(v)) {
+                  setErroresAjustes((prev) => ({ ...prev, interes: '' }));
                   setAjustes((a) => ({ ...a, interesFinanciacionPorcentaje: v }));
                 }
               }}
               placeholder="Ej: 10"
             />
           </IosField>
-          <IosField label="Mora mensual por cuota atrasada (%)">
+          <IosField label="Mora mensual por cuota atrasada (%)" error={erroresAjustes.mora}>
             <IosInput
               type="text"
               inputMode="decimal"
+              maxLength={7}
+              invalid={Boolean(erroresAjustes.mora)}
               value={ajustes.tasaMoraMensualPorcentaje}
               onChange={(e) => {
                 const v = e.target.value;
                 if (v === '' || /^\d{0,4}(\.\d{0,2})?$/.test(v)) {
+                  setErroresAjustes((prev) => ({ ...prev, mora: '' }));
                   setAjustes((a) => ({ ...a, tasaMoraMensualPorcentaje: v }));
                 }
               }}
               placeholder="Ej: 5"
             />
           </IosField>
-          <IosField label="Días de aviso antes del vencimiento">
+          <IosField label="Días de aviso antes del vencimiento" error={erroresAjustes.dias}>
             <IosInput
               type="text"
               inputMode="numeric"
+              maxLength={2}
+              invalid={Boolean(erroresAjustes.dias)}
               value={ajustes.diasAvisoVencimiento}
               onChange={(e) => {
                 const v = e.target.value;
                 if (v === '' || /^\d{0,2}$/.test(v)) {
+                  setErroresAjustes((prev) => ({ ...prev, dias: '' }));
                   setAjustes((a) => ({ ...a, diasAvisoVencimiento: v }));
                 }
               }}
