@@ -12,7 +12,8 @@ const objectId = z.string().regex(/^[0-9a-fA-F]{24}$/, 'Cliente inválido');
 const monto = z
   .number('El monto debe ser un número')
   .finite('El monto debe ser un número')
-  .positive('El monto debe ser mayor a 0');
+  .positive('El monto debe ser mayor a 0')
+  .max(9999999.99, 'El monto es demasiado alto');
 
 /** 'fecha' es una fecha de calendario, asi que se guarda en UTC sin corrimiento de zona horaria. */
 const fecha = z
