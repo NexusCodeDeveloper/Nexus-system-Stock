@@ -121,7 +121,7 @@ export const CarritoProvider = ({ children }) => {
     });
     if (opciones.reveal) {
       marcarUltimoAgregado(item);
-      setShowCartModal(true);
+      if (window.matchMedia('(max-width: 767px)').matches) setShowCartModal(true);
     }
   }, [marcarUltimoAgregado]);
 
