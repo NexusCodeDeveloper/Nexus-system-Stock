@@ -53,7 +53,7 @@ export const LectorProvider = ({ children }) => {
         return;
       }
 
-      if (event.key.length !== 1) return;
+      if (typeof event.key !== 'string' || event.key.length !== 1) return;
 
       if (delta > MAX_INTERVALO_MS) {
         bufferRef.current = '';
