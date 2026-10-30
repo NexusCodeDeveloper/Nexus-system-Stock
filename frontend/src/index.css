@@ -53,6 +53,7 @@
 [data-theme='light'] .text-sky-300 { color: #0369a1; }
 [data-theme='light'] .text-orange-400 { color: #ea580c; }
 [data-theme='light'] .text-amber-400 { color: #d97706; }
+[data-theme='light'] .text-amber-300 { color: #b45309; }
 [data-theme='light'] .text-emerald-400 { color: #059669; }
 [data-theme='light'] .hover\:text-emerald-300:hover { color: #047857; }
 
