@@ -32,8 +32,20 @@ export const variantesParaEnviar = (variants = []) =>
       deposito: Number(v.deposito) || 0,
     }));
 
-export const tieneStockBajo = (p) => {
-  if (p.stockMinimo == null) return false;
-  if (p.variantes?.length > 0) return p.variantes.some((v) => (Number(v.cantidad) || 0) <= p.stockMinimo);
-  return (Number(p.cantidad) || 0) <= p.stockMinimo;
+export const estadoStock = (cantidad, stockMinimo) => {
+  const unidades = Number(cantidad) || 0;
+  if (unidades === 0) return 'agotado';
+  const minimo = Number(stockMinimo);
+  if (Number.isFinite(minimo) && unidades <= minimo) return 'bajo';
+  return null;
 };
+
+export const estadoStockProducto = (p) => {
+  const variantes = p?.variantes || [];
+  if (variantes.length > 0) {
+    return variantes.every((v) => (Number(v.cantidad) || 0) === 0) ? 'agotado' : null;
+  }
+  return estadoStock(p?.cantidad, p?.stockMinimo);
+};
+
+export const estadoStockVariante = (v, stockMinimo) => estadoStock(v?.cantidad, stockMinimo);

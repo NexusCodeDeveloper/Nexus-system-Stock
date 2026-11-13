@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { depositoTotal, salonTotal, variantLabel, tieneStockBajo, soloEnDeposito, paramsProductos, variantesParaEnviar } from '../src/utils/productos';
+import { depositoTotal, salonTotal, variantLabel, estadoStock, estadoStockProducto, estadoStockVariante, soloEnDeposito, paramsProductos, variantesParaEnviar } from '../src/utils/productos';
 
 describe('depositoTotal y salonTotal', () => {
   it('suman las variantes cuando existen', () => {
@@ -22,8 +22,35 @@ describe('depositoTotal y salonTotal', () => {
   });
 });
 
-describe('tieneStockBajo', () => {
-  it('detecta una variante agotada aunque el total no sea bajo', () => {
+describe('estadoStock', () => {
+  it('marca agotado cuando no hay unidades aunque no haya mínimo', () => {
+    expect(estadoStock(0, null)).toBe('agotado');
+    expect(estadoStock(0, undefined)).toBe('agotado');
+    expect(estadoStock(0, 2)).toBe('agotado');
+  });
+
+  it('marca bajo cuando hay stock pero no supera el mínimo', () => {
+    expect(estadoStock(1, 2)).toBe('bajo');
+    expect(estadoStock(2, 2)).toBe('bajo');
+    expect(estadoStock('1', '2')).toBe('bajo');
+  });
+
+  it('no marca por encima del mínimo ni sin mínimo definido', () => {
+    expect(estadoStock(3, 2)).toBeNull();
+    expect(estadoStock(5, null)).toBeNull();
+    expect(estadoStock(5)).toBeNull();
+  });
+});
+
+describe('estadoStockProducto', () => {
+  it('usa el stock general cuando no hay variantes', () => {
+    expect(estadoStockProducto({ cantidad: 0, stockMinimo: 2 })).toBe('agotado');
+    expect(estadoStockProducto({ cantidad: 1, stockMinimo: 2 })).toBe('bajo');
+    expect(estadoStockProducto({ cantidad: 3, stockMinimo: 2 })).toBeNull();
+    expect(estadoStockProducto({ cantidad: 0 })).toBe('agotado');
+  });
+
+  it('no marca el producto si sólo una variante está agotada', () => {
     const producto = {
       stockMinimo: 2,
       variantes: [
@@ -31,24 +58,26 @@ describe('tieneStockBajo', () => {
         { talle: 'L', cantidad: 10 },
       ],
     };
-    expect(tieneStockBajo(producto)).toBe(true);
+    expect(estadoStockProducto(producto)).toBeNull();
   });
 
-  it('no marca stock bajo si todas las variantes están por encima', () => {
+  it('marca el producto agotado cuando todas las variantes están en 0', () => {
     const producto = {
       stockMinimo: 2,
       variantes: [
-        { talle: 'M', cantidad: 3 },
-        { talle: 'L', cantidad: 10 },
+        { talle: 'M', cantidad: 0 },
+        { talle: 'L', cantidad: 0 },
       ],
     };
-    expect(tieneStockBajo(producto)).toBe(false);
+    expect(estadoStockProducto(producto)).toBe('agotado');
   });
+});
 
-  it('compara el stock general cuando no hay variantes', () => {
-    expect(tieneStockBajo({ stockMinimo: 2, cantidad: 2 })).toBe(true);
-    expect(tieneStockBajo({ stockMinimo: 2, cantidad: 3 })).toBe(false);
-    expect(tieneStockBajo({ cantidad: 0 })).toBe(false);
+describe('estadoStockVariante', () => {
+  it('evalúa cada variante con el mínimo del producto', () => {
+    expect(estadoStockVariante({ cantidad: 0 }, 2)).toBe('agotado');
+    expect(estadoStockVariante({ cantidad: 1 }, 2)).toBe('bajo');
+    expect(estadoStockVariante({ cantidad: 5 }, 2)).toBeNull();
   });
 });
 
