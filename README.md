@@ -112,6 +112,23 @@ La caja funciona con **una apertura por turno y cierres por turno (mañana, tard
 - **Logs**: las claves, tokens, contraseñas, cookies y suscripciones se redactan como
   `[REDACTADO]`. El reporte de errores del navegador ya no puede falsificar el campo "quién".
 
+## Notificaciones push
+
+Las notificaciones operativas no se persisten: se envían por push y el clic abre la pantalla
+correspondiente. Los avisos manuales siguen viviendo en la sección de avisos.
+
+| Evento | Destinatarios | Abre |
+|---|---|---|
+| Movimientos de stock (ingreso, ajuste, reposición, retiro, pase masivo) | Admins | `/deposito?tab=movimientos` |
+| Stock bajo o sin stock por variante | Admins | `/productos` |
+| Venta de empleado / venta propia | Admins / vendedor | `/ventas` |
+| Devolución o cambio | Admins | `/devoluciones` |
+| Apertura o cierre de caja | Admins | `/ventas?tab=cierres` |
+| Retiro de efectivo | Admins | `/ventas?tab=cierres` |
+| Producto creado, editado, restaurado o eliminado | Admins | `/productos` o `/papelera` |
+| Aumento masivo de precios o deshacer | Admins | `/deposito` |
+| Aviso nuevo / completado | Empleado asignado o todos / admins | `/notificaciones` |
+
 ## Migración de montos a centavos
 
 Los montos se guardan en la base como **enteros en centavos** y la API los expone como
