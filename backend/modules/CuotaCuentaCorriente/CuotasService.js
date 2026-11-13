@@ -139,7 +139,13 @@ const crearAvisoCuota = async (cuota, { titulo, descripcion, session = null }) =
       { session }
     );
   }
-  void enviarEvento({ tipo: 'cuota', titulo, mensaje: descripcion, url: '/clientes', para: 'admins' });
+  void enviarEvento({
+    tipo: 'cuota',
+    titulo,
+    mensaje: `${titulo} · ${descripcion}`,
+    url: '/clientes',
+    para: 'admins',
+  });
 };
 
 /**
