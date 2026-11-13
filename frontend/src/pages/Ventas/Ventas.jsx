@@ -1,5 +1,5 @@
 import { useState, useEffect, Fragment, lazy, Suspense } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useSearchParams } from 'react-router-dom';
 import { obtenerVentas, obtenerEstadisticasVentas, obtenerMasVendidos, eliminarVenta, obtenerCierresCaja, eliminarCierreCaja, reenviarCorreoCierre, reenviarReporteDia } from '../../api/ventas';
 import { useApi } from '../../hooks/useApi';
 import RetiroModal from './RetiroModal';
@@ -212,6 +212,7 @@ const Ventas = () => {
   const { usuario, esAdmin } = useAutenticacion();
   const { show: alert, confirm, toast } = useIosAlert();
   const location = useLocation();
+  const [searchParams] = useSearchParams();
 
   const imprimirTicket = async (s) => {
     const ok = await printTicket(s);
@@ -222,7 +223,15 @@ const Ventas = () => {
   const [hasta, setHasta] = useState(today);
   const [activePeriodo, setActivePeriodo] = useState('dia');
 
-  const [activeTab, setActiveTab] = useState(location.state?.tab === 'cierres' ? 'cierres' : 'ventas');
+  const [activeTab, setActiveTab] = useState(
+    searchParams.get('tab') === 'cierres' || location.state?.tab === 'cierres'
+      ? 'cierres'
+      : 'ventas'
+  );
+
+  useEffect(() => {
+    if (searchParams.get('tab') === 'cierres') setActiveTab('cierres');
+  }, [searchParams]);
 
   const [cDesde, setCDesde] = useState(today);
   const [cHasta, setCHasta] = useState(today);
