@@ -7,7 +7,7 @@ import { obtenerMensajeErrorApi } from '../../utils/apiError';
 import { printLabel } from '../../utils/printLabel';
 import { formatDate, formatMoney } from '../../utils/format';
 import { precioVigente, tieneOferta, etiquetaOferta } from '../../utils/precios';
-import { depositoTotal, salonTotal, variantLabel, paramsProductos } from '../../utils/productos';
+import { depositoTotal, salonTotal, variantLabel, estadoStockProducto, estadoStockVariante, paramsProductos } from '../../utils/productos';
 import { calcularPagina } from '../../utils/paginacion';
 import {
   AUMENTO_MONTO,
@@ -33,6 +33,7 @@ import { useAutenticacion } from '../../context/autenticacionContexto';
 import { useLector } from '../../context/lectorContexto';
 import ScannerButton from '../../components/scanner/ScannerButton';
 import ScannerModal from '../../components/scanner/ScannerModal';
+import StockBadge from '../../components/common/StockBadge';
 import { useIosAlert } from '../../components/alerts';
 import IosButton from '../../components/ui/IosButton';
 import IosModal from '../../components/ui/IosModal';
@@ -676,18 +677,7 @@ const Deposito = () => {
   const valorDeposito = metricas.valorDeposito;
   const bajosSalon = metricas.bajosSalon;
 
-  const badgeSalon = (p) => {
-    const minimo = p.stockMinimo ?? 0;
-    const variantes = p.variantes || [];
-    const cantidades = variantes.length > 0 ? variantes.map((v) => Number(v.cantidad) || 0) : [salonTotal(p)];
-    if (cantidades.some((c) => c === 0)) {
-      return <span className="inline-flex items-center justify-center leading-none px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-ios-red/15 text-ios-red">Agotado</span>;
-    }
-    if (cantidades.some((c) => c <= minimo)) {
-      return <span className="inline-flex items-center justify-center leading-none px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-amber-500/15 text-amber-400">Bajo</span>;
-    }
-    return null;
-  };
+  const badgeSalon = (p) => <StockBadge estado={estadoStockProducto(p)} />;
 
   const botonAcciones = (p) => (
     <button
@@ -709,7 +699,10 @@ const Deposito = () => {
           <p className="text-[10px] uppercase tracking-wider font-semibold mb-0.5">Detalle</p>
           <div className="space-y-0.5">
             {p.variantes.map((v, i) => (
-              <div key={i} className="text-ios-secondary">{variantLabel(v)} ({v.cantidad || 0})</div>
+              <div key={i} className="text-ios-secondary flex items-center gap-1.5 flex-wrap">
+                <span>{variantLabel(v)} ({v.cantidad || 0})</span>
+                <StockBadge estado={estadoStockVariante(v, p.stockMinimo)} />
+              </div>
             ))}
           </div>
         </div>
