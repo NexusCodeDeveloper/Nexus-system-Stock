@@ -45,7 +45,9 @@ self.addEventListener('notificationclick', (event) => {
       for (const client of clients) {
         if ('focus' in client) {
           await client.focus();
-          if ('navigate' in client && url !== new URL(client.url).pathname) {
+          const destino = new URL(url, self.location.origin);
+          const actual = new URL(client.url);
+          if ('navigate' in client && (destino.pathname !== actual.pathname || destino.search !== actual.search)) {
             await client.navigate(url);
           }
           return;
