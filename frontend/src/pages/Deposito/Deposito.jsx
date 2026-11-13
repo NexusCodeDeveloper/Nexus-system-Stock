@@ -163,6 +163,7 @@ const Deposito = () => {
 
   const [flujoSeleccion, setFlujoSeleccion] = useState(null);
   const [abanicoAbierto, setAbanicoAbierto] = useState(false);
+  const abanicoCierreRef = useRef(null);
   const [seleccionados, setSeleccionados] = useState(() => new Set());
   const [todosSel, setTodosSel] = useState(false);
   const [showPromo, setShowPromo] = useState(false);
@@ -312,6 +313,10 @@ const Deposito = () => {
     const timer = setTimeout(() => setResaltadoId(null), 3200);
     return () => clearTimeout(timer);
   }, [resaltadoId]);
+
+  useEffect(() => () => {
+    if (abanicoCierreRef.current) clearTimeout(abanicoCierreRef.current);
+  }, []);
 
   const handleGuardar = async (data) => {
     if (isSubmitting) return;
@@ -756,6 +761,30 @@ const Deposito = () => {
     }
   };
 
+  const abrirAbanico = () => {
+    if (abanicoCierreRef.current) {
+      clearTimeout(abanicoCierreRef.current);
+      abanicoCierreRef.current = null;
+    }
+    setAbanicoAbierto(true);
+  };
+
+  const cerrarAbanicoConRetraso = () => {
+    if (abanicoCierreRef.current) clearTimeout(abanicoCierreRef.current);
+    abanicoCierreRef.current = setTimeout(() => {
+      abanicoCierreRef.current = null;
+      setAbanicoAbierto(false);
+    }, 220);
+  };
+
+  const cerrarAbanicoYa = () => {
+    if (abanicoCierreRef.current) {
+      clearTimeout(abanicoCierreRef.current);
+      abanicoCierreRef.current = null;
+    }
+    setAbanicoAbierto(false);
+  };
+
   const salirModoSeleccion = () => {
     setFlujoSeleccion(null);
     setSeleccionados(new Set());
@@ -769,7 +798,7 @@ const Deposito = () => {
       setTodosSel(false);
     }
     setFlujoSeleccion(flujo);
-    setAbanicoAbierto(false);
+    cerrarAbanicoYa();
     document.querySelector('main')?.scrollTo({ top: 0, behavior: 'smooth' });
     toast({
       message: flujo === 'aumento'
@@ -1102,11 +1131,11 @@ const Deposito = () => {
           <>
             <div
               className="relative z-40 hidden lg:flex flex-row-reverse items-center justify-start w-[132px] h-[68px] shrink-0"
-              onMouseEnter={() => setAbanicoAbierto(true)}
-              onMouseLeave={() => setAbanicoAbierto(false)}
-              onFocus={() => setAbanicoAbierto(true)}
+              onMouseEnter={abrirAbanico}
+              onMouseLeave={cerrarAbanicoConRetraso}
+              onFocus={abrirAbanico}
               onBlurCapture={(e) => {
-                if (!e.currentTarget.contains(e.relatedTarget)) setAbanicoAbierto(false);
+                if (!e.currentTarget.contains(e.relatedTarget)) cerrarAbanicoYa();
               }}
             >
               {accionesDeposito.map((accion, i) => {
