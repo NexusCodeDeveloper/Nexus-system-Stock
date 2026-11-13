@@ -62,9 +62,19 @@ const AvisoNuevaNotificacion = () => {
                 ? 'NOTIFICACIÓN PENDIENTE'
                 : `${pendientes.length} avisos pendientes`}
             </p>
-            <p className="text-[12px] text-ios-secondary mt-0.5 leading-snug">
-              Revisá la sección de avisos
-            </p>
+            <div className="mt-1 space-y-1">
+              {pendientes.slice(0, 3).map((pendiente) => (
+                <p key={pendiente._id || pendiente.id} className="text-[12px] text-ios-secondary leading-snug">
+                  "{pendiente.titulo}"
+                  {pendiente.destinatarioNombre ? ` · ${pendiente.destinatarioNombre}` : ''}
+                </p>
+              ))}
+              {pendientes.length > 3 && (
+                <p className="text-[11px] text-ios-tertiary">
+                  +{pendientes.length - 3} más
+                </p>
+              )}
+            </div>
           </div>
           <span className="ml-auto shrink-0 mt-0.5 text-ios-green">
             <IconCheck className="w-4 h-4" strokeWidth={2.5} />
