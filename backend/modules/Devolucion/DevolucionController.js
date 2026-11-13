@@ -4,17 +4,32 @@ import { enviarEvento } from '../../services/PushService.js';
 import { ejecutarDevolucion, revertirDevolucion } from './DevolucionService.js';
 import { responderErrorDeServicio } from '../../utils/RespuestaErrorUtils.js';
 import { conReintentos } from '../../utils/TransaccionesUtils.js';
+import { RUTAS, formatearMonto, nombreConVariante } from '../../utils/NotificacionesUtils.js';
 
 export const crearDevolucion = async (req, res, next) => {
   try {
     const data = schemaCrearDevolucion.parse(req.body);
     const { devolucion } = await conReintentos(() => ejecutarDevolucion(data, req.usuario));
 
+    const nombre = nombreConVariante(
+      devolucion.producto?.nombre || devolucion.productoNombre || 'Producto',
+      data.talle,
+      data.color
+    );
+    const autor = req.usuario?.nombre?.trim() || 'Se';
+    const partes = [
+      `${autor} registró una devolución`,
+      `${nombre} × ${data.cantidad}`,
+      formatearMonto(devolucion.montoDevuelto),
+      `"${data.motivo}"`,
+      devolucion.venta?.ticketNumero ? `Ticket ${devolucion.venta.ticketNumero}` : 'Sin ticket',
+    ];
+
     void enviarEvento({
       tipo: 'devolucion',
-      titulo: 'Devolución registrada',
-      mensaje: `${devolucion.producto?.nombre || 'Producto'} × ${data.cantidad}${data.venta ? ' · con ticket' : ' · sin ticket'}`,
-      url: '/returns',
+      titulo: `${req.usuario?.nombre?.trim() || 'Alguien'} registró una devolución`,
+      mensaje: partes.join(' · '),
+      url: RUTAS.DEVOLUCIONES,
       para: 'admins',
     });
 
