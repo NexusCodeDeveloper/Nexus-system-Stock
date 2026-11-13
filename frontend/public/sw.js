@@ -1,4 +1,4 @@
-// Service worker de NexusCode — SOLO notificaciones push.
+// Service worker de Sistema de Stock — SOLO notificaciones push.
 // NO usa cache de respuestas: no interfiere con la carga de la app.
 
 self.addEventListener('install', () => {
@@ -18,7 +18,7 @@ self.addEventListener('push', (event) => {
   }
 
   const options = {
-    body: data.mensaje || 'Nuevo movimiento en NexusCode',
+    body: data.mensaje || 'Nuevo movimiento',
     icon: '/icons/icon-192.png',
     badge: '/icons/icon-192.png',
     data: { url: data.url || '/', tipo: data.tipo || 'evento' },
@@ -27,7 +27,7 @@ self.addEventListener('push', (event) => {
 
   event.waitUntil(
     (async () => {
-      await self.registration.showNotification(data.titulo || 'NexusCode', options);
+      await self.registration.showNotification(data.titulo || 'Sistema de Stock', options);
       const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
       for (const client of clients) {
         client.postMessage({ type: 'push', payload: data });

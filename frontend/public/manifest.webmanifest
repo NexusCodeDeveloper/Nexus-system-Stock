@@ -1,6 +1,6 @@
 {
-  "name": "NexusCode - Sistema de Stock",
-  "short_name": "NexusCode",
+  "name": "Sistema de Stock",
+  "short_name": "Sistema de Stock",
   "description": "Sistema de gestión de stock, ventas y cierre de caja",
   "start_url": "/",
   "scope": "/",
