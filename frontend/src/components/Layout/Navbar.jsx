@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useAutenticacion } from '../../context/autenticacionContexto';
 import { useTheme } from '../../context/themeContexto';
 import { useIosAlert } from '../alerts';
@@ -11,7 +12,21 @@ const Navbar = () => {
   const { theme, toggleTheme } = useTheme();
   const { confirm } = useIosAlert();
   const [showDropdown, setShowDropdown] = useState(false);
+  const [dropdownPos, setDropdownPos] = useState({ top: 0, right: 0 });
+  const usuarioBtnRef = useRef(null);
   const [calcOpen, setCalcOpen] = useState(false);
+
+  const toggleDropdown = () => {
+    if (showDropdown) {
+      setShowDropdown(false);
+      return;
+    }
+    const rect = usuarioBtnRef.current?.getBoundingClientRect();
+    if (rect) {
+      setDropdownPos({ top: rect.bottom + 6, right: window.innerWidth - rect.right });
+    }
+    setShowDropdown(true);
+  };
 
   const handleLogout = async () => {
     setShowDropdown(false);
@@ -45,7 +60,8 @@ const Navbar = () => {
         {usuario && (
           <div className="relative">
             <button
-              onClick={() => setShowDropdown(!showDropdown)}
+              ref={usuarioBtnRef}
+              onClick={toggleDropdown}
               className="flex items-center gap-2.5 px-2 py-1.5 rounded-ios-pill transition-all hover:bg-ios-hover/5 active:bg-ios-hover/10"
             >
               <div className="w-9 h-9 rounded-full bg-gradient-to-br from-ios-tint to-blue-600 flex items-center justify-center text-sm font-bold text-white shadow-[0_3px_10px_rgba(10,132,255,0.4)] ring-2 ring-white/10">
@@ -58,10 +74,13 @@ const Navbar = () => {
               <IconChevronDown className={`w-3.5 h-3.5 text-ios-tertiary transition-transform duration-200 ${showDropdown ? 'rotate-180' : ''}`} />
             </button>
 
-            {showDropdown && (
+            {showDropdown && createPortal(
               <>
-                <div className="fixed inset-0 z-40" onClick={() => setShowDropdown(false)} />
-                <div className="absolute right-0 top-full mt-1.5 z-50 w-64 bg-ios-surface/95 backdrop-blur-2xl border border-ios-separator/40 rounded-2xl shadow-ios-alert overflow-hidden p-1.5 animate-ios-modal">
+                <div className="fixed inset-0 z-[60]" onClick={() => setShowDropdown(false)} />
+                <div
+                  className="fixed z-[61] w-64 bg-ios-surface/95 backdrop-blur-2xl border border-ios-separator/40 rounded-2xl shadow-ios-alert overflow-hidden p-1.5 animate-ios-modal"
+                  style={{ top: dropdownPos.top, right: dropdownPos.right }}
+                >
                   <div className="px-4 py-3">
                     <p className="text-[11px] text-ios-tertiary uppercase tracking-wide font-medium">Conectado como</p>
                     <p className="text-[13px] font-semibold text-ios-label mt-0.5 truncate">{usuario.email}</p>
@@ -75,7 +94,8 @@ const Navbar = () => {
                     Cerrar Sesión
                   </button>
                 </div>
-              </>
+              </>,
+              document.body
             )}
           </div>
         )}
