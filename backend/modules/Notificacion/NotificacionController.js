@@ -8,6 +8,7 @@ import {
 import { enviarEvento } from '../../services/PushService.js';
 import { enSegundoPlano } from '../../utils/TareasUtils.js';
 import { revisarCuotasSiCorresponde } from '../CuotaCuentaCorriente/CuotasService.js';
+import { RUTAS } from '../../utils/NotificacionesUtils.js';
 
 const poblarUsuarios = (query) =>
   query
@@ -68,11 +69,19 @@ export const crearNotificacion = async (req, res, next) => {
       creadoPor: req.usuario.id,
     });
 
+    const partes = [data.titulo];
+    if (data.descripcion) partes.push(data.descripcion);
+    partes.push(
+      asignacion.destinatario
+        ? `Para ${asignacion.destinatarioNombre}`
+        : 'Para todos los empleados'
+    );
+
     void enviarEvento({
       tipo: 'aviso',
       titulo: 'Nuevo aviso',
-      mensaje: data.titulo,
-      url: '/notificaciones',
+      mensaje: partes.join(' · '),
+      url: RUTAS.NOTIFICACIONES,
       para: asignacion.destinatario
         ? { usuarioId: asignacion.destinatario, nombre: asignacion.destinatarioNombre }
         : 'empleados',
@@ -158,11 +167,14 @@ export const completarNotificacion = async (req, res, next) => {
       Notificacion.findById(notificacion._id)
     );
 
+    const partes = [notificacion.titulo, req.usuario.nombre];
+    if (notificacion.comentario) partes.push(`"${notificacion.comentario}"`);
+
     void enviarEvento({
       tipo: 'aviso',
-      titulo: 'Aviso completado',
-      mensaje: `${notificacion.titulo} · ${req.usuario.nombre}`,
-      url: '/notificaciones',
+      titulo: `${req.usuario.nombre} completó un aviso`,
+      mensaje: partes.join(' · '),
+      url: RUTAS.NOTIFICACIONES,
       para: 'admins',
     });
 
