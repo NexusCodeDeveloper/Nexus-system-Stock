@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { obtenerProductos, obtenerProducto, obtenerProductoPorCodigo, crearProducto, actualizarProducto, eliminarProducto, addDeposito, reponerStock, pasarSalon, aplicarAumentoMasivo, obtenerAumentos, deshacerAumento } from '../../api/productos';
 import { obtenerMovimientosStock } from '../../api/movimientosStock';
 import { obtenerPromociones, crearPromocion, cancelarPromocion, eliminarPromocion } from '../../api/promociones';
@@ -105,8 +105,15 @@ const Deposito = () => {
   const { show: alert, confirm, toast } = useIosAlert();
   const location = useLocation();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
 
-  const [tab, setTab] = useState('stock');
+  const [tab, setTab] = useState(
+    esAdmin && searchParams.get('tab') === 'movimientos' ? 'movimientos' : 'stock'
+  );
+
+  useEffect(() => {
+    if (esAdmin && searchParams.get('tab') === 'movimientos') setTab('movimientos');
+  }, [esAdmin, searchParams]);
   const [search, setSearch] = useState('');
   const [searchDebounced, setSearchDebounced] = useState('');
   const [categoriaActiva, setCategoriaActiva] = useState('');
