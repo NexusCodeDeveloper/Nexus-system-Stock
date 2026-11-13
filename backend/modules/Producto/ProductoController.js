@@ -9,6 +9,21 @@ import MovimientoStock from '../MovimientoStock/MovimientoStockModel.js';
 import Promocion from '../Promocion/PromocionModel.js';
 import { schemaCrearProducto, schemaActualizarProducto, schemaIntercambio, schemaAgregarStock, schemaMovimientoStock, schemaDeposito, schemaPasarSalon, schemaAumentoPrecio } from './ProductoSchema.js';
 import { enviarEvento, enviarStockBajo } from '../../services/PushService.js';
+import {
+  RUTAS,
+  construirEventoProductoCreado,
+  construirEventoProductoEditado,
+  construirEventoProductoEliminado,
+  construirEventoProductoRestaurado,
+  construirEventoProductoEliminadoDefinitivo,
+  construirEventoMovimientoStock,
+  construirEventoMovimientoSalonMasivo,
+  construirEventoAumentoPrecios,
+  describirCambiosProducto,
+  snapshotProducto,
+  nombreConVariante,
+  formatearMonto,
+} from '../../utils/NotificacionesUtils.js';
 import { indiceDeVariante, depositoDe } from '../../utils/VariantesUtils.js';
 import { ejecutarCambio } from '../Devolucion/DevolucionService.js';
 import { responderErrorDeServicio } from '../../utils/RespuestaErrorUtils.js';
@@ -317,6 +332,12 @@ export const obtenerProducto = async (req, res, next) => {
 };
 
 export const crearProducto = async (req, res, next) => {
+  const responderCreado = (product) => {
+    const evento = construirEventoProductoCreado(product, req.usuario?.nombre);
+    if (evento) void enviarEvento(evento);
+    return res.status(201).json(product);
+  };
+
   try {
     const data = schemaCrearProducto.parse(req.body);
 
@@ -344,12 +365,12 @@ export const crearProducto = async (req, res, next) => {
 
     try {
       const product = await Producto.create({ ...data, codigo });
-      return res.status(201).json(product);
+      return responderCreado(product);
     } catch (error) {
       if (error?.code === 11000) {
         const alternativo = await generarCodigoProducto();
         const product = await Producto.create({ ...data, codigo: alternativo });
-        return res.status(201).json(product);
+        return responderCreado(product);
       }
       throw error;
     }
@@ -370,6 +391,8 @@ export const actualizarProducto = async (req, res, next) => {
       await session.abortTransaction();
       return res.status(404).json({ message: 'Producto no encontrado' });
     }
+
+    const productoPrevio = snapshotProducto(product);
 
     if (data.nombre) {
       const existing = await Producto.findOne({
@@ -506,6 +529,15 @@ export const actualizarProducto = async (req, res, next) => {
     }
 
     await session.commitTransaction();
+
+    const cambios = describirCambiosProducto(productoPrevio, product);
+    const evento = construirEventoProductoEditado({
+      producto: product,
+      cambios,
+      empleado: req.usuario?.nombre,
+    });
+    if (evento) void enviarEvento(evento);
+
     res.json(product);
   } catch (error) {
     await session?.abortTransaction().catch(() => {});
@@ -578,6 +610,14 @@ export const aplicarAumentoMasivo = async (req, res, next) => {
     );
 
     await session.commitTransaction();
+
+    const evento = construirEventoAumentoPrecios({
+      items,
+      tipo: data.tipo,
+      valor: data.valor,
+      empleado: req.usuario?.nombre,
+    });
+    if (evento) void enviarEvento(evento);
 
     const omitidos = ids.length - productos.length;
     const sinCambios = productos.length - items.length;
@@ -672,6 +712,21 @@ export const deshacerAumento = async (req, res, next) => {
 
     await session.commitTransaction();
 
+    const idsRestaurados = new Set(
+      operaciones.map((operacion) => String(operacion.updateOne.filter._id))
+    );
+    const itemsRestaurados = aumento.items.filter(
+      (item) => idsRestaurados.has(String(item.producto))
+    );
+    const evento = construirEventoAumentoPrecios({
+      items: itemsRestaurados,
+      tipo: aumento.tipo,
+      valor: aumento.valor,
+      empleado: req.usuario?.nombre,
+      deshecho: true,
+    });
+    if (evento) void enviarEvento(evento);
+
     res.json({
       message: omitidos > 0
         ? `Se restauraron ${operaciones.length} precio(s). ${omitidos} producto(s) no se tocaron porque su precio cambió después.`
@@ -727,6 +782,18 @@ export const agregarStock = async (req, res, next) => {
     }, session);
 
     await session.commitTransaction();
+
+    const evento = construirEventoMovimientoStock({
+      tipo: 'ajuste_salon',
+      producto: product,
+      talle,
+      color,
+      cantidad,
+      signo: '+',
+      empleado: req.usuario?.nombre,
+    });
+    if (evento) void enviarEvento(evento);
+
     res.json(product);
   } catch (error) {
     await session?.abortTransaction().catch(() => {});
@@ -788,6 +855,18 @@ export const agregarDeposito = async (req, res, next) => {
     }, session);
 
     await session.commitTransaction();
+
+    const evento = construirEventoMovimientoStock({
+      tipo: modo === 'fijar' ? 'ajuste_deposito' : 'ingreso_deposito',
+      producto: product,
+      talle,
+      color,
+      cantidad: Math.abs(delta),
+      signo: delta > 0 ? '+' : '-',
+      empleado: req.usuario?.nombre,
+    });
+    if (evento) void enviarEvento(evento);
+
     res.json(product);
   } catch (error) {
     await session?.abortTransaction().catch(() => {});
@@ -869,6 +948,17 @@ export const reponerStock = async (req, res, next) => {
     }, session);
 
     await session.commitTransaction();
+
+    const evento = construirEventoMovimientoStock({
+      tipo: 'reposicion',
+      producto: actualizado,
+      talle,
+      color,
+      cantidad,
+      empleado: req.usuario?.nombre,
+    });
+    if (evento) void enviarEvento(evento);
+
     res.json(actualizado);
   } catch (error) {
     await session?.abortTransaction().catch(() => {});
@@ -937,6 +1027,16 @@ export const pasarAlSalon = async (req, res, next) => {
     }
 
     await session.commitTransaction();
+
+    const evento = construirEventoMovimientoSalonMasivo({
+      articulos: articulos.map((item) => ({
+        ...item,
+        producto: porId.get(String(item.producto)),
+      })),
+      empleado: req.usuario?.nombre,
+    });
+    if (evento) void enviarEvento(evento);
+
     res.json({ message: 'Stock pasado al salón' });
   } catch (error) {
     await session?.abortTransaction().catch(() => {});
@@ -1024,6 +1124,17 @@ export const retirarStock = async (req, res, next) => {
     }, session);
 
     await session.commitTransaction();
+
+    const evento = construirEventoMovimientoStock({
+      tipo: 'retiro_deposito',
+      producto: actualizado,
+      talle,
+      color,
+      cantidad,
+      empleado: req.usuario?.nombre,
+    });
+    if (evento) void enviarEvento(evento);
+
     res.json(actualizado);
   } catch (error) {
     await session?.abortTransaction().catch(() => {});
@@ -1038,11 +1149,33 @@ export const intercambiarProducto = async (req, res, next) => {
     const data = schemaIntercambio.parse(req.body);
     const resultado = await conReintentos(() => ejecutarCambio(data, req.usuario));
 
+    const devuelto = nombreConVariante(
+      resultado.productoDevuelto.nombre,
+      data.talleDevolver,
+      data.colorDevolver
+    );
+    const cargado = nombreConVariante(
+      resultado.productoCargado.nombre,
+      data.talleCargar,
+      data.colorCargar
+    );
+    const diferencia = resultado.diferencia > 0
+      ? `Dif. a cobrar ${formatearMonto(resultado.diferencia)}`
+      : resultado.diferencia < 0
+        ? `Dif. a favor ${formatearMonto(Math.abs(resultado.diferencia))}`
+        : 'Sin diferencia';
+    const autor = req.usuario?.nombre?.trim() || 'Se';
+    const partes = [
+      `${autor} registró un cambio`,
+      `${devuelto} × ${data.cantidadDevolver} → ${cargado} × ${data.cantidadCargar}`,
+      diferencia,
+    ];
+
     void enviarEvento({
       tipo: 'devolucion',
-      titulo: 'Cambio registrado',
-      mensaje: `${resultado.productoDevuelto.nombre} → ${resultado.productoCargado.nombre}`,
-      url: '/returns',
+      titulo: `${req.usuario?.nombre?.trim() || 'Alguien'} registró un cambio`,
+      mensaje: partes.join(' · '),
+      url: RUTAS.DEVOLUCIONES,
       para: 'admins',
     });
     void enviarStockBajo([resultado.productoCargado]);
@@ -1077,6 +1210,10 @@ export const eliminarProducto = async (req, res, next) => {
     product.eliminadoEn = new Date();
     product.eliminadoPor = req.usuario?.nombre || '';
     await product.save();
+
+    const evento = construirEventoProductoEliminado(product, req.usuario?.nombre);
+    if (evento) void enviarEvento(evento);
+
     res.json({ message: `"${product.nombre}" se movió a la papelera`, producto: product });
   } catch (error) {
     next(error);
@@ -1107,6 +1244,10 @@ export const restaurarProducto = async (req, res, next) => {
     product.eliminadoEn = null;
     product.eliminadoPor = '';
     await product.save();
+
+    const evento = construirEventoProductoRestaurado(product, req.usuario?.nombre);
+    if (evento) void enviarEvento(evento);
+
     res.json(product);
   } catch (error) {
     next(error);
@@ -1136,6 +1277,10 @@ export const eliminarDefinitivo = async (req, res, next) => {
       { $pull: { productos: product._id } }
     ).session(session);
     await session.commitTransaction();
+
+    const evento = construirEventoProductoEliminadoDefinitivo(product, req.usuario?.nombre);
+    if (evento) void enviarEvento(evento);
+
     res.json({ message: `"${product.nombre}" se eliminó definitivamente` });
   } catch (error) {
     await session?.abortTransaction().catch(() => {});
