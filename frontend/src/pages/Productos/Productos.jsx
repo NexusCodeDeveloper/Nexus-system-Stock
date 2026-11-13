@@ -12,7 +12,7 @@ import { obtenerVentas as obtenerTickets } from '../../api/ventas';
 import { obtenerMensajeErrorApi } from '../../utils/apiError';
 import { formatMoney, formatDate } from '../../utils/format';
 import { precioVigente, tieneOferta, etiquetaOferta } from '../../utils/precios';
-import { depositoTotal, tieneStockBajo, soloEnDeposito, paramsProductos } from '../../utils/productos';
+import { depositoTotal, estadoStockProducto, estadoStockVariante, soloEnDeposito, paramsProductos } from '../../utils/productos';
 import { calcularPagina } from '../../utils/paginacion';
 import { CANTIDAD, limitarTexto } from '../../utils/validacion';
 import { useApi } from '../../hooks/useApi';
@@ -21,6 +21,7 @@ import { useDropdownAnclado } from '../../hooks/useDropdownAnclado';
 import { escucharPush } from '../../services/GestorPush';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
 import Paginacion from '../../components/common/Paginacion';
+import StockBadge from '../../components/common/StockBadge';
 import AvisoPromociones from '../../components/Promociones/AvisoPromociones';
 import ScannerButton from '../../components/scanner/ScannerButton';
 import ScannerModal from '../../components/scanner/ScannerModal';
@@ -57,13 +58,23 @@ const filasDetalle = (p) => {
         filas.push({ tipo: 'vacio' });
       } else {
         for (const v of vars) {
-          filas.push({ tipo: 'variante', detalle: `${v.talle || 'Base'} (${v.cantidad || 0})`, codigo: v.codigo || '' });
+          filas.push({
+            tipo: 'variante',
+            detalle: `${v.talle || 'Base'} (${v.cantidad || 0})`,
+            codigo: v.codigo || '',
+            estado: estadoStockVariante(v, p.stockMinimo),
+          });
         }
       }
     }
   } else if (p.variantes?.length > 0) {
     for (const v of p.variantes) {
-      filas.push({ tipo: 'variante', detalle: variantLabel(v), codigo: v.codigo || '' });
+      filas.push({
+        tipo: 'variante',
+        detalle: variantLabel(v),
+        codigo: v.codigo || '',
+        estado: estadoStockVariante(v, p.stockMinimo),
+      });
     }
   }
   return filas;
@@ -1042,7 +1053,12 @@ const Productos = () => {
                             filasDetalle(p).map((fila, i) => (
                               fila.tipo === 'color'
                                 ? <div key={i} className="font-semibold text-ios-secondary">{fila.texto}:</div>
-                                : <div key={i} className="text-ios-tertiary pl-2">{fila.tipo === 'vacio' ? '—' : fila.detalle}</div>
+                                : (
+                                  <div key={i} className="text-ios-tertiary pl-2 flex items-center gap-1.5 flex-wrap">
+                                    <span>{fila.tipo === 'vacio' ? '—' : fila.detalle}</span>
+                                    <StockBadge estado={fila.estado} />
+                                  </div>
+                                )
                             ))
                           ) : (
                             <div className="text-ios-tertiary">—</div>
@@ -1086,11 +1102,9 @@ const Productos = () => {
                     </td>
                     <td className="px-4 py-3.5">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span className={`inline-flex items-center gap-1.5 font-medium ${tieneStockBajo(p) ? 'text-ios-red font-semibold' : 'text-ios-label'}`}>
-                          {tieneStockBajo(p) && (
-                            <IconAlert className="w-4 h-4" strokeWidth={2} />
-                          )}
+                        <span className="inline-flex items-center gap-1.5 font-medium text-ios-label">
                           {p.cantidad}
+                          <StockBadge estado={estadoStockProducto(p)} />
                         </span>
                         {soloEnDeposito(p) && (
                           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-violet-100 text-violet-700 dark:bg-violet-500/15 dark:text-violet-300 whitespace-nowrap">
@@ -1168,6 +1182,11 @@ const Productos = () => {
                     {p.codigo && (
                       <p className="text-[11px] text-ios-tertiary mt-0.5">Código: {p.codigo}</p>
                     )}
+                    {estadoStockProducto(p) && (
+                      <div className="mt-1.5">
+                        <StockBadge estado={estadoStockProducto(p)} />
+                      </div>
+                    )}
                     {soloEnDeposito(p) && (
                       <span className="inline-flex items-center gap-1 mt-1.5 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-violet-100 text-violet-700 dark:bg-violet-500/15 dark:text-violet-300">
                         <IconWarehouse className="w-3 h-3" strokeWidth={2} />
@@ -1176,7 +1195,7 @@ const Productos = () => {
                     )}
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
-                    <span className={`inline-flex items-center justify-center gap-1.5 leading-none px-2.5 py-1 rounded-full text-xs font-semibold ${tieneStockBajo(p) ? 'bg-ios-red/15 text-ios-red' : 'bg-ios-surface2 text-ios-secondary'}`}>
+                    <span className="inline-flex items-center justify-center gap-1.5 leading-none px-2.5 py-1 rounded-full text-xs font-semibold bg-ios-surface2 text-ios-secondary">
                       {p.cantidad}
                     </span>
                     <span className="inline-flex items-center justify-center gap-1.5 leading-none px-2.5 py-1 rounded-full text-xs font-semibold bg-violet-100 text-violet-700 dark:bg-violet-500/15 dark:text-violet-300">
