@@ -18,6 +18,7 @@ import {
 } from '../CuotaCuentaCorriente/CuotasService.js';
 import { enviarCierreDeCaja, enviarCorreoPrueba, verificarCorreo } from '../../services/CorreoService.js';
 import { enviarEvento, enviarStockBajo } from '../../services/PushService.js';
+import { RUTAS, formatearMonto, resumenArticulos } from '../../utils/NotificacionesUtils.js';
 import { enSegundoPlano } from '../../utils/TareasUtils.js';
 import { parsearFecha, obtenerRango, inicioDeDia } from '../../utils/FechasUtils.js';
 import { indiceDeVariante, extraDeposito } from '../../utils/VariantesUtils.js';
@@ -45,18 +46,23 @@ const resumenPagos = (pagos = []) =>
       .filter(Boolean)
   )].join(' + ');
 
+const textoUnidades = (venta) => {
+  const total = (venta.articulos || []).reduce(
+    (suma, item) => suma + (Number(item.cantidad) || 0),
+    0
+  );
+  return total === 1 ? '1 unidad' : `${total} unidades`;
+};
+
 /** Push nativo para los admins cuando la venta la hizo un empleado. No persiste ningún aviso. */
 export const construirEventoVentaEmpleado = (venta, usuario) => {
   if (!venta || usuario?.rol !== 'user') return null;
-  const unidades = (venta.articulos || []).reduce(
-    (total, item) => total + (Number(item.cantidad) || 0),
-    0
-  );
+  const articulos = resumenArticulos(venta.articulos);
   const total = Number(venta.total) || 0;
   const partes = [
     `Ticket ${venta.ticketNumero || '—'}`,
-    unidades === 1 ? '1 unidad' : `${unidades} unidades`,
-    `$${total.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+    articulos || textoUnidades(venta),
+    formatearMonto(total),
   ];
   if (venta.clienteNombre) partes.push(`Cliente: ${venta.clienteNombre}`);
   const pagos = resumenPagos(venta.pagos);
@@ -64,10 +70,31 @@ export const construirEventoVentaEmpleado = (venta, usuario) => {
 
   return {
     tipo: 'venta',
-    titulo: `Nueva venta de ${usuario.nombre}`,
+    titulo: `${usuario.nombre} vendió ${formatearMonto(total)}`,
     mensaje: `${partes.join(' · ')}.`,
-    url: '/ventas',
+    url: RUTAS.VENTAS,
     para: 'admins',
+  };
+};
+
+const construirEventoVentaPropia = (venta, usuario) => {
+  if (!venta || !usuario) return null;
+  const articulos = resumenArticulos(venta.articulos);
+  const partes = [
+    `Ticket ${venta.ticketNumero || '—'}`,
+    articulos || textoUnidades(venta),
+    formatearMonto(venta.total),
+  ];
+  if (venta.clienteNombre) partes.push(`Cliente: ${venta.clienteNombre}`);
+  const pagos = resumenPagos(venta.pagos);
+  if (pagos) partes.push(pagos);
+
+  return {
+    tipo: 'venta',
+    titulo: `Vendiste ${formatearMonto(venta.total)}`,
+    mensaje: partes.join(' · '),
+    url: RUTAS.VENTAS,
+    para: { usuarioId: usuario.id, nombre: usuario.nombre },
   };
 };
 
@@ -216,13 +243,8 @@ export const crearVenta = async (req, res, next) => {
     if (eventoVentaEmpleado) void enviarEvento(eventoVentaEmpleado);
 
     void enviarStockBajo(productosVendidos);
-    void enviarEvento({
-      tipo: 'venta',
-      titulo: 'Nueva venta',
-      mensaje: `$${Number(total).toLocaleString('es-AR', { minimumFractionDigits: 2 })} · ${req.usuario.nombre}`,
-      url: '/ventas',
-      para: { usuarioId: req.usuario.id, nombre: req.usuario.nombre },
-    });
+    const eventoVentaPropia = construirEventoVentaPropia(savedSale, req.usuario);
+    if (eventoVentaPropia) void enviarEvento(eventoVentaPropia);
 
     res.status(201).json(populated);
   } catch (error) {
@@ -568,9 +590,9 @@ export const abrirCaja = async (req, res, next) => {
 
     void enviarEvento({
       tipo: 'cierre',
-      titulo: 'Caja abierta',
-      mensaje: `${data.nombre} abrió la caja${data.fondoInicial > 0 ? ` con un fondo de $${Number(data.fondoInicial).toLocaleString('es-AR', { minimumFractionDigits: 2 })}` : ''}`,
-      url: '/sales',
+      titulo: `${data.nombre} abrió la caja`,
+      mensaje: `${data.nombre} abrió la caja · Fondo ${formatearMonto(data.fondoInicial)}`,
+      url: RUTAS.CIERRES,
       para: 'admins',
     });
 
@@ -842,9 +864,9 @@ export const cerrarCaja = async (req, res, next) => {
 
     void enviarEvento({
       tipo: 'cierre',
-      titulo: 'Cierre de caja',
-      mensaje: `${etiquetaTurno(actualizada.turno)} · $${Number(actualizada.total).toLocaleString('es-AR', { minimumFractionDigits: 2 })} · ${data.nombre}`,
-      url: '/sales',
+      titulo: `${data.nombre} cerró la caja`,
+      mensaje: `${data.nombre} cerró la caja · ${etiquetaTurno(actualizada.turno)} · ${formatearMonto(actualizada.total)} · ${actualizada.cantidad || 0} ventas`,
+      url: RUTAS.CIERRES,
       para: 'admins',
     });
 
