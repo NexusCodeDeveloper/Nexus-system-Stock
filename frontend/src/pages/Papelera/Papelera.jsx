@@ -5,6 +5,7 @@ import { formatDate } from '../../utils/format';
 import { depositoTotal, salonTotal } from '../../utils/productos';
 import { calcularPagina } from '../../utils/paginacion';
 import { useApi } from '../../hooks/useApi';
+import { escucharPush } from '../../services/GestorPush';
 import { useLector } from '../../context/lectorContexto';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
 import Paginacion from '../../components/common/Paginacion';
@@ -61,6 +62,13 @@ const Papelera = () => {
   const productos = papeleraApi.error ? [] : papeleraApi.data?.lista || [];
   const total = papeleraApi.error ? 0 : papeleraApi.data?.total || 0;
   const { totalPaginas } = calcularPagina(total, porPagina, pagina);
+
+  useEffect(() => {
+    const off = escucharPush((payload) => {
+      if (payload?.tipo === 'producto') recargar();
+    });
+    return off;
+  }, [recargar]);
 
   useEffect(() => {
     if (pagina > totalPaginas) setPagina(totalPaginas);
