@@ -495,7 +495,7 @@ test('construirEventoVentaEmpleado arma el push para admins solo con empleados',
   assert.equal(evento.tipo, 'venta');
   assert.equal(evento.para, 'admins');
   assert.equal(evento.url, '/ventas');
-  assert.match(evento.titulo, /Empleado Uno/);
+  assert.equal(evento.titulo, 'Empleado Uno vendió $20.000,00');
   assert.match(evento.mensaje, /T-ABC12345/);
   assert.match(evento.mensaje, /20\.000,00/);
   assert.match(evento.mensaje, /Ana Lopez/);
