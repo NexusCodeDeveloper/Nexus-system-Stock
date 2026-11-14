@@ -194,7 +194,7 @@ const Productos = () => {
 
   useEffect(() => {
     const off = escucharPush((payload) => {
-      if (['stock', 'venta', 'devolucion'].includes(payload?.tipo)) {
+      if (['stock', 'venta', 'devolucion', 'producto'].includes(payload?.tipo)) {
         recargarLowStock();
         recargarProductos();
       }
@@ -471,15 +471,21 @@ const Productos = () => {
     visibles.find((el) => el.offsetParent !== null)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   }, [lastAdded]);
 
-  const renderVariantSelect = (variants, value, onChange, label = 'Variante') => {
+  const renderVariantSelect = (variants, value, onChange, label = 'Variante', stockMinimo = null) => {
     if (!variants?.length) return null;
     return (
       <IosField label={label} required>
         <IosSelect value={value} onChange={(e) => onChange(e.target.value)}>
           <option value="" className="bg-ios-surface2">Seleccionar...</option>
-          {variants.map((v, i) => (
-            <option key={i} value={String(i)} className="bg-ios-surface2">{variantLabel(v)} · {v.codigo || 'sin código'}</option>
-          ))}
+          {variants.map((v, i) => {
+            const estado = estadoStockVariante(v, stockMinimo);
+            const sufijo = estado === 'agotado' ? ' · SIN STOCK' : estado === 'bajo' ? ' · BAJO' : '';
+            return (
+              <option key={i} value={String(i)} className="bg-ios-surface2" disabled={estado === 'agotado'}>
+                {variantLabel(v)} · {v.codigo || 'sin código'}{sufijo}
+              </option>
+            );
+          })}
         </IosSelect>
       </IosField>
     );
@@ -673,7 +679,7 @@ const Productos = () => {
               )}
             </div>
           </IosField>
-          {renderVariantSelect(quickAdd?.variantes, qaVariantIdx, setQaVariantIdx)}
+          {renderVariantSelect(quickAdd?.variantes, qaVariantIdx, setQaVariantIdx, 'Variante', quickAdd?.stockMinimo)}
         </div>
       </IosModal>
 
@@ -907,7 +913,7 @@ const Productos = () => {
           </span>
         </p>
         <div className="space-y-4">
-          {renderVariantSelect(retirarVariants, retirarVariantIdx, setRetirarVariantIdx)}
+          {renderVariantSelect(retirarVariants, retirarVariantIdx, setRetirarVariantIdx, 'Variante', retirarModal?.stockMinimo)}
           <IosField label="Unidades a retirar" hint={`Disponible en salón: ${retirarDisponible ?? '—'}`} error={retirarError}>
             <IosInput
               type="text" inputMode="numeric"
@@ -1248,7 +1254,12 @@ const Productos = () => {
                           {filasDetalle(p).map((fila, i) => (
                             fila.tipo === 'color'
                               ? <div key={i} className="font-semibold text-ios-secondary">{fila.texto}:</div>
-                              : <div key={i} className="text-ios-tertiary pl-2">{fila.tipo === 'vacio' ? '—' : fila.detalle}</div>
+                              : (
+                                <div key={i} className="text-ios-tertiary pl-2 flex items-center gap-1.5 flex-wrap">
+                                  <span>{fila.tipo === 'vacio' ? '—' : fila.detalle}</span>
+                                  <StockBadge estado={fila.estado} />
+                                </div>
+                              )
                           ))}
                         </div>
                       ) : (
