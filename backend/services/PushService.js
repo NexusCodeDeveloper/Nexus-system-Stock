@@ -3,6 +3,7 @@ import webpush from 'web-push';
 import SuscripcionPush from '../modules/Push/PushModel.js';
 import Usuario from '../modules/Autenticacion/UsuarioModel.js';
 import logger from '../utils/LoggerUtils.js';
+import { construirAlertaStockBajo } from '../utils/NotificacionesUtils.js';
 
 let pushActivo = false;
 
@@ -107,19 +108,22 @@ export const limpiarSuscripcionesHuerfanas = async () => {
   return eliminar.length;
 };
 
+export const construirPayloadPush = ({ tipo, titulo, mensaje, url = '/', fecha = new Date().toISOString() }) =>
+  JSON.stringify({
+    tipo,
+    titulo: titulo || 'Notificación',
+    mensaje,
+    url,
+    fecha,
+  });
+
 const ejecutarEnvio = async ({ tipo, titulo, mensaje, url = '/', para = 'todos' }) => {
   if (!pushActivo) return;
   try {
     const subs = await SuscripcionPush.find(construirFiltro(para));
     if (subs.length === 0) return;
 
-    const payload = JSON.stringify({
-      tipo,
-      titulo,
-      mensaje,
-      url,
-      fecha: new Date().toISOString(),
-    });
+    const payload = construirPayloadPush({ tipo, titulo, mensaje, url });
 
     const resultados = await Promise.allSettled(
       subs.map((s) =>
@@ -173,22 +177,8 @@ export const enviarEvento = (opciones) => {
 
 export const enviarStockBajo = async (productos = []) => {
   if (!pushActivo || productos.length === 0) return;
-  const stockDe = (p) =>
-    p.variantes?.length > 0 ? p.variantes.reduce((s, v) => s + v.cantidad, 0) : p.cantidad;
-  const depositoDe = (p) =>
-    p.variantes?.length > 0 ? p.variantes.reduce((s, v) => s + (v.deposito || 0), 0) : (p.deposito || 0);
-  const agotados = productos.filter((p) => stockDe(p) <= (p.stockMinimo ?? 0));
-  if (agotados.length === 0) return;
-  await enviarEvento({
-    tipo: 'stock',
-    titulo: 'Stock bajo',
-    mensaje: agotados
-      .map((p) => {
-        const dep = depositoDe(p);
-        return `${p.nombre} (${stockDe(p)} uds.${dep > 0 ? ` · dep ${dep}` : ''})`;
-      })
-      .join(' · '),
-    url: '/products',
-    para: 'admins',
-  });
+  const evento = construirAlertaStockBajo(productos);
+  if (!evento) return;
+  const mensaje = [evento.titulo, evento.mensaje].filter(Boolean).join(' · ');
+  await enviarEvento({ ...evento, mensaje });
 };
