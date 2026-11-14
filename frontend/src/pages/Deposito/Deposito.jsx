@@ -242,7 +242,7 @@ const Deposito = () => {
 
   useEffect(() => {
     const off = escucharPush((payload) => {
-      if (['stock', 'venta', 'devolucion'].includes(payload?.tipo)) {
+      if (['stock', 'venta', 'devolucion', 'producto'].includes(payload?.tipo)) {
         recargarProductos();
         if (tab === 'movimientos') recargarMovimientos();
       }
