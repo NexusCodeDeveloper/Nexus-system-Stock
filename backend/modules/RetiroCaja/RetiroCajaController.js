@@ -10,6 +10,7 @@ import { enviarEvento } from '../../services/PushService.js';
 import { mensajeCierre, verificarOperacionNoEnCierre, MENSAJE_CIERRE_EN_CURSO } from '../../utils/CierresUtils.js';
 import { buscarCajaAbierta, cajaEsDeHoy, mensajeCajaAnterior } from '../../utils/CajaUtils.js';
 import logger from '../../utils/LoggerUtils.js';
+import { RUTAS, formatearMonto } from '../../utils/NotificacionesUtils.js';
 
 const redondear = (valor) => Math.round((Number(valor) || 0) * 100) / 100;
 
@@ -137,10 +138,10 @@ export const crearRetiroCaja = async (req, res, next) => {
 
     void enviarEvento({
       tipo: 'retiro',
-      titulo: 'Retiro de efectivo',
-      mensaje: `$${montoRedondo.toLocaleString('es-AR', { minimumFractionDigits: 2 })} · ${data.motivo} · ${realizadoPor}`,
-      url: '/sales',
-      para: { usuarioId: req.usuario.id, nombre: realizadoPor },
+      titulo: `${realizadoPor} retiró efectivo`,
+      mensaje: `${realizadoPor} retiró efectivo · ${formatearMonto(montoRedondo)} · ${data.motivo}`,
+      url: RUTAS.CIERRES,
+      para: 'admins',
     });
 
     res.status(201).json(withdrawal);
