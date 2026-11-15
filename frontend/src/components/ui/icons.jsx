@@ -47,6 +47,8 @@ export const IconSettings = (p) => <Icon {...p} d="M10.325 4.317c.426-1.756 2.92
 
 export const IconCalculator = (p) => <Icon {...p} d="M8 7h8M8 11h.01M12 11h.01M16 11h.01M8 15h.01M12 15h.01M16 15h.01M6 3h12a2 2 0 012 2v14a2 2 0 01-2 2H6a2 2 0 01-2-2V5a2 2 0 012-2z" />;
 
+export const IconPanelLeft = (p) => <Icon {...p} d="M4 3h16a1 1 0 011 1v16a1 1 0 01-1 1H4a1 1 0 01-1-1V4a1 1 0 011-1zm6 0v18" />;
+
 export const IconTile = ({ children, gradient = 'from-sky-500 to-blue-600', className = 'w-7 h-7' }) => (
   <span
     className={`flex items-center justify-center rounded-[9px] bg-gradient-to-br ${gradient} shadow-[0_3px_10px_rgba(0,0,0,0.4)] shrink-0 ${className}`}

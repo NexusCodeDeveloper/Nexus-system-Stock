@@ -4,6 +4,7 @@ import { useAutenticacion } from '../../context/autenticacionContexto';
 import { useTheme } from '../../context/themeContexto';
 import { useIosAlert } from '../alerts';
 import { IconLogout, IconChevronDown, IconSun, IconMoon, IconCalculator } from '../ui/icons';
+import { SidebarTrigger } from '../ui/sidebar';
 import IosToggle from '../ui/IosToggle';
 import Calculadora from '../Calculadora/Calculadora';
 
@@ -42,6 +43,7 @@ const Navbar = () => {
 
   return (
     <header className="bg-ios-surface/60 backdrop-blur-2xl border-b border-ios-separator/40 px-4 sm:px-6 py-2.5 safe-top-bar flex items-center justify-between z-10 shrink-0">
+      <SidebarTrigger className="md:hidden text-ios-secondary hover:bg-ios-hover/10 hover:text-ios-label" />
       <div className="ml-auto flex items-center gap-2 sm:gap-3">
         <button
           type="button"

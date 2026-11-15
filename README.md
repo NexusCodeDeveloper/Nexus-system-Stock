@@ -294,8 +294,9 @@ Endpoints: `GET /api/productos/codigo/:codigo` (buscar por código) y `GET /api/
 
 ## Carrito y sidebar
 
-- **Sidebar colapsado:** en desktop el menú queda como barra de íconos (72 px) y se expande al pasar
-  el mouse (260 px), superponiéndose al contenido.
+- **Sidebar colapsado:** en desktop el menú queda como barra de íconos (72 px) con el componente
+  Sidebar de shadcn/ui, superficie iOS y se expande al pasar el mouse (260 px), superponiéndose al contenido.
+- **Navegación mobile:** se abre como panel lateral (Sheet) desde el botón de menú del navbar, con overlay tenue.
 - **Carrito a la derecha:** mientras hay productos en el carrito, aparece un panel de venta a la
   derecha con el checkout completo (items, empleado, descuento, pago, total y Confirmar Venta). Se
   ve en todas las páginas y desaparece al vaciar el carrito.

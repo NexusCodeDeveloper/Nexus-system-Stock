@@ -1,8 +1,21 @@
-import { NavLink } from 'react-router-dom';
+import { NavLink, useLocation } from 'react-router-dom';
 import { IconBox, IconChart, IconUsers, IconUserPlus, IconReturn, IconBell, IconTile, IconTicket, IconWallet, IconWarehouse, IconArchive } from '../ui/icons';
 import { useNotificaciones } from '../../context/notificacionContexto';
 import { useSolicitudesCliente } from '../../context/solicitudContexto';
 import { useAutenticacion } from '../../context/autenticacionContexto';
+import {
+  Sidebar as SidebarRoot,
+  SidebarContent,
+  SidebarFooter,
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarGroupLabel,
+  SidebarHeader,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+} from '../ui/sidebar';
+import { useSidebar } from '../ui/sidebarContexto';
 
 const links = [
   { to: '/productos', label: 'Salón', icon: IconBox, gradient: 'from-sky-500 to-blue-600' },
@@ -21,6 +34,8 @@ const Sidebar = () => {
   const { pendingCount } = useNotificaciones();
   const { pendientesCount } = useSolicitudesCliente();
   const { esAdmin } = useAutenticacion();
+  const { pathname } = useLocation();
+  const { isMobile, setOpenMobile } = useSidebar();
   const visibleLinks = links.filter((link) => !link.adminOnly || esAdmin);
 
   const contadorDe = (to) => {
@@ -29,86 +44,71 @@ const Sidebar = () => {
     return 0;
   };
 
+  const handleNavigate = () => {
+    if (isMobile) setOpenMobile(false);
+  };
+
   return (
-    <aside className="group absolute inset-y-0 left-0 z-30 w-[72px] hover:w-[260px] transition-[width] duration-300 ease-out overflow-hidden bg-ios-surface/95 backdrop-blur-2xl border-r border-ios-separator/40 flex flex-col shadow-[8px_0_28px_rgba(0,0,0,0.28)]">
-      <div className="px-4 pt-7 pb-6">
-        <div className="relative flex items-center">
-          <div className="w-10 h-10 shrink-0 rounded-[11px] bg-gradient-to-br from-ios-tint to-blue-600 flex items-center justify-center shadow-[0_4px_14px_rgba(10,132,255,0.4)]">
-            <span className="text-white font-bold text-[15px] tracking-tight">NC</span>
+    <SidebarRoot hoverExpand>
+      <SidebarHeader className="px-4 pb-6 pt-7">
+        <div className="flex items-center gap-4 overflow-hidden">
+          <div className="flex size-10 shrink-0 items-center justify-center rounded-[11px] bg-ios-tint bg-gradient-to-br from-ios-tint to-blue-600 shadow-[0_4px_14px_rgba(10,132,255,0.4)]">
+            <span className="text-[15px] font-bold tracking-tight text-white">NC</span>
           </div>
-          <div className="pointer-events-none absolute left-[56px] top-1/2 -translate-y-1/2 whitespace-nowrap opacity-0 transition-opacity duration-200 group-hover:opacity-100">
-            <h1 className="text-[17px] font-bold text-ios-label tracking-tight">NexusCode</h1>
-            <p className="text-[11px] text-ios-tertiary font-medium">Sistema de stock</p>
-          </div>
-        </div>
-      </div>
-
-      <nav className="flex-1 px-3 space-y-0.5">
-        {visibleLinks.map((link) => (
-          <NavLink
-            key={link.to}
-            to={link.to}
-            end={link.to === '/'}
-            className={({ isActive }) =>
-              `relative flex items-center pl-2 pr-3 py-2.5 rounded-2xl transition-all duration-200 ${
-                isActive
-                  ? 'bg-ios-tint/15 ring-1 ring-ios-tint/30 shadow-[0_8px_18px_-10px_rgba(10,132,255,0.5)]'
-                  : 'hover:bg-ios-hover/[0.05] active:bg-ios-hover/[0.09]'
-              }`
-            }
-          >
-            {({ isActive }) => {
-              const contador = contadorDe(link.to);
-              return (
-                <>
-                  <span className="relative shrink-0">
-                    <IconTile
-                      gradient={link.gradient}
-                      className={`w-8 h-8 transition-opacity duration-200 ${
-                        isActive ? 'opacity-100' : 'opacity-60 group-hover:opacity-90'
-                      }`}
-                    >
-                      <link.icon className="w-4 h-4 text-white" strokeWidth={2.1} />
-                    </IconTile>
-                    {contador > 0 && (
-                      <span className="absolute -top-1.5 -right-1.5 bg-ios-tint text-white text-[10px] font-bold min-w-[18px] h-[18px] px-1 rounded-full flex items-center justify-center leading-none shadow-[0_2px_6px_rgba(0,0,0,0.4)]">
-                        {contador > 99 ? '99+' : contador}
-                      </span>
-                    )}
-                  </span>
-                  <span
-                    className={`pointer-events-none absolute left-[56px] top-1/2 -translate-y-1/2 whitespace-nowrap text-[15px] opacity-0 transition-opacity duration-200 group-hover:opacity-100 ${
-                      isActive
-                        ? 'text-ios-label font-semibold'
-                        : 'text-ios-secondary group-hover:text-ios-label'
-                    }`}
-                  >
-                    {link.label}
-                  </span>
-                </>
-              );
-            }}
-          </NavLink>
-        ))}
-      </nav>
-
-      <div className="p-4 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
-        <div className="[perspective:700px]">
-          <div className="relative h-11 animate-ios-flip bg-ios-surface2 border border-ios-separator/40 rounded-2xl px-4 py-3 text-center shadow-ios-card">
-            <div className="ios-flip-face absolute inset-0 flex items-center justify-center">
-              <p className="text-[13px] text-ios-secondary font-semibold whitespace-nowrap">
-                Desarrollo by <span className="text-ios-label font-bold">NexusCode</span>
-              </p>
-            </div>
-            <div className="ios-flip-face absolute inset-0 flex items-center justify-center [transform:rotateY(180deg)]">
-              <p className="text-[13px] text-ios-secondary font-semibold whitespace-nowrap">
-                Desarrollo by <span className="text-ios-label font-bold">NexusCode</span>
-              </p>
-            </div>
+          <div className="grid min-w-0 flex-1 leading-tight group-data-[collapsible=icon]:hidden">
+            <span className="truncate text-[17px] font-bold tracking-tight text-ios-label">NexusCode</span>
+            <span className="truncate text-[11px] font-medium text-ios-tertiary">Sistema de stock</span>
           </div>
         </div>
-      </div>
-    </aside>
+      </SidebarHeader>
+
+      <SidebarContent>
+        <SidebarGroup>
+          <SidebarGroupLabel>Menú</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {visibleLinks.map((link) => {
+                const isActive = pathname === link.to;
+                const contador = contadorDe(link.to);
+
+                return (
+                  <SidebarMenuItem key={link.to}>
+                    <SidebarMenuButton asChild isActive={isActive} title={link.label}>
+                      <NavLink to={link.to} onClick={handleNavigate}>
+                        <span className="relative shrink-0">
+                          <IconTile
+                            gradient={link.gradient}
+                            className={`size-8 transition-opacity duration-200 ${
+                              isActive ? 'opacity-100' : 'opacity-100 md:opacity-60 md:group-hover:opacity-90 md:group-data-[state=expanded]:opacity-90'
+                            }`}
+                          >
+                            <link.icon className="size-4 text-white" strokeWidth={2.1} />
+                          </IconTile>
+                          {contador > 0 && (
+                            <span className="absolute -right-1.5 -top-1.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-ios-tint px-1 text-[10px] font-bold leading-none text-white shadow-[0_2px_6px_rgba(0,0,0,0.4)]">
+                              {contador > 99 ? '99+' : contador}
+                            </span>
+                          )}
+                        </span>
+                        <span className="group-data-[collapsible=icon]:hidden">{link.label}</span>
+                      </NavLink>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                );
+              })}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+      </SidebarContent>
+
+      <SidebarFooter className="p-4 group-data-[collapsible=icon]:hidden">
+        <div className="flex h-11 items-center justify-center rounded-2xl border border-ios-separator/40 bg-ios-surface2 px-4 py-3 text-center shadow-ios-card">
+          <p className="whitespace-nowrap text-[13px] font-semibold text-ios-secondary">
+            Desarrollo by <span className="font-bold text-ios-label">NexusCode</span>
+          </p>
+        </div>
+      </SidebarFooter>
+    </SidebarRoot>
   );
 };
 

@@ -17,6 +17,27 @@
   --ios-hover: 255 255 255;
   --ios-thumb: 235 235 245;
   --ios-track: 235 235 245;
+
+  --radius: 0.625rem;
+  --background: 240 10% 3.9%;
+  --foreground: 0 0% 98%;
+  --card: 240 10% 3.9%;
+  --card-foreground: 0 0% 98%;
+  --popover: 240 10% 3.9%;
+  --popover-foreground: 0 0% 98%;
+  --primary: 0 0% 98%;
+  --primary-foreground: 240 5.9% 10%;
+  --secondary: 240 3.7% 15.9%;
+  --secondary-foreground: 0 0% 98%;
+  --muted: 240 3.7% 15.9%;
+  --muted-foreground: 240 5% 64.9%;
+  --accent: 240 3.7% 15.9%;
+  --accent-foreground: 0 0% 98%;
+  --destructive: 0 62.8% 30.6%;
+  --destructive-foreground: 0 0% 98%;
+  --border: 240 3.7% 15.9%;
+  --input: 240 3.7% 15.9%;
+  --ring: 240 4.9% 83.9%;
 }
 
 /* ---------- Tema claro (modo día) ---------- */
@@ -34,6 +55,27 @@
   --ios-hover: 0 0 0;
   --ios-thumb: 133 133 141;
   --ios-track: 133 133 141;
+
+  --radius: 0.5rem;
+  --background: 0 0% 100%;
+  --foreground: 240 10% 3.9%;
+  --card: 0 0% 100%;
+  --card-foreground: 240 10% 3.9%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 240 10% 3.9%;
+  --primary: 240 5.9% 10%;
+  --primary-foreground: 0 0% 98%;
+  --secondary: 240 4.8% 95.9%;
+  --secondary-foreground: 240 5.9% 10%;
+  --muted: 240 4.8% 95.9%;
+  --muted-foreground: 240 3.8% 46.1%;
+  --accent: 240 4.8% 95.9%;
+  --accent-foreground: 240 5.9% 10%;
+  --destructive: 0 84.2% 60.2%;
+  --destructive-foreground: 0 0% 98%;
+  --border: 240 5.9% 90%;
+  --input: 240 5.9% 90%;
+  --ring: 240 5.9% 10%;
 }
 
 /* En modo día los acentos se oscurecen para mantener legibilidad sobre fondo claro */
@@ -130,23 +172,6 @@ button {
 @keyframes iosCardDeal {
   from { opacity: 0; transform: translateY(-140%) rotate(-10deg); }
   to { opacity: 1; transform: translateY(0) rotate(0deg); }
-}
-
-@keyframes iosFlip {
-  0%, 15% { transform: rotateY(0deg); }
-  35% { transform: rotateY(180deg); }
-  65% { transform: rotateY(180deg); }
-  85%, 100% { transform: rotateY(360deg); }
-}
-
-.animate-ios-flip {
-  animation: iosFlip 6s cubic-bezier(0.4, 0.2, 0.2, 1) infinite;
-  transform-style: preserve-3d;
-}
-
-.ios-flip-face {
-  backface-visibility: hidden;
-  -webkit-backface-visibility: hidden;
 }
 
 .animate-ios-sheet-up { animation: iosSheetUp 0.35s cubic-bezier(0.32, 0.72, 0, 1); }
@@ -309,12 +334,7 @@ html {
 }
 
 .safe-page-bottom {
-  padding-bottom: calc(7rem + env(safe-area-inset-bottom));
-}
-
-.safe-x {
-  padding-left: max(1rem, env(safe-area-inset-left));
-  padding-right: max(1rem, env(safe-area-inset-right));
+  padding-bottom: calc(5rem + env(safe-area-inset-bottom));
 }
 
 .safe-sheet-x {
@@ -327,19 +347,19 @@ html {
 }
 
 .mobile-fab {
-  bottom: calc(5.5rem + env(safe-area-inset-bottom));
+  bottom: calc(1.5rem + env(safe-area-inset-bottom));
 }
 
 .mobile-alert {
-  bottom: calc(9.5rem + env(safe-area-inset-bottom));
+  bottom: calc(5.5rem + env(safe-area-inset-bottom));
 }
 
 .mobile-alert-stack {
-  bottom: calc(15rem + env(safe-area-inset-bottom));
+  bottom: calc(11rem + env(safe-area-inset-bottom));
 }
 
 .mobile-banner {
-  bottom: calc(20rem + env(safe-area-inset-bottom));
+  bottom: calc(16.5rem + env(safe-area-inset-bottom));
 }
 
 .scanner-shell {
@@ -364,11 +384,6 @@ html {
 
   .mobile-banner {
     bottom: 1.5rem;
-  }
-
-  .safe-x {
-    padding-left: 1rem;
-    padding-right: 1rem;
   }
 }
 

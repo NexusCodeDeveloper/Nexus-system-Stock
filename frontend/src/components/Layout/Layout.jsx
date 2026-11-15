@@ -1,7 +1,7 @@
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import Navbar from './Navbar';
-import MobileNav from './MobileNav';
+import { SidebarProvider } from '../ui/sidebar';
 import AvisoNuevaNotificacion from '../alerts/AvisoNuevaNotificacion';
 import PanelCarrito from '../Carrito/PanelCarrito';
 import { IconCart } from '../ui/icons';
@@ -23,10 +23,8 @@ const LayoutInner = () => {
   };
 
   return (
-    <div className="flex app-shell bg-ios-bg overflow-x-hidden">
-      <div className="hidden md:block shrink-0 relative w-[72px]">
-        <Sidebar />
-      </div>
+    <SidebarProvider defaultOpen={false} className="app-shell bg-ios-bg overflow-x-hidden">
+      <Sidebar />
       <div className="flex-1 flex flex-col min-w-0 min-h-0">
         <Navbar />
         <main className="flex-1 overflow-y-auto px-4 pt-4 safe-page-bottom md:px-6">
@@ -51,9 +49,8 @@ const LayoutInner = () => {
           {cart.length}
         </button>
       )}
-      <MobileNav />
       <AvisoNuevaNotificacion />
-    </div>
+    </SidebarProvider>
   );
 };
 
