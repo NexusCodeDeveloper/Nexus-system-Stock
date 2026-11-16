@@ -1,5 +1,6 @@
 import jwt from 'jsonwebtoken';
 import Usuario from '../modules/Autenticacion/UsuarioModel.js';
+import Sesion, { INACTIVIDAD_MAX_MS, REFRESCO_MIN_MS } from '../modules/Autenticacion/SesionModel.js';
 
 export const proteger = async (req, res, next) => {
   const auth = req.headers.authorization;
@@ -14,7 +15,7 @@ export const proteger = async (req, res, next) => {
   } catch {
     return res.status(401).json({ message: 'No autorizado, token inválido' });
   }
-  if (!decoded.id) {
+  if (!decoded.id || !decoded.jti) {
     return res.status(401).json({ message: 'No autorizado, token inválido' });
   }
 
@@ -29,8 +30,20 @@ export const proteger = async (req, res, next) => {
     if ((usuario.versionToken || 0) !== (decoded.versionToken || 0)) {
       return res.status(401).json({ message: 'Sesión expirada, vuelva a iniciar sesión' });
     }
+    const sesion = await Sesion.findOne({ jti: decoded.jti, usuarioId: usuario._id }).select('expiraEn');
+    const ahora = Date.now();
+    // El TTL de Mongo borra con retraso, por eso se compara el vencimiento a mano
+    if (!sesion || sesion.expiraEn.getTime() <= ahora) {
+      return res.status(401).json({ message: 'Sesión expirada, vuelva a iniciar sesión' });
+    }
+    // Actividad: se corre el vencimiento por inactividad (el tope absoluto lo fija el JWT)
+    const nuevoVencimiento = ahora + INACTIVIDAD_MAX_MS;
+    if (nuevoVencimiento - sesion.expiraEn.getTime() >= REFRESCO_MIN_MS) {
+      await Sesion.updateOne({ _id: sesion._id }, { expiraEn: new Date(nuevoVencimiento) });
+    }
 
     req.usuario = {
+      jti: decoded.jti,
       id: usuario._id.toString(),
       nombre: usuario.nombre,
       email: usuario.email,

@@ -18,8 +18,9 @@ import { inicioDeDia } from '../utils/FechasUtils.js';
 import Usuario from '../modules/Autenticacion/UsuarioModel.js';
 import SuscripcionPush from '../modules/Push/PushModel.js';
 import { registrarSuscripcion, limpiarSuscripcionesHuerfanas } from '../services/PushService.js';
-import { cambiarActivo } from '../modules/Usuario/UsuarioController.js';
+import { cambiarActivo, reiniciarClave } from '../modules/Usuario/UsuarioController.js';
 import { iniciarSesion, cerrarSesion } from '../modules/Autenticacion/AutenticacionController.js';
+import Sesion from '../modules/Autenticacion/SesionModel.js';
 import { proteger } from '../middlewares/AutenticacionMiddleware.js';
 import { crearNotificacion, completarNotificacion, marcarVistasAdmin, obtenerNotificaciones } from '../modules/Notificacion/NotificacionController.js';
 
@@ -1101,24 +1102,64 @@ const protegerConToken = async (token) => {
   return { status };
 };
 
-test('el logout revoca el token en el servidor', async () => {
+const jtiDe = (token) => JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString()).jti;
+
+test('el logout revoca solo el token de esa sesión', async () => {
   const usuario = await Usuario.create({ nombre: 'Emp', email: 'emp@x.com', clave: 'secreto123', rol: 'user' });
 
-  const login = await runHandler(iniciarSesion, { body: { email: 'emp@x.com', clave: 'secreto123' } });
-  assert.equal(login.status, 200);
-  const token = login.body.token;
+  const loginA = await runHandler(iniciarSesion, { body: { email: 'emp@x.com', clave: 'secreto123' } });
+  const loginB = await runHandler(iniciarSesion, { body: { email: 'emp@x.com', clave: 'secreto123' } });
+  assert.equal(loginA.status, 200);
+  assert.equal(loginB.status, 200);
+  const tokenA = loginA.body.token;
+  const tokenB = loginB.body.token;
 
-  const antes = await protegerConToken(token);
-  assert.equal(antes.status, 200);
+  assert.equal((await protegerConToken(tokenA)).status, 200);
+  assert.equal((await protegerConToken(tokenB)).status, 200);
 
-  const logout = await runHandler(cerrarSesion, { usuario: { id: String(usuario._id), rol: 'user' } });
+  const logout = await runHandler(cerrarSesion, {
+    usuario: { id: String(usuario._id), rol: 'user', jti: jtiDe(tokenA) },
+  });
   assert.equal(logout.status, 200);
 
-  const despues = await protegerConToken(token);
-  assert.equal(despues.status, 401, 'el token viejo ya no debe servir');
+  assert.equal((await protegerConToken(tokenA)).status, 401, 'el token cerrado ya no debe servir');
+  assert.equal((await protegerConToken(tokenB)).status, 200, 'la otra sesión debe seguir activa');
 
   const actualizado = await Usuario.findById(usuario._id);
-  assert.equal(actualizado.versionToken, 1);
+  assert.equal(actualizado.versionToken, 0);
+});
+
+test('la actividad extiende la sesión y la inactividad la vence', async () => {
+  await Usuario.create({ nombre: 'Emp', email: 'emp4@x.com', clave: 'secreto123', rol: 'user' });
+  const login = await runHandler(iniciarSesion, { body: { email: 'emp4@x.com', clave: 'secreto123' } });
+  const token = login.body.token;
+  const jti = jtiDe(token);
+  const HORA = 60 * 60 * 1000;
+
+  // Quedan 2h de inactividad permitida: usar el sistema la vuelve a dejar en ~8h
+  await Sesion.updateOne({ jti }, { expiraEn: new Date(Date.now() + 2 * HORA) });
+  assert.equal((await protegerConToken(token)).status, 200);
+  const extendida = await Sesion.findOne({ jti });
+  assert.ok(extendida.expiraEn.getTime() - Date.now() > 7 * HORA, 'la actividad debe extender la sesión');
+
+  // Sin actividad por más de 8h: vence aunque el JWT siga vigente
+  await Sesion.updateOne({ jti }, { expiraEn: new Date(Date.now() - 1000) });
+  assert.equal((await protegerConToken(token)).status, 401);
+});
+
+test('reiniciar la clave invalida todas las sesiones del usuario', async () => {
+  const usuario = await Usuario.create({ nombre: 'Emp', email: 'emp3@x.com', clave: 'secreto123', rol: 'user' });
+  const loginA = await runHandler(iniciarSesion, { body: { email: 'emp3@x.com', clave: 'secreto123' } });
+  const loginB = await runHandler(iniciarSesion, { body: { email: 'emp3@x.com', clave: 'secreto123' } });
+
+  await runHandler(reiniciarClave, {
+    params: { id: String(usuario._id) },
+    body: { clave: 'otraClave123' },
+    usuario: { id: String(new mongoose.Types.ObjectId()), rol: 'admin' },
+  });
+
+  assert.equal((await protegerConToken(loginA.body.token)).status, 401);
+  assert.equal((await protegerConToken(loginB.body.token)).status, 401);
 });
 
 test('desactivar un usuario borra sus suscripciones push', async () => {

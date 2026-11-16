@@ -1,9 +1,13 @@
-import bcrypt from 'bcryptjs';
+import { randomUUID } from 'node:crypto';
 import jwt from 'jsonwebtoken';
 import Usuario from './UsuarioModel.js';
+import Sesion, { INACTIVIDAD_MAX_MS, SESION_MAX_HORAS } from './SesionModel.js';
 import { iniciarSesionSchema } from './AutenticacionSchema.js';
 
-const generarToken = (usuario) => {
+const generarToken = async (usuario) => {
+  const jti = randomUUID();
+  const expiraEn = new Date(Date.now() + INACTIVIDAD_MAX_MS);
+  await Sesion.create({ usuarioId: usuario._id, jti, expiraEn });
   return jwt.sign(
     {
       id: usuario._id,
@@ -11,9 +15,10 @@ const generarToken = (usuario) => {
       email: usuario.email,
       rol: usuario.rol,
       versionToken: usuario.versionToken || 0,
+      jti,
     },
     process.env.JWT_SECRET,
-    { expiresIn: '8h' }
+    { expiresIn: `${SESION_MAX_HORAS}h` }
   );
 };
 
@@ -34,7 +39,7 @@ export const iniciarSesion = async (req, res, next) => {
       });
     }
 
-    const token = generarToken(usuario);
+    const token = await generarToken(usuario);
 
     res.json({
       _id: usuario._id,
@@ -51,10 +56,8 @@ export const iniciarSesion = async (req, res, next) => {
 
 export const cerrarSesion = async (req, res, next) => {
   try {
-    const usuario = await Usuario.findById(req.usuario.id);
-    if (usuario) {
-      usuario.versionToken = (usuario.versionToken || 0) + 1;
-      await usuario.save();
+    if (req.usuario.jti) {
+      await Sesion.deleteOne({ jti: req.usuario.jti, usuarioId: req.usuario.id });
     }
     res.json({ message: 'Sesión cerrada' });
   } catch (error) {
